@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: murasaki-leadradar-backend
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --app-dir backend
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: PUBLIC_BASE_URL
+        fromService:
+          type: web
+          name: murasaki-leadradar-backend
+          property: host

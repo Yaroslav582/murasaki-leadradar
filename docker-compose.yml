@@ -1,0 +1,82 @@
+name: leadradar
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+asyncpg://leadradar:leadradar@db:5432/leadradar
+  REDIS_URL: redis://redis:6379/0
+  USE_CELERY: "true"
+  SEED_ON_START: "true"
+  CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+  PUBLIC_BASE_URL: http://localhost:8000
+  GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY:-}
+  TWOGIS_API_KEY: ${TWOGIS_API_KEY:-}
+  PROXY_URL: ${PROXY_URL:-}
+  LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-sonnet-latest}
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: leadradar
+      POSTGRES_PASSWORD: leadradar
+      POSTGRES_DB: leadradar
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leadradar -d leadradar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      <<: *backend-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: ["celery", "-A", "app.tasks.worker:celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  redisdata:
