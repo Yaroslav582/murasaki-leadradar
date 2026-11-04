@@ -9,6 +9,8 @@ import {
   Copy,
   Edit3,
   ExternalLink,
+  Eye,
+  MessageCircle,
   MessageSquare,
   Moon,
   Pause,
@@ -22,6 +24,7 @@ import {
   Sparkles,
   Sun,
   Trash2,
+  UserCheck,
   Users,
   X,
 } from "lucide-react";
@@ -31,6 +34,9 @@ import type { TelegramBroadcast, TelegramChatTarget, TelegramOrder, TelegramStat
 import { formatDate } from "@/lib/utils";
 import type { ToastVariant } from "./ui";
 import { Spinner } from "./ui";
+import NeuroCommentingView from "./NeuroCommentingView";
+import ChatScrapingView from "./ChatScrapingView";
+import StoriesMasslookingView from "./StoriesMasslookingView";
 
 const COOLDOWN_OPTIONS = [
   { label: "30 минут", value: 30 },
@@ -47,7 +53,7 @@ export default function TelegramRadarView({
 }: {
   showToast: (message: string, variant?: ToastVariant) => void;
 }) {
-  const [tab, setTab] = useState<"orders" | "promo" | "chats">("orders");
+  const [tab, setTab] = useState<"orders" | "comments" | "scraper" | "stories" | "promo" | "chats">("orders");
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [orders, setOrders] = useState<TelegramOrder[]>([]);
   const [broadcasts, setBroadcasts] = useState<TelegramBroadcast[]>([]);
@@ -572,6 +578,51 @@ export default function TelegramRadarView({
           <button
             onClick={() => {
               triggerHaptic("light");
+              setTab("comments");
+            }}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+              tab === "comments"
+                ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
+                : "border border-white/10 bg-[#161616] text-slate-400 hover:text-white"
+            }`}
+          >
+            <MessageCircle size={14} className={tab === "comments" ? "text-white" : "text-brand-400"} />
+            Нейрокомментинг
+          </button>
+
+          <button
+            onClick={() => {
+              triggerHaptic("light");
+              setTab("scraper");
+            }}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+              tab === "scraper"
+                ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
+                : "border border-white/10 bg-[#161616] text-slate-400 hover:text-white"
+            }`}
+          >
+            <UserCheck size={14} className={tab === "scraper" ? "text-white" : "text-emerald-400"} />
+            Парсер чатов
+          </button>
+
+          <button
+            onClick={() => {
+              triggerHaptic("light");
+              setTab("stories");
+            }}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+              tab === "stories"
+                ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
+                : "border border-white/10 bg-[#161616] text-slate-400 hover:text-white"
+            }`}
+          >
+            <Eye size={14} className={tab === "stories" ? "text-white" : "text-amber-400"} />
+            Просмотр Stories
+          </button>
+
+          <button
+            onClick={() => {
+              triggerHaptic("light");
               setTab("promo");
             }}
             className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
@@ -844,7 +895,34 @@ export default function TelegramRadarView({
         </div>
       )}
 
-      {/* Tab 2: Promo Broadcasts Feed */}
+      {/* Tab: Neuro-commenting */}
+      {tab === "comments" && (
+        <NeuroCommentingView showToast={showToast} />
+      )}
+
+      {/* Tab: Chat Member Scraper */}
+      {tab === "scraper" && (
+        <ChatScrapingView
+          showToast={showToast}
+          onGoToStories={() => {
+            triggerHaptic("light");
+            setTab("stories");
+          }}
+        />
+      )}
+
+      {/* Tab: Stories Masslooking */}
+      {tab === "stories" && (
+        <StoriesMasslookingView
+          showToast={showToast}
+          onGoToScraper={() => {
+            triggerHaptic("light");
+            setTab("scraper");
+          }}
+        />
+      )}
+
+      {/* Tab: Promo Broadcasts Feed */}
       {tab === "promo" && (
         <div className="space-y-4">
           <div className="rounded-2xl border border-white/10 bg-[#161616] p-4 text-xs text-slate-400 leading-relaxed">

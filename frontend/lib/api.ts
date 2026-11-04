@@ -1,4 +1,6 @@
 import type {
+  CommentLog,
+  CommentTarget,
   Demo,
   DemoUpdate,
   Lead,
@@ -7,10 +9,12 @@ import type {
   LLMConfig,
   Meta,
   Outreach,
+  ParsedUser,
   ParseJob,
   ParseRequest,
   SortKey,
   Stats,
+  StoriesStatus,
   TelegramBroadcast,
   TelegramChatTarget,
   TelegramOrder,
@@ -260,5 +264,55 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+
+  // Growth, Neuro-commenting, Chat Scraper & Stories
+  getCommentTargets() {
+    return request<CommentTarget[]>("/api/growth/comment-targets");
+  },
+  addCommentTarget(payload: { channel_id: string; title?: string; tone?: string; custom_prompt?: string }) {
+    return request<CommentTarget>("/api/growth/comment-targets", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteCommentTarget(id: string) {
+    return request<{ status: string }>(`/api/growth/comment-targets/${id}`, { method: "DELETE" });
+  },
+  generateCommentPreview(payload: { post_text: string; channel_id?: string; channel_title?: string; tone?: string; custom_prompt?: string }) {
+    return request<{ success: boolean; status: string; comment_text: string }>("/api/growth/comment-targets/generate", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getCommentLogs() {
+    return request<CommentLog[]>("/api/growth/comment-logs");
+  },
+  parseChat(payload: { chat_identifier: string; limit?: number; only_active?: boolean; only_premium?: boolean }) {
+    return request<ParsedUser[]>("/api/growth/parse-chat", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getParsedUsers(source_chat?: string) {
+    const q = source_chat ? `?source_chat=${encodeURIComponent(source_chat)}` : "";
+    return request<ParsedUser[]>(`/api/growth/parsed-users${q}`);
+  },
+  deleteParsedUser(id: string) {
+    return request<{ status: string }>(`/api/growth/parsed-users/${id}`, { method: "DELETE" });
+  },
+  clearParsedUsers() {
+    return request<{ status: string }>("/api/growth/parsed-users/clear", { method: "POST" });
+  },
+  getStoriesStatus() {
+    return request<StoriesStatus>("/api/growth/stories/status");
+  },
+  toggleStoriesMasslooking(enable: boolean, delay_min?: number, delay_max?: number) {
+    const min = delay_min ?? 15;
+    const max = delay_max ?? 35;
+    return request<{ status: string; is_running: boolean }>(
+      `/api/growth/stories/toggle?enable=${enable}&delay_min=${min}&delay_max=${max}`,
+      { method: "POST" }
+    );
   },
 };

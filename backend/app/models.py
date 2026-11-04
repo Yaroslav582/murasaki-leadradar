@@ -133,3 +133,51 @@ class TelegramBroadcast(Base):
     status: Mapped[str] = mapped_column(String(24), default="sent")  # sent, failed
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TelegramCommentTarget(Base):
+    """Channels targeted for AI neuro-commenting under new posts."""
+    __tablename__ = "telegram_comment_targets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    channel_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    username: Mapped[str | None] = mapped_column(String(120))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    tone: Mapped[str] = mapped_column(String(64), default="expert")  # expert, friendly, witty, supportive
+    custom_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    comments_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_comment_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TelegramCommentLog(Base):
+    """History of AI-generated comments published in channels."""
+    __tablename__ = "telegram_comment_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    channel_id: Mapped[str] = mapped_column(String(120), index=True)
+    channel_title: Mapped[str] = mapped_column(String(255), default="")
+    post_id: Mapped[int] = mapped_column(Integer, default=0)
+    post_text: Mapped[str] = mapped_column(Text)
+    comment_text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(24), default="sent")  # sent, failed, simulated
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TelegramParsedUser(Base):
+    """Parsed Telegram users for audience building & stories masslooking."""
+    __tablename__ = "telegram_parsed_users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    telegram_id: Mapped[int] = mapped_column(Integer, index=True)
+    username: Mapped[str | None] = mapped_column(String(120), index=True)
+    first_name: Mapped[str | None] = mapped_column(String(255))
+    last_name: Mapped[str | None] = mapped_column(String(255))
+    source_chat: Mapped[str] = mapped_column(String(120), index=True)
+    has_premium: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_seen_status: Mapped[str | None] = mapped_column(String(64))  # online, recently, last_week, other
+    stories_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stories_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+

@@ -208,3 +208,49 @@ export interface DemoUpdate {
   message?: string;
   published?: boolean;
 }
+
+export interface CommentTarget {
+  id: string;
+  channel_id: string;
+  title: string;
+  username: string | null;
+  is_active: boolean;
+  tone: string;
+  custom_prompt: string | null;
+  comments_count: number;
+  last_comment_at: string | null;
+  created_at: string;
+}
+
+export interface CommentLog {
+  id: string;
+  channel_id: string;
+  channel_title: string;
+  post_id: number;
+  post_text: string;
+  comment_text: string;
+  status: string;
+  created_at: string;
+}
+
+export interface ParsedUser {
+  id: string;
+  telegram_id: number;
+  username: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  source_chat: string;
+  has_premium: boolean;
+  last_seen_status: string | null;
+  stories_viewed_at: string | null;
+  stories_count: number;
+  created_at: string;
+}
+
+export interface StoriesStatus {
+  is_running: boolean;
+  viewed_count: number;
+  total_users: number;
+  unviewed_count: number;
+}
+
