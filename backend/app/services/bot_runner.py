@@ -10,7 +10,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-WEB_APP_URL = "https://decimal-logical-karen-penn.trycloudflare.com"
+WEB_APP_URL = "https://frontend-mocha-three-gfa8fzsldf.vercel.app"
 
 WELCOME_TEXT = (
     "👋 **Добро пожаловать в Murasaki LeadRadar!**\n\n"
