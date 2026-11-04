@@ -368,4 +368,97 @@ class GrowthManager:
                 await asyncio.sleep(20)
 
 
+BLOG_TOPICS = [
+    "Зачем бизнесу сайт в 2026 году, если уже есть соцсети и Telegram-канал: реальная разница в доверии и конверсиях",
+    "3 критические ошибки в первом экране лендинга, из-за которых уходят 70% посетителей за первые 5 секунд",
+    "Почему Telegram Mini Apps (TMA) сейчас заменяют классические сайты для сферы услуг и записи",
+    "Скорость загрузки сайта и деньги: как задержка в 1 секунду срезает заявки и продажи",
+    "Как рассчитать окупаемость разработки сайта: простая математика заявок для предпринимателя",
+    "Адаптивность под смартфоны: 85% ваших клиентов открывают сайт с телефона",
+    "Анатомия продающего лендинга: какие 5 блоков обязательно должны быть на странице",
+    "Сайт vs Telegram-бот: в каких случаях нужен бот, а в каких — полноценный веб-интерфейс",
+    "Тренды digital-дизайна 2026: минимализм, темная тема, крупные шрифты и микро-анимации",
+    "Кейс: как продуманная форма захвата контактов в Telegram увеличила конверсию в запись в 2 раза",
+]
+
+
+async def generate_ai_blog_post(
+    topic_hint: str | None = None,
+    portfolio_url: str | None = None,
+) -> tuple[str, str]:
+    """Generate a rich, valuable, structured expert post for the user's Telegram channel."""
+    url = portfolio_url or getattr(settings, "telegram_portfolio_url", "https://murasaki-portfolio.vercel.app/")
+    topic = topic_hint or random.choice(BLOG_TOPICS)
+
+    system_prompt = (
+        "Ты — Murasaki, топовый независимый веб-разработчик, UI/UX дизайнер и создатель Telegram Mini Apps.\n"
+        "Ты ведёшь собственный Telegram-канал для предпринимателей, маркетологов и клиентов.\n"
+        "Напиши сильный, структурированный, полезный и легко читаемый экспертный пост для Telegram.\n\n"
+        "ПРАВИЛА ОФОРМЛЕНИЯ:\n"
+        "1. Заголовок: цепляющий, с эмодзи, обязательно выделен жирным (**Заголовок**).\n"
+        "2. Структура: 2-3 коротких абзаца без воды + маркеры с конкретными практическими мыслями или цифрами.\n"
+        "3. Тон: уверенный, профессиональный, дружеский, без занудства и без 'успешного успеха'.\n"
+        "4. Финал поста (Call to Action):\n"
+        f"   • Аккуратное упоминание портфолио с проектами: {url}\n"
+        "   • Предложение бесплатного аудита текущего сайта или консультации в ЛС: @loves_kyni\n"
+        "5. Форматирование: Telegram Markdown (жирный текст **...**, списки •)."
+    )
+    user_prompt = f"Тема поста: {topic}\n\nНапиши готовый пост:"
+
+    try:
+        res = await chat_completion(system=system_prompt, user=user_prompt, max_tokens=1500)
+        cleaned = res.strip()
+        lines = cleaned.split("\n")
+        title = lines[0].strip("*# ").strip() if lines else topic
+        return title, cleaned
+    except Exception as exc:
+        logger.warning("Failed to generate AI blog post: %s, using fallback", exc)
+
+    fallback_title = "Зачем бизнесу сайт в 2026 году: математика конверсии"
+    fallback_text = (
+        "**Зачем бизнесу сайт в 2026 году, когда есть соцсети и каналы?**\n\n"
+        "Многие думают, что сейчас достаточно группы или канала. Но давайте посмотрим на цифры:\n\n"
+        "• **Доверие и статус**: 78% клиентов перед крупной покупкой проверяют наличие официального сайта.\n"
+        "• **Удержание трафика**: в соцсетях внимание рассеивается за секунду. На лендинге человек видит только ваш продукт и ваше предложение.\n"
+        "• **Автоматизация**: Telegram Mini App позволяет записаться на услугу или оформить заказ за 2 клика без переписок с администратором.\n\n"
+        "Сайт — это не просто красивая страница, а инструмент, который превращает клики в реальные заявки и деньги в кассе.\n\n"
+        f"Посмотреть примеры реализованных проектов: {url}\n"
+        "Хотите разобрать, где ваш проект теряет клиентов? Напишите мне в ЛС **@loves_kyni** — сделаю бесплатный аудит пути клиента!"
+    )
+    return fallback_title, fallback_text
+
+
+async def publish_blog_post(
+    channel_id: str = "@Murasaki_website",
+    topic_hint: str | None = None,
+) -> dict[str, Any]:
+    """Generate and immediately publish an AI blog post to the user's channel."""
+    title, text = await generate_ai_blog_post(topic_hint)
+    success = False
+
+    client = telegram_manager.client
+    if client and telegram_manager.is_connected:
+        try:
+            entity = await client.get_entity(channel_id)
+            msg = await client.send_message(entity, text, parse_mode="md")
+            success = True
+            logger.info("Successfully published blog post to %s, msg_id: %s", channel_id, msg.id)
+        except Exception as exc:
+            logger.error("Failed to publish blog post to %s: %s", channel_id, exc)
+
+    now = utcnow()
+    settings.channel_blog_last_post_at = now.isoformat()
+    interval_hours = getattr(settings, "channel_blog_interval_hours", 24) or 24
+    settings.channel_blog_next_post_at = (now + timedelta(hours=interval_hours)).isoformat()
+
+    return {
+        "success": success,
+        "title": title,
+        "text": text,
+        "channel_id": channel_id,
+        "published_at": now.isoformat(),
+        "next_post_at": settings.channel_blog_next_post_at,
+    }
+
+
 growth_manager = GrowthManager.get()

@@ -16,9 +16,12 @@ from app.models import (
     utcnow,
 )
 from app.services.telegram_growth import (
+    BLOG_TOPICS,
     DEFAULT_COMMENT_TARGETS,
+    generate_ai_blog_post,
     generate_ai_comment,
     growth_manager,
+    publish_blog_post,
 )
 
 router = APIRouter(prefix="/growth", tags=["growth"])
@@ -258,3 +261,67 @@ async def toggle_stories_masslooking(
     else:
         growth_manager.stop_stories_masslooking()
     return {"status": "ok", "is_running": growth_manager.is_stories_running}
+
+
+# --- Endpoints: AI-Автоблогер для Telegram канала ---
+
+class BlogSettingsIn(BaseModel):
+    enabled: bool | None = None
+    channel_id: str | None = None
+    interval_hours: int | None = None
+
+
+class BlogGenerateIn(BaseModel):
+    topic_hint: str | None = None
+    channel_id: str = "@Murasaki_website"
+
+
+@router.get("/blog/status")
+async def get_blog_status() -> dict[str, Any]:
+    from app.config import settings
+
+    return {
+        "enabled": getattr(settings, "channel_blog_enabled", True),
+        "channel_id": getattr(settings, "channel_blog_chat_id", "@Murasaki_website"),
+        "interval_hours": getattr(settings, "channel_blog_interval_hours", 24),
+        "last_post_at": getattr(settings, "channel_blog_last_post_at", None),
+        "next_post_at": getattr(settings, "channel_blog_next_post_at", None),
+        "topics": BLOG_TOPICS,
+    }
+
+
+@router.post("/blog/settings")
+async def update_blog_settings(payload: BlogSettingsIn) -> dict[str, Any]:
+    from app.config import settings
+
+    if payload.enabled is not None:
+        settings.channel_blog_enabled = payload.enabled
+    if payload.channel_id is not None and payload.channel_id.strip():
+        cid = payload.channel_id.strip()
+        settings.channel_blog_chat_id = cid if cid.startswith("@") or cid.startswith("-100") else f"@{cid}"
+    if payload.interval_hours is not None:
+        settings.channel_blog_interval_hours = max(1, min(168, payload.interval_hours))
+
+    return {
+        "status": "ok",
+        "enabled": settings.channel_blog_enabled,
+        "channel_id": settings.channel_blog_chat_id,
+        "interval_hours": settings.channel_blog_interval_hours,
+    }
+
+
+@router.post("/blog/generate-preview")
+async def generate_blog_preview(payload: BlogGenerateIn) -> dict[str, Any]:
+    title, text = await generate_ai_blog_post(topic_hint=payload.topic_hint)
+    return {
+        "title": title,
+        "text": text,
+        "topic": payload.topic_hint or "Случайная экспертная тема",
+    }
+
+
+@router.post("/blog/publish-now")
+async def publish_blog_now(payload: BlogGenerateIn) -> dict[str, Any]:
+    cid = payload.channel_id or getattr(settings, "channel_blog_chat_id", "@Murasaki_website")
+    res = await publish_blog_post(channel_id=cid, topic_hint=payload.topic_hint)
+    return res

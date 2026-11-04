@@ -254,3 +254,12 @@ export interface StoriesStatus {
   unviewed_count: number;
 }
 
+export interface BlogStatus {
+  enabled: boolean;
+  channel_id: string;
+  interval_hours: number;
+  last_post_at: string | null;
+  next_post_at: string | null;
+  topics: string[];
+}
+

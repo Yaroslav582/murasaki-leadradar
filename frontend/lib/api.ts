@@ -1,4 +1,5 @@
 import type {
+  BlogStatus,
   CommentLog,
   CommentTarget,
   Demo,
@@ -314,5 +315,28 @@ export const api = {
       `/api/growth/stories/toggle?enable=${enable}&delay_min=${min}&delay_max=${max}`,
       { method: "POST" }
     );
+  },
+
+  // Auto-blogger for user's own channel
+  getBlogStatus() {
+    return request<BlogStatus>("/api/growth/blog/status");
+  },
+  updateBlogSettings(payload: { enabled?: boolean; channel_id?: string; interval_hours?: number }) {
+    return request<{ status: string; enabled: boolean; channel_id: string; interval_hours: number }>("/api/growth/blog/settings", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  generateBlogPreview(payload: { topic_hint?: string; channel_id?: string }) {
+    return request<{ title: string; text: string; topic: string }>("/api/growth/blog/generate-preview", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  publishBlogNow(payload: { topic_hint?: string; channel_id?: string }) {
+    return request<{ success: boolean; title: string; text: string; channel_id: string; published_at: string; next_post_at: string }>("/api/growth/blog/publish-now", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 };

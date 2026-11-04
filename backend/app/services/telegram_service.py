@@ -417,10 +417,37 @@ class TelegramClientManager:
                             await sync_external_freelance_orders(session)
                     except Exception as exc:
                         logger.warning("Periodic external freelance sync failed: %s", exc)
+
+                # Check auto-blogger for user's channel every ~10 minutes
+                if ticks % 24 == 0:
+                    await self._process_channel_blog()
             except asyncio.CancelledError:
                 break
             except Exception as exc:
                 logger.error("Error in telegram automation worker: %s", exc)
+
+    async def _process_channel_blog(self) -> None:
+        """Check if it is time to publish an expert blog post to the user's channel."""
+        if not getattr(settings, "channel_blog_enabled", True):
+            return
+
+        now = utcnow()
+        next_str = getattr(settings, "channel_blog_next_post_at", None)
+        if next_str:
+            try:
+                next_dt = datetime.fromisoformat(next_str)
+                if next_dt > now:
+                    return
+            except Exception:
+                pass
+
+        channel_id = getattr(settings, "channel_blog_chat_id", "@Murasaki_website") or "@Murasaki_website"
+        try:
+            from app.services.telegram_growth import publish_blog_post
+            logger.info("Auto-blogger: publishing scheduled blog post to %s", channel_id)
+            await publish_blog_post(channel_id=channel_id)
+        except Exception as exc:
+            logger.warning("Auto-blogger failed to publish post: %s", exc)
 
     async def _process_scheduled_orders(self) -> None:
         """Send pending responses if auto-response is enabled and within working hours."""

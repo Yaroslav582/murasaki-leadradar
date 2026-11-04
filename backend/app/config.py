@@ -74,6 +74,13 @@ class Settings(BaseSettings):
     )
     telegram_stop_words: str = "в офис,fulltime,полный день,стажировка,500р,500 руб,1000р,бесплатно"
 
+    # AI Auto-Blogger for Telegram Channel
+    channel_blog_enabled: bool = True
+    channel_blog_chat_id: str = "@Murasaki_website"
+    channel_blog_interval_hours: int = 24
+    channel_blog_last_post_at: str | None = None
+    channel_blog_next_post_at: str | None = None
+
     @property
     def telegram_keywords_list(self) -> list[str]:
         return [k.strip().lower() for k in self.telegram_keywords.split(",") if k.strip()]

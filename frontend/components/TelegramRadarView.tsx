@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Bell,
+  BookOpen,
   Bot,
   Check,
   Clock,
@@ -37,6 +38,7 @@ import { Spinner } from "./ui";
 import NeuroCommentingView from "./NeuroCommentingView";
 import ChatScrapingView from "./ChatScrapingView";
 import StoriesMasslookingView from "./StoriesMasslookingView";
+import ChannelAutoBlogView from "./ChannelAutoBlogView";
 
 const COOLDOWN_OPTIONS = [
   { label: "30 минут", value: 30 },
@@ -53,7 +55,7 @@ export default function TelegramRadarView({
 }: {
   showToast: (message: string, variant?: ToastVariant) => void;
 }) {
-  const [tab, setTab] = useState<"orders" | "comments" | "scraper" | "stories" | "promo" | "chats">("orders");
+  const [tab, setTab] = useState<"orders" | "blog" | "comments" | "scraper" | "stories" | "promo" | "chats">("orders");
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [orders, setOrders] = useState<TelegramOrder[]>([]);
   const [broadcasts, setBroadcasts] = useState<TelegramBroadcast[]>([]);
@@ -578,6 +580,21 @@ export default function TelegramRadarView({
           <button
             onClick={() => {
               triggerHaptic("light");
+              setTab("blog");
+            }}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+              tab === "blog"
+                ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
+                : "border border-white/10 bg-[#161616] text-slate-400 hover:text-white"
+            }`}
+          >
+            <BookOpen size={14} className={tab === "blog" ? "text-white" : "text-amber-400"} />
+            Автоблогер канала (24 ч)
+          </button>
+
+          <button
+            onClick={() => {
+              triggerHaptic("light");
               setTab("comments");
             }}
             className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
@@ -893,6 +910,11 @@ export default function TelegramRadarView({
               })
           )}
         </div>
+      )}
+
+      {/* Tab: Channel Auto-Blogger */}
+      {tab === "blog" && (
+        <ChannelAutoBlogView showToast={showToast} />
       )}
 
       {/* Tab: Neuro-commenting */}
