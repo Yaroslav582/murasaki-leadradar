@@ -7,5 +7,9 @@ if (-not (Test-Path "node_modules")) {
     npm install
 }
 
-Write-Host "UI: http://localhost:3000" -ForegroundColor Green
+if (-not $env:BACKEND_API_URL) {
+    $env:BACKEND_API_URL = "http://127.0.0.1:8000"
+}
+
+Write-Host "UI: http://localhost:3000 (Backend: $env:BACKEND_API_URL)" -ForegroundColor Green
 npm run dev
