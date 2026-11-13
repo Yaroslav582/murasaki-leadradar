@@ -22,36 +22,24 @@ from app.services.telegram_service import telegram_manager
 
 logger = logging.getLogger(__name__)
 
-# Default high-impact channels for tech / design / business commenting
+# Verified high-impact channels for tech / design / business commenting
 DEFAULT_COMMENT_TARGETS = [
     {
-        "channel_id": "@temablog",
+        "channel_id": "@temalebedev",
         "title": "Артемий Лебедев",
-        "username": "temablog",
+        "username": "temalebedev",
         "tone": "witty",
     },
     {
         "channel_id": "@designer_ru",
-        "title": "Дизайн и Интерфейсы",
+        "title": "ИЩУ_ДИЗАЙНЕРА",
         "username": "designer_ru",
         "tone": "expert",
     },
     {
-        "channel_id": "@startup_daily",
-        "title": "Стартапы & Технологии",
-        "username": "startup_daily",
-        "tone": "expert",
-    },
-    {
-        "channel_id": "@ecom_business",
-        "title": "Бизнес & E-Commerce",
-        "username": "ecom_business",
-        "tone": "supportive",
-    },
-    {
-        "channel_id": "@telegram_growth",
-        "title": "Telegram & WebApps Community",
-        "username": "telegram_growth",
+        "channel_id": "@digital_rabota",
+        "title": "Я работаю в digital, детка",
+        "username": "digital_rabota",
         "tone": "expert",
     },
 ]
