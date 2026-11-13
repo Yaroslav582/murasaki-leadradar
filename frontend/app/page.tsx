@@ -15,10 +15,12 @@ import {
 import { api } from "@/lib/api";
 import type { Demo, Lead, LeadFilters, LeadStatus, Meta, ParseJob, ParseRequest, SortKey, Stats } from "@/lib/types";
 import { SOURCE_LABELS, STATUS_META, formatNumber } from "@/lib/utils";
+import BottomNav, { type NavTab } from "@/components/BottomNav";
 import DemoModal from "@/components/DemoModal";
 import JobBanner from "@/components/JobBanner";
 import LeadCard from "@/components/LeadCard";
 import LeadDrawer from "@/components/LeadDrawer";
+import LLMSelectorModal from "@/components/LLMSelectorModal";
 import ParseModal from "@/components/ParseModal";
 import Sidebar from "@/components/Sidebar";
 import StatsRow from "@/components/StatsRow";
@@ -57,6 +59,8 @@ export default function HomePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [mainView, setMainView] = useState<"leads" | "telegram">("leads");
+  const [radarSubTab, setRadarSubTab] = useState<"orders" | "blog">("orders");
+  const [pricingOpen, setPricingOpen] = useState(false);
 
   useEffect(() => {
     initTelegramWebApp();
@@ -360,6 +364,27 @@ export default function HomePage() {
     />
   );
 
+  const currentBottomTab: NavTab =
+    mainView === "leads"
+      ? "leads"
+      : radarSubTab === "blog"
+      ? "autopost"
+      : "telegram";
+
+  const handleBottomTabSelect = (tab: NavTab) => {
+    if (tab === "leads") {
+      setMainView("leads");
+    } else if (tab === "telegram") {
+      setRadarSubTab("orders");
+      setMainView("telegram");
+    } else if (tab === "autopost") {
+      setRadarSubTab("blog");
+      setMainView("telegram");
+    } else if (tab === "pricing") {
+      setPricingOpen(true);
+    }
+  };
+
   return (
     <div className="min-h-screen">
       <div className="flex">
@@ -375,39 +400,9 @@ export default function HomePage() {
             onViewChange={setMainView}
           />
 
-          {/* Mobile view switcher */}
-          <div className="flex md:hidden items-center justify-center gap-2 border-b border-white/[0.06] bg-[#07080f] px-4 py-2">
-            <button
-              onClick={() => {
-                triggerHaptic("light");
-                setMainView("leads");
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition ${
-                mainView === "leads"
-                  ? "bg-brand-500 text-white shadow-md shadow-brand-500/25"
-                  : "bg-white/[0.03] text-slate-400"
-              }`}
-            >
-              Лиды из карт
-            </button>
-            <button
-              onClick={() => {
-                triggerHaptic("light");
-                setMainView("telegram");
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition ${
-                mainView === "telegram"
-                  ? "bg-brand-500 text-white shadow-md shadow-brand-500/25"
-                  : "bg-white/[0.03] text-slate-400"
-              }`}
-            >
-              TG-Радар заказов
-            </button>
-          </div>
-
-          <main className="mx-auto max-w-[1640px] px-4 py-6 lg:px-8 lg:py-8">
+          <main className="mx-auto max-w-[1640px] px-4 py-6 pb-24 lg:px-8 lg:py-8 lg:pb-8">
             {mainView === "telegram" ? (
-              <TelegramRadarView showToast={showToast} />
+              <TelegramRadarView showToast={showToast} initialTab={radarSubTab} />
             ) : (
               <>
                 {job ? <JobBanner job={job} onDismiss={() => setJob(null)} /> : null}
@@ -564,17 +559,19 @@ export default function HomePage() {
                       ? "Сбросьте часть фильтров или расширьте географию — и попробуйте снова."
                       : "Запустите первый сбор: выберите город и ниши, а мы найдём компании без сайта и с контактами."
                   }
+                  showDemoCard={!activeCount && !debouncedSearch}
+                  onStartParse={!activeCount && !debouncedSearch ? () => setParseOpen(true) : undefined}
                   action={
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                      {activeCount || debouncedSearch ? (
+                    activeCount || debouncedSearch ? (
+                      <div className="flex flex-wrap items-center justify-center gap-2">
                         <button onClick={resetFilters} className="btn-ghost">
                           <X size={15} /> Сбросить фильтры
                         </button>
-                      ) : null}
-                      <button onClick={() => setParseOpen(true)} className="btn-primary">
-                        <Plus size={15} /> Собрать лиды
-                      </button>
-                    </div>
+                        <button onClick={() => setParseOpen(true)} className="btn-primary">
+                          <Plus size={15} /> Собрать лиды
+                        </button>
+                      </div>
+                    ) : null
                   }
                 />
               )}
@@ -622,6 +619,13 @@ export default function HomePage() {
       ) : null}
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
+
+      <BottomNav activeTab={currentBottomTab} onSelectTab={handleBottomTabSelect} />
+
+      <LLMSelectorModal
+        isOpen={pricingOpen}
+        onClose={() => setPricingOpen(false)}
+      />
     </div>
   );
 }

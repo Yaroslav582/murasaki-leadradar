@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Database, ExternalLink, Menu, Plus, Radar, Radio, RefreshCw, Sparkles } from "lucide-react";
+import { Coins, Database, ExternalLink, Plus, Radar, Radio, RefreshCw, Sparkles } from "lucide-react";
 import { api, API_URL } from "@/lib/api";
 import { triggerHaptic } from "@/lib/telegram";
 import LLMSelectorModal from "./LLMSelectorModal";
@@ -16,14 +16,14 @@ export default function Topbar({
   onViewChange,
 }: {
   onParse: () => void;
-  onToggleSidebar: () => void;
-  onRefresh: () => void;
+  onToggleSidebar?: () => void;
+  onRefresh?: () => void;
   refreshing?: boolean;
   currentView?: "leads" | "telegram";
   onViewChange?: (view: "leads" | "telegram") => void;
 }) {
   const [showLLMModal, setShowLLMModal] = useState(false);
-  const [activeModel, setActiveModel] = useState<string>("gpt-6-sol");
+  const [activeModel, setActiveModel] = useState<string>("gpt-4o");
 
   useEffect(() => {
     api
@@ -36,30 +36,25 @@ export default function Topbar({
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#07080f]/80 backdrop-blur-xl">
-        <div className="flex h-16 items-center gap-3 px-4 lg:px-8">
-          <button onClick={onToggleSidebar} className="icon-btn lg:hidden" aria-label="Открыть фильтры">
-            <Menu size={17} />
-          </button>
-
-          <div className="flex items-center gap-3">
-            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-fuchsia-500 text-white shadow-glow">
-              <Radar size={19} />
-              <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-[#07080f]" />
+      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#09090d]/85 backdrop-blur-xl">
+        <div className="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
+          {/* Слева: Название + бренд */}
+          <div className="flex items-center gap-2.5">
+            <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-fuchsia-500 text-white shadow-[0_0_16px_rgba(124,92,255,0.35)]">
+              <Radar size={17} />
+              <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-[#09090d]" />
             </div>
-            <div className="leading-tight">
-              <p className="flex items-center gap-2 text-[15px] font-extrabold tracking-tight text-white">
-                LeadRadar
-                <span className="rounded bg-white/[0.07] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                  AI
-                </span>
-              </p>
-              <p className="hidden text-[11px] text-slate-500 sm:block">Разведка клиентов и демо-лендинги</p>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[15px] font-black tracking-tight text-white">LeadRadar</span>
+              <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-brand-300 border border-brand-500/20">
+                PRO
+              </span>
             </div>
           </div>
 
+          {/* Десктопная навигация */}
           {onViewChange && (
-            <div className="mx-auto hidden md:flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+            <div className="hidden md:flex items-center gap-1 rounded-xl border border-white/[0.08] bg-[#12131a]/80 p-1">
               <button
                 onClick={() => {
                   triggerHaptic("light");
@@ -67,12 +62,12 @@ export default function Topbar({
                 }}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                   currentView === "leads"
-                    ? "bg-brand-500 text-white shadow-md shadow-brand-500/25"
+                    ? "bg-brand-500 text-white shadow-[0_0_18px_rgba(124,92,255,0.4)]"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
                 <Database size={13} />
-                Лиды из карт
+                Карты
               </button>
               <button
                 onClick={() => {
@@ -81,47 +76,60 @@ export default function Topbar({
                 }}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                   currentView === "telegram"
-                    ? "bg-brand-500 text-white shadow-md shadow-brand-500/25"
+                    ? "bg-brand-500 text-white shadow-[0_0_18px_rgba(124,92,255,0.4)]"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
                 <Radio size={13} className={currentView === "telegram" ? "animate-pulse" : ""} />
-                TG-Радар заказов
+                TG-Радар
               </button>
             </div>
           )}
 
-          <div className="ml-auto flex items-center gap-2">
-            {/* AI Model Selector Button */}
+          {/* Справа: кликабельный баланс SOL + целевая кнопка + Собрать */}
+          <div className="flex items-center gap-2">
+            {/* Кликабельный баланс SOL / активная модель */}
             <button
               onClick={() => {
                 triggerHaptic("light");
                 setShowLLMModal(true);
               }}
-              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:border-brand-500/40 hover:bg-white/[0.07]"
-              title="Сменить активную нейросеть"
+              className="group flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#13131a]/90 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:border-brand-500/50 hover:bg-[#181824]"
+              title="Баланс SOL и настройки нейросети"
             >
-              <Sparkles size={13} className="text-brand-400" />
-              <span className="hidden sm:inline font-mono text-[11px] font-semibold">{activeModel}</span>
-              <span className="sm:hidden font-mono text-[11px]">{activeModel.replace("gpt-", "")}</span>
+              <Coins size={13} className="text-amber-400 group-hover:scale-110 transition-transform" />
+              <span className="font-mono text-[11px] font-bold text-amber-300">0.85 SOL</span>
+              <span className="text-slate-600">·</span>
+              <span className="font-mono text-[11px] text-slate-400 group-hover:text-slate-200">
+                {activeModel.replace("gpt-", "")}
+              </span>
             </button>
 
-            <a
-              href={`${API_URL}/docs`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-400 transition hover:bg-white/[0.05] hover:text-white lg:inline-flex"
+            {/* Десктопные кнопки */}
+            {onRefresh && (
+              <button
+                onClick={() => {
+                  triggerHaptic("light");
+                  onRefresh();
+                }}
+                className="icon-btn hidden sm:inline-flex"
+                title="Обновить данные"
+                aria-label="Обновить"
+              >
+                {refreshing ? <Spinner size={14} /> : <RefreshCw size={14} />}
+              </button>
+            )}
+
+            {/* Главная целевая кнопка */}
+            <button
+              onClick={() => {
+                triggerHaptic("medium");
+                onParse();
+              }}
+              className="btn-primary"
             >
-              API
-              <ExternalLink size={12} />
-            </a>
-            <button onClick={onRefresh} className="icon-btn" title="Обновить данные" aria-label="Обновить данные">
-              {refreshing ? <Spinner size={15} /> : <RefreshCw size={15} />}
-            </button>
-            <button onClick={onParse} className="btn-primary">
-              <Plus size={16} />
-              <span className="hidden sm:inline">Собрать лиды</span>
-              <span className="sm:hidden">Собрать</span>
+              <Plus size={15} />
+              <span className="text-xs font-bold sm:inline">Собрать</span>
             </button>
           </div>
         </div>

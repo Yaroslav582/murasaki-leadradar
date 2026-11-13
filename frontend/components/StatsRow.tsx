@@ -3,36 +3,7 @@
 import { ArrowUpRight, Globe2, MessageCircle, Radar, Sparkles, TrendingUp } from "lucide-react";
 import type { Meta, Stats } from "@/lib/types";
 import { formatNumber } from "@/lib/utils";
-
-function MiniStat({
-  icon,
-  label,
-  value,
-  hint,
-  accent,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  hint: string;
-  accent: string;
-}) {
-  return (
-    <div className="card relative overflow-hidden p-5">
-      <div className={`absolute -right-8 -top-8 h-24 w-24 rounded-full blur-2xl ${accent}`} />
-      <div className="relative flex items-start justify-between">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
-          <p className="mt-2 text-3xl font-extrabold tracking-tight text-white">{formatNumber(value)}</p>
-          <p className="mt-1 text-[11px] text-slate-500">{hint}</p>
-        </div>
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300">
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-}
+import { triggerHaptic } from "@/lib/telegram";
 
 export default function StatsRow({
   stats,
@@ -60,78 +31,104 @@ export default function StatsRow({
     : { new: 0, database: 0, sent: 0, rejected: 0, deal: 0 };
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <div className="card relative overflow-hidden p-5 sm:col-span-2 xl:col-span-1">
-        <div className="pointer-events-none absolute -right-10 -top-16 h-52 w-52 rounded-full bg-brand-500/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 -left-10 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
-        <div className="relative">
-          <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-300">
-              <Radar size={13} />
-              Лидов в базе
-            </span>
-            <button
-              onClick={onParse}
-              className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-semibold text-slate-300 transition hover:border-brand-500/40 hover:text-white"
-            >
-              <ArrowUpRight size={11} /> Собрать
-            </button>
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+      {/* Bento 1 (50% на мобильных): Без сайта */}
+      <div className="card group relative flex flex-col justify-between overflow-hidden p-4 sm:p-5">
+        <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-rose-500/15 blur-2xl transition group-hover:bg-rose-500/25" />
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-rose-300/90 sm:text-[11px]">
+            Без сайта
+          </span>
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-rose-400/20 bg-rose-500/10 text-rose-300">
+            <Globe2 size={16} />
           </div>
-          <p className="mt-3 text-5xl font-black tracking-tight text-white">{formatNumber(total)}</p>
-          <p className="mt-1 text-xs text-slate-400">
-            <span className="font-semibold text-rose-300">{formatNumber(noWebsite)}</span> без сайта — горячая аудитория
+        </div>
+        <div className="mt-3">
+          <p className="text-2xl font-black tracking-tight text-white sm:text-3xl">
+            {formatNumber(noWebsite)}
           </p>
-
-          <div className="mt-5 flex h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-            <div className="bg-sky-400" style={{ width: `${ratios.new}%` }} />
-            <div className="bg-violet-400" style={{ width: `${ratios.database}%` }} />
-            <div className="bg-amber-400" style={{ width: `${ratios.sent}%` }} />
-            <div className="bg-emerald-400" style={{ width: `${ratios.deal}%` }} />
-            <div className="bg-rose-400" style={{ width: `${ratios.rejected}%` }} />
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-500">
-            <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-sky-400" />Новые {statuses.new}</span>
-            <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-violet-400" />В базе {statuses.database}</span>
-            <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" />Отправлено {statuses.sent}</span>
-            <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Сделки {statuses.deal}</span>
-          </div>
+          <p className="mt-0.5 text-[11px] text-slate-400">
+            {total ? `${Math.round((noWebsite / total) * 100)}% базы` : "Готовы к сайту"}
+          </p>
         </div>
       </div>
 
-      <MiniStat
-        icon={<Globe2 size={17} className="text-rose-300" />}
-        label="Без сайта"
-        value={noWebsite}
-        hint="Готовы к продаже сайта"
-        accent="bg-rose-500/20"
-      />
-      <MiniStat
-        icon={<MessageCircle size={17} className="text-sky-300" />}
-        label="С соцсетями"
-        value={withSocial}
-        hint="Можно писать сразу"
-        accent="bg-sky-500/20"
-      />
-      <div className="card relative overflow-hidden p-5">
-        <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-emerald-500/15 blur-2xl" />
-        <div className="relative flex items-start justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Демо и сделки</p>
-            <p className="mt-2 text-3xl font-extrabold tracking-tight text-white">
-              {formatNumber(demos)} <span className="text-lg font-bold text-slate-600">/</span>{" "}
-              <span className="text-emerald-300">{formatNumber(deals)}</span>
-            </p>
-            <p className="mt-1 text-[11px] text-slate-500">
-              {demos ? "Лендинги готовы к отправке" : "Сгенерируйте первое демо"}
-            </p>
-          </div>
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-emerald-300">
-            <TrendingUp size={17} />
+      {/* Bento 2 (50% на мобильных): С соцсетями */}
+      <div className="card group relative flex flex-col justify-between overflow-hidden p-4 sm:p-5">
+        <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-sky-500/15 blur-2xl transition group-hover:bg-sky-500/25" />
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-sky-300/90 sm:text-[11px]">
+            С соцсетями
+          </span>
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-sky-400/20 bg-sky-500/10 text-sky-300">
+            <MessageCircle size={16} />
           </div>
         </div>
-        <div className="relative mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 py-1 text-[10px] font-semibold text-emerald-300">
-          <Sparkles size={11} />
-          AI-генератор включён
+        <div className="mt-3">
+          <p className="text-2xl font-black tracking-tight text-white sm:text-3xl">
+            {formatNumber(withSocial)}
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-400">Прямой контакт в TG/IG</p>
+        </div>
+      </div>
+
+      {/* Bento 3 (100% на мобильных, col-span-2): Широкая карточка с прогресс-баром воронки */}
+      <div className="card col-span-2 relative overflow-hidden p-4 sm:p-5 lg:col-span-2">
+        <div className="pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full bg-brand-500/20 blur-3xl" />
+        <div className="relative">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-500/15 text-brand-300">
+                <Radar size={13} />
+              </span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-300">
+                Воронка лидов
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                triggerHaptic("light");
+                onParse();
+              }}
+              className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-brand-500/40 hover:bg-brand-500/15 hover:text-white"
+            >
+              <ArrowUpRight size={12} /> Собрать ещё
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="text-3xl font-black tracking-tight text-white sm:text-4xl">
+              {formatNumber(total)}
+            </span>
+            <span className="text-xs text-slate-400">
+              лидов в базе · <span className="font-semibold text-emerald-300">{formatNumber(deals)}</span> сделок
+            </span>
+          </div>
+
+          {/* Прогресс-бар воронки */}
+          <div className="mt-3.5 flex h-2 overflow-hidden rounded-full bg-white/[0.06]">
+            <div className="bg-sky-400 transition-all duration-500" style={{ width: `${ratios.new}%` }} title={`Новые: ${statuses.new}`} />
+            <div className="bg-violet-400 transition-all duration-500" style={{ width: `${ratios.database}%` }} title={`В базе: ${statuses.database}`} />
+            <div className="bg-amber-400 transition-all duration-500" style={{ width: `${ratios.sent}%` }} title={`Отправлено: ${statuses.sent}`} />
+            <div className="bg-emerald-400 transition-all duration-500" style={{ width: `${ratios.deal}%` }} title={`Сделки: ${statuses.deal}`} />
+            <div className="bg-rose-400 transition-all duration-500" style={{ width: `${ratios.rejected}%` }} title={`Отказ: ${statuses.rejected}`} />
+          </div>
+
+          {/* Легенда воронки */}
+          <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-400 sm:text-[11px]">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-sky-400" /> Новые ({statuses.new})
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-400" /> В базе ({statuses.database})
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Отправлено ({statuses.sent})
+            </span>
+            <span className="inline-flex items-center gap-1 font-semibold text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Сделки ({statuses.deal})
+            </span>
+          </div>
         </div>
       </div>
     </div>

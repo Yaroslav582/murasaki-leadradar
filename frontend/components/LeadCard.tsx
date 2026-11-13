@@ -3,6 +3,7 @@
 import { Check, Database, MapPin, MoreHorizontal, Phone, Sparkles, Star } from "lucide-react";
 import type { Lead } from "@/lib/types";
 import { STATUS_META, categoryStyle, phoneDigits } from "@/lib/utils";
+import { triggerHaptic } from "@/lib/telegram";
 import { SocialLinks, Spinner } from "./ui";
 
 export default function LeadCard({
@@ -21,18 +22,23 @@ export default function LeadCard({
   const status = STATUS_META[lead.status] ?? STATUS_META.new;
   const socials = Object.values(lead.social_links ?? {}).filter(Boolean).length;
 
+  const handleCardClick = () => {
+    triggerHaptic("light");
+    onOpen(lead);
+  };
+
   return (
     <article
-      onClick={() => onOpen(lead)}
+      onClick={handleCardClick}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onOpen(lead);
+          handleCardClick();
         }
       }}
       role="button"
       tabIndex={0}
-      className="group card relative flex cursor-pointer flex-col p-5 transition duration-200 hover:-translate-y-0.5 hover:border-brand-500/25 hover:bg-white/[0.045] hover:shadow-glow focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+      className="group card relative flex cursor-pointer flex-col p-5 transition duration-200 hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-[#151522] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
     >
       <div className="flex items-start justify-between gap-2">
         <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${categoryStyle(lead.category)}`}>
@@ -105,6 +111,7 @@ export default function LeadCard({
         <button
           onClick={(event) => {
             event.stopPropagation();
+            triggerHaptic("light");
             if (lead.status === "new") onStatus(lead, "database");
             else onOpen(lead);
           }}
@@ -121,10 +128,11 @@ export default function LeadCard({
         <button
           onClick={(event) => {
             event.stopPropagation();
+            triggerHaptic("medium");
             onDemo(lead);
           }}
           disabled={generating}
-          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-brand-500/30 bg-brand-500/[0.12] px-3 text-xs font-semibold text-brand-200 transition hover:bg-brand-500/20 hover:text-white disabled:opacity-60"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-brand-500/30 bg-brand-500/[0.12] px-3 text-xs font-semibold text-brand-200 transition hover:bg-brand-500/20 hover:text-white disabled:opacity-60 shadow-[0_0_12px_rgba(124,92,255,0.15)]"
         >
           {generating ? <Spinner size={13} /> : <Sparkles size={13} />}
           {generating ? "Генерация" : lead.demo_id ? "Демо" : "Сделать демо"}

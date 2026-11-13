@@ -52,10 +52,18 @@ const COOLDOWN_OPTIONS = [
 
 export default function TelegramRadarView({
   showToast,
+  initialTab = "orders",
 }: {
   showToast: (message: string, variant?: ToastVariant) => void;
+  initialTab?: "orders" | "blog" | "comments" | "scraper" | "stories" | "promo" | "chats";
 }) {
-  const [tab, setTab] = useState<"orders" | "blog" | "comments" | "scraper" | "stories" | "promo" | "chats">("orders");
+  const [tab, setTab] = useState<"orders" | "blog" | "comments" | "scraper" | "stories" | "promo" | "chats">(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setTab(initialTab);
+    }
+  }, [initialTab]);
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [orders, setOrders] = useState<TelegramOrder[]>([]);
   const [broadcasts, setBroadcasts] = useState<TelegramBroadcast[]>([]);

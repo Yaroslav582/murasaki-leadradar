@@ -175,36 +175,116 @@ export function EmptyState({
   title = "Ничего не найдено",
   description = "Попробуйте изменить фильтры или запустите сбор новых лидов.",
   action,
+  showDemoCard = true,
+  onStartParse,
 }: {
   title?: string;
   description?: string;
   action?: React.ReactNode;
+  showDemoCard?: boolean;
+  onStartParse?: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.015] px-6 py-20 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-brand-300">
-        <Radar size={28} />
+    <div className="relative overflow-hidden rounded-3xl border border-white/[0.07] bg-[#12131a]/60 p-6 sm:p-10 backdrop-blur-md">
+      {/* Мягкие световые фоновые пятна */}
+      <div className="pointer-events-none absolute -left-16 -top-16 h-64 w-64 rounded-full bg-brand-500/15 blur-3xl" />
+      <div className="pointer-events-none absolute -right-16 -bottom-16 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
+
+      <div className="relative mx-auto max-w-2xl text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-brand-500/30 bg-brand-500/15 text-brand-300 shadow-[0_0_24px_rgba(124,92,255,0.25)]">
+          <Radar size={26} />
+        </div>
+
+        <h3 className="mt-4 text-xl font-black tracking-tight text-white sm:text-2xl">
+          {title}
+        </h3>
+        <p className="mt-2 text-sm leading-relaxed text-slate-400">
+          {description}
+        </p>
+
+        {onStartParse ? (
+          <div className="mt-5">
+            <button
+              onClick={onStartParse}
+              className="btn-primary inline-flex items-center gap-2 px-6 py-3 text-sm font-bold shadow-[0_0_30px_rgba(124,92,255,0.4)]"
+            >
+              Найти первых клиентов за 30 секунд
+            </button>
+          </div>
+        ) : action ? (
+          <div className="mt-5">{action}</div>
+        ) : null}
+
+        {/* Интерактивная полупрозрачная демо-карточка реального бизнеса */}
+        {showDemoCard && (
+          <div className="mt-8 text-left">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-500/30 bg-brand-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand-300">
+                ✨ Пример карточки лида
+              </span>
+              <span className="text-[11px] text-slate-500">Так выглядит найденный клиент</span>
+            </div>
+
+            <div className="card relative overflow-hidden p-5 opacity-90 transition hover:opacity-100 hover:border-brand-500/30">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/30 to-orange-500/10 text-base font-black text-amber-300 border border-white/10">
+                    EL
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-extrabold text-white text-[15px]">Кофейня «Espresso Lab»</h4>
+                      <span className="rounded bg-rose-400/15 px-2 py-0.5 text-[10px] font-bold text-rose-300 border border-rose-400/20">
+                        Без сайта
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                      <span className="inline-flex items-center gap-1 font-semibold text-slate-200">
+                        <Star size={13} className="fill-amber-400 text-amber-400" /> 4.9
+                        <span className="text-slate-500 font-normal">(128 отзывов)</span>
+                      </span>
+                      <span>·</span>
+                      <span className="text-slate-400">ул. Ленина, 42 · Открыто</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="hidden sm:flex items-center gap-1.5">
+                  <span className="rounded-lg border border-white/10 bg-white/[0.04] p-1.5 text-sky-400"><Send size={14} /></span>
+                  <span className="rounded-lg border border-white/10 bg-white/[0.04] p-1.5 text-pink-400"><Instagram size={14} /></span>
+                  <span className="rounded-lg border border-white/10 bg-white/[0.04] p-1.5 text-emerald-400"><MessageCircle size={14} /></span>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] pt-3 text-xs">
+                <span className="text-slate-400">
+                  Выручка кофейни растет, но сайта нет — идеальный клиент для готового демо.
+                </span>
+                <span className="font-semibold text-brand-300 inline-flex items-center gap-1">
+                  Демо-лендинг генерируется за 1 клик →
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-      <h3 className="mt-5 text-lg font-bold text-white">{title}</h3>
-      <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-400">{description}</p>
-      {action ? <div className="mt-6">{action}</div> : null}
     </div>
   );
 }
 
 export function SkeletonCard() {
   return (
-    <div className="card space-y-4 p-5">
+    <div className="card space-y-3.5 p-5">
       <div className="flex items-center justify-between">
-        <div className="skeleton h-6 w-20 rounded-full" />
-        <div className="skeleton h-6 w-16 rounded-full" />
+        <div className="skeleton h-5 w-24 rounded-full" />
+        <div className="skeleton h-5 w-16 rounded-full" />
       </div>
       <div className="skeleton h-5 w-3/4 rounded-lg" />
       <div className="skeleton h-4 w-1/2 rounded-lg" />
       <div className="skeleton h-4 w-2/3 rounded-lg" />
       <div className="flex gap-2 pt-2">
         <div className="skeleton h-9 flex-1 rounded-xl" />
-        <div className="skeleton h-9 w-24 rounded-xl" />
+        <div className="skeleton h-9 w-20 rounded-xl" />
       </div>
     </div>
   );

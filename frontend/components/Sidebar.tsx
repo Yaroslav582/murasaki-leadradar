@@ -3,6 +3,7 @@
 import { Building2, Filter, Globe2, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Star, X } from "lucide-react";
 import type { LeadFilters, LeadStatus, Meta } from "@/lib/types";
 import { ALL_STATUSES, STATUS_META, SOURCE_LABELS, categoryStyle, formatNumber } from "@/lib/utils";
+import { triggerHaptic } from "@/lib/telegram";
 
 function toggle(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -14,7 +15,10 @@ function Switch({ checked, onChange }: { checked: boolean; onChange: (value: boo
       type="button"
       role="switch"
       aria-checked={checked}
-      onClick={() => onChange(!checked)}
+      onClick={() => {
+        triggerHaptic("medium");
+        onChange(!checked);
+      }}
       className={`relative h-6 w-11 shrink-0 rounded-full border transition ${
         checked ? "border-brand-500/60 bg-brand-500/80" : "border-white/10 bg-white/10"
       }`}
@@ -65,11 +69,25 @@ export default function Sidebar({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={onReset} className="icon-btn" title="Сбросить фильтры">
+          <button
+            onClick={() => {
+              triggerHaptic("light");
+              onReset();
+            }}
+            className="icon-btn"
+            title="Сбросить фильтры"
+          >
             <RotateCcw size={14} />
           </button>
           {onClose ? (
-            <button onClick={onClose} className="icon-btn lg:hidden" title="Закрыть">
+            <button
+              onClick={() => {
+                triggerHaptic("light");
+                onClose();
+              }}
+              className="icon-btn lg:hidden"
+              title="Закрыть"
+            >
               <X size={15} />
             </button>
           ) : null}
@@ -117,7 +135,10 @@ export default function Sidebar({
             ].map((option) => (
               <button
                 key={option.label}
-                onClick={() => onChange({ minRating: option.value })}
+                onClick={() => {
+                  triggerHaptic("light");
+                  onChange({ minRating: option.value });
+                }}
                 className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
                   filters.minRating === option.value
                     ? "border-brand-500/50 bg-brand-500/15 text-brand-300"
@@ -140,7 +161,10 @@ export default function Sidebar({
               return (
                 <button
                   key={city.value}
-                  onClick={() => onChange({ cities: toggle(filters.cities, city.value) })}
+                  onClick={() => {
+                    triggerHaptic("light");
+                    onChange({ cities: toggle(filters.cities, city.value) });
+                  }}
                   className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm transition ${
                     active ? "bg-brand-500/15 text-brand-200" : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
                   }`}
@@ -175,7 +199,10 @@ export default function Sidebar({
               return (
                 <button
                   key={category.value}
-                  onClick={() => onChange({ categories: toggle(filters.categories, category.value) })}
+                  onClick={() => {
+                    triggerHaptic("light");
+                    onChange({ categories: toggle(filters.categories, category.value) });
+                  }}
                   className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold transition ${
                     active ? categoryStyle(category.value) : "border-white/10 bg-white/[0.03] text-slate-400 hover:border-white/20"
                   }`}
