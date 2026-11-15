@@ -10,6 +10,24 @@ DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def read_secret_fallback(key: str, default: str | None = None) -> str | None:
+    """Reads a configuration key from environment, or from Render Secret Files (/etc/secrets/<key>)."""
+    import os
+    val = os.getenv(key)
+    if val and str(val).strip():
+        return str(val).strip()
+    for folder in [Path("/etc/secrets"), BASE_DIR, DATA_DIR, Path("/var/secrets")]:
+        candidate = folder / key
+        if candidate.is_file():
+            try:
+                content = candidate.read_text(encoding="utf-8").strip()
+                if content:
+                    return content
+            except Exception:
+                pass
+    return default
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
@@ -111,6 +129,22 @@ class Settings(BaseSettings):
     channel_blog_interval_hours: int = 24
     channel_blog_last_post_at: str | None = None
     channel_blog_next_post_at: str | None = None
+
+    def model_post_init(self, __context: object) -> None:
+        super().model_post_init(__context)
+        if not self.gemini_api_key:
+            self.gemini_api_key = read_secret_fallback("GEMINI_API_KEY")
+        if not self.groq_api_key:
+            self.groq_api_key = read_secret_fallback("GROQ_API_KEY")
+        if not self.openrouter_api_key:
+            self.openrouter_api_key = read_secret_fallback("OPENROUTER_API_KEY")
+        if not self.mxr_api_key:
+            self.mxr_api_key = read_secret_fallback("MXR_API_KEY")
+        if not self.database_url:
+            self.database_url = read_secret_fallback("DATABASE_URL")
+        max_calls = read_secret_fallback("MAX_DAILY_LLM_CALLS")
+        if max_calls and str(max_calls).strip().isdigit():
+            self.max_daily_llm_calls = int(str(max_calls).strip())
 
     @property
     def telegram_keywords_list(self) -> list[str]:

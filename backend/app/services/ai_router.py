@@ -177,10 +177,28 @@ def get_openai_client(
 
 
 # ── Provider Chain Definitions ────────────────────────────────────────────────
+def _read_secret(key: str) -> str:
+    """Reads secret from environment, or from Render Secret Files (/etc/secrets/<key>)."""
+    val = os.getenv(key)
+    if val and str(val).strip():
+        return str(val).strip()
+    from pathlib import Path
+    for folder in [Path("/etc/secrets"), Path.cwd(), Path(__file__).resolve().parent.parent.parent]:
+        candidate = folder / key
+        if candidate.is_file():
+            try:
+                content = candidate.read_text(encoding="utf-8").strip()
+                if content:
+                    return content
+            except Exception:
+                pass
+    return ""
+
+
 def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
     """Resolves credentials and base URL for a provider ID. Returns None if unconfigured."""
     if provider_id == "groq":
-        key = (settings.groq_api_key or os.getenv("GROQ_API_KEY") or "").strip()
+        key = (settings.groq_api_key or _read_secret("GROQ_API_KEY")).strip()
         if not key:
             return None
         return {
@@ -191,7 +209,7 @@ def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
         }
 
     if provider_id == "gemini":
-        key = (settings.gemini_api_key or os.getenv("GEMINI_API_KEY") or "").strip()
+        key = (settings.gemini_api_key or _read_secret("GEMINI_API_KEY")).strip()
         if not key:
             return None
         return {
@@ -202,7 +220,7 @@ def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
         }
 
     if provider_id == "openrouter":
-        key = (settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY") or "").strip()
+        key = (settings.openrouter_api_key or _read_secret("OPENROUTER_API_KEY")).strip()
         if not key:
             return None
         return {
@@ -218,16 +236,16 @@ def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
     if provider_id == "mxr":
         key = (
             settings.mxr_api_key
-            or os.getenv("MXR_API_KEY")
+            or _read_secret("MXR_API_KEY")
             or settings.openai_api_key
-            or os.getenv("OPENAI_API_KEY")
+            or _read_secret("OPENAI_API_KEY")
             or ""
         ).strip()
         if not key:
             return None
         base_url = (
             settings.mxr_base_url
-            or os.getenv("MXR_BASE_URL")
+            or _read_secret("MXR_BASE_URL")
             or settings.openai_base_url
             or "https://mxr.one/v1"
         ).strip()
