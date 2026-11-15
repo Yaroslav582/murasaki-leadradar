@@ -57,8 +57,8 @@ export default function Sidebar({
     (filters.minRating !== null ? 1 : 0);
 
   return (
-    <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-white/[0.07] bg-[#16181F]">
-      <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-4">
+    <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-white/[0.04] bg-[#16181F] pt-3">
+      <div className="flex items-center justify-between border-b border-white/[0.04] px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-[#242731] text-[#8B5CF6]">
             <SlidersHorizontal size={14} />
@@ -67,7 +67,7 @@ export default function Sidebar({
             <p className="text-sm font-semibold text-[#F3F4F6]">Фильтры</p>
             <p className="text-[11px] text-[#6B7280]">
               {activeCount ? (
-                <>Активно: <span className="font-mono tabular-nums text-[#8B5CF6]">{activeCount}</span></>
+                <>Активно: <span className="font-mono tabular-nums tracking-tight text-[#8B5CF6]">{activeCount}</span></>
               ) : (
                 "Все лиды"
               )}
@@ -272,7 +272,7 @@ export default function Sidebar({
         ) : null}
       </div>
 
-      <div className="border-t border-white/[0.07] px-4 py-3">
+      <div className="border-t border-white/[0.04] px-4 py-3">
         <div className="rounded-lg border border-white/[0.06] bg-[#242731] p-2.5">
           <p className="text-[11px] leading-relaxed text-[#9CA3AF]">
             Фокус на компаниях <span className="text-rose-400 font-medium">без сайта</span> — конверсия в ответ выше в 3.5 раза.

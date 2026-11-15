@@ -168,7 +168,7 @@ export default function DemoModal({
 
   return (
     <Modal open={true} onClose={onClose} className="max-w-[1240px]">
-      <div className="max-h-[94vh] overflow-hidden rounded-3xl border border-white/10 bg-[#0a0c15] shadow-2xl">
+      <div className="max-h-[94vh] overflow-hidden rounded-2xl border border-white/[0.04] bg-[#1A1C23] shadow-[0_10px_40px_rgba(0,0,0,0.6)]">
         {/* Шапка модалки */}
         <div className="flex flex-wrap items-center gap-3 border-b border-white/[0.07] px-5 py-4">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-500/30 bg-brand-500/15 text-brand-300">
@@ -229,7 +229,7 @@ export default function DemoModal({
         {/* Основное тело: Превью + Панель управления */}
         <div className="grid max-h-[calc(94vh-73px)] overflow-y-auto lg:grid-cols-[1.1fr_1fr] lg:overflow-hidden">
           {/* Левая колонка: Превью с переключением Телефон / Десктоп */}
-          <div className="relative flex flex-col items-center justify-center border-b border-white/[0.06] bg-[#070810] px-5 py-6 lg:border-b-0 lg:border-r">
+          <div className="relative flex flex-col items-center justify-center border-b border-white/[0.04] bg-[#111216] px-5 py-6 lg:border-b-0 lg:border-r">
             <div className="pointer-events-none absolute inset-0 opacity-40">
               <div className="absolute left-1/2 top-10 h-72 w-72 -translate-x-1/2 rounded-full bg-brand-500/15 blur-3xl" />
             </div>

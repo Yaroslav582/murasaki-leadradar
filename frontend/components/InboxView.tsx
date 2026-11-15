@@ -250,7 +250,7 @@ export default function InboxView({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-[#F3F4F6] tracking-tight">Единый Inbox</h1>
-          <span className="font-mono text-xs text-[#9CA3AF] tabular-nums rounded-md bg-[#242731] border border-white/[0.06] px-2 py-0.5">
+          <span className="font-mono text-xs text-[#9CA3AF] tabular-nums tracking-tight rounded-md bg-[#242731] border border-white/[0.06] px-2 py-0.5">
             {dialogs.length} диалогов
           </span>
         </div>
@@ -274,9 +274,9 @@ export default function InboxView({
         >
           <div className="p-3 border-b border-white/[0.07] flex items-center justify-between bg-[#1A1C23]">
             <span className="text-xs font-medium text-[#9CA3AF]">
-              Диалоги (<span className="font-mono tabular-nums">{dialogs.length}</span>)
+              Диалоги (<span className="font-mono tabular-nums tracking-tight">{dialogs.length}</span>)
             </span>
-            <span className="text-[11px] text-[#6B7280] font-mono tabular-nums">auto 6s</span>
+            <span className="text-[11px] text-[#6B7280] font-mono tabular-nums tracking-tight">auto 6s</span>
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-white/[0.04]">
@@ -310,7 +310,7 @@ export default function InboxView({
                     <div className="relative h-9 w-9 shrink-0 rounded-full bg-[#242731] border border-white/[0.08] flex items-center justify-center text-[#C4B5FD] font-semibold text-xs">
                       {d.peer_name ? d.peer_name.slice(0, 2).toUpperCase() : "TG"}
                       {d.unread_count > 0 && (
-                        <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-[#8B5CF6] text-[9px] font-mono font-bold text-white tabular-nums">
+                        <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-[#8B5CF6] text-[9px] font-mono font-bold text-white tabular-nums tracking-tight">
                           {d.unread_count}
                         </span>
                       )}
@@ -322,7 +322,7 @@ export default function InboxView({
                         <p className="text-xs font-semibold text-[#F3F4F6] truncate">
                           {d.peer_name || d.peer_username || `ID ${d.peer_id}`}
                         </p>
-                        <span className="text-[10px] text-[#6B7280] font-mono tabular-nums shrink-0">
+                        <span className="text-[10px] text-[#6B7280] font-mono tabular-nums tracking-tight shrink-0">
                           {d.last_message_at
                             ? new Date(d.last_message_at).toLocaleTimeString([], {
                                 hour: "2-digit",

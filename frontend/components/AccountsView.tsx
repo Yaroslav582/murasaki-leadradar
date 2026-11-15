@@ -455,7 +455,7 @@ export default function AccountsView({
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <Smartphone size={14} className="text-brand-400 shrink-0" />
-                        <span className="font-mono tabular-nums text-xs font-semibold text-[#F3F4F6] truncate">
+                        <span className="font-mono tabular-nums tracking-tight text-xs font-semibold text-[#F3F4F6] truncate">
                           {acc.phone}
                         </span>
                       </div>
@@ -467,7 +467,7 @@ export default function AccountsView({
                     </div>
 
                     <div
-                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
+                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
                     >
                       <span className={`h-1.5 w-1.5 rounded-full ${statusCfg.dot}`} />
                       {statusCfg.label}
@@ -479,7 +479,7 @@ export default function AccountsView({
                     <span className="rounded-md border border-white/[0.06] bg-[#242731] px-2 py-0.5 text-[10px] text-[#9CA3AF] truncate max-w-[140px]">
                       {acc.device_model || "Samsung S21"}
                     </span>
-                    <span className="rounded-md border border-white/[0.06] bg-[#242731] px-2 py-0.5 text-[10px] text-[#9CA3AF]">
+                    <span className="rounded-md border border-white/[0.06] bg-[#242731] px-2 py-0.5 text-[10px] font-mono tabular-nums tracking-tight text-[#9CA3AF]">
                       {linkedProxy
                         ? `${linkedProxy.protocol.toUpperCase()} ${linkedProxy.host}:${linkedProxy.port}`
                         : "Прямой IP"}
@@ -493,7 +493,7 @@ export default function AccountsView({
                         <Flame size={12} className="text-[#F59E0B]" />
                         Прогрев
                       </span>
-                      <span className="font-mono tabular-nums text-xs font-medium text-[#F3F4F6]">
+                      <span className="font-mono tabular-nums tracking-tight text-xs font-medium text-[#F3F4F6]">
                         {acc.warmup_level}%
                       </span>
                     </div>

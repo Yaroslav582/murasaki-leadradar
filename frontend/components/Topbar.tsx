@@ -46,7 +46,7 @@ export default function Topbar({
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-white/[0.07] bg-[#111216]/85 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-white/[0.04] bg-[#111216]/80 pt-3 backdrop-blur-md">
         <div className="flex h-14 items-center justify-between gap-3 px-4 lg:px-8">
           {/* Слева: Название + бренд */}
           <div className="flex items-center gap-2.5">
@@ -136,7 +136,7 @@ export default function Topbar({
               title="Баланс кредитов и пополнение"
             >
               <Coins size={13} className="text-[#F59E0B] group-hover:scale-105 transition-transform" />
-              <span className="font-mono tabular-nums text-xs font-medium text-[#F59E0B]">{credits} cr</span>
+              <span className="font-mono tabular-nums tracking-tight text-xs font-medium text-[#F59E0B]">{credits} cr</span>
             </button>
 
             {/* Кнопка настроек LLM */}

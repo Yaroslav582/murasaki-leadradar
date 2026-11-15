@@ -11,7 +11,7 @@ export function Spinner({ size = 16, className = "" }: { size?: number; classNam
 export function StatusBadge({ status, label }: { status: LeadStatus; label?: string }) {
   const meta = STATUS_META[status] ?? STATUS_META.new;
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${meta.badge}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-medium ${meta.badge}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
       {label ?? meta.label}
     </span>
@@ -20,7 +20,7 @@ export function StatusBadge({ status, label }: { status: LeadStatus; label?: str
 
 export function CategoryBadge({ category }: { category: string }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${categoryStyle(category)}`}>
+    <span className="inline-flex items-center rounded-md bg-[#242731]/50 border border-white/[0.06] px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold text-[#9CA3AF]">
       {category}
     </span>
   );
@@ -29,15 +29,15 @@ export function CategoryBadge({ category }: { category: string }) {
 export function WebsiteBadge({ hasWebsite }: { hasWebsite: boolean }) {
   if (hasWebsite) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
         Есть сайт
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-400/25 bg-rose-400/10 px-2.5 py-1 text-[11px] font-semibold text-rose-300">
-      <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium text-rose-400">
+      <span className="h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.5)]" />
       Без сайта
     </span>
   );
@@ -45,13 +45,13 @@ export function WebsiteBadge({ hasWebsite }: { hasWebsite: boolean }) {
 
 export function Rating({ rating, reviews }: { rating: number | null; reviews: number }) {
   if (rating === null) {
-    return <span className="text-xs text-slate-500">Нет рейтинга</span>;
+    return <span className="text-xs text-[#6B7280]">Нет рейтинга</span>;
   }
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-      <Star size={13} className="fill-amber-400 text-amber-400" />
-      <span className="font-semibold text-slate-200">{rating.toFixed(1)}</span>
-      <span className="text-slate-500">({reviews})</span>
+    <span className="inline-flex items-center gap-1 text-xs text-[#9CA3AF]">
+      <Star size={12} className="fill-amber-400 text-amber-400" />
+      <span className="font-mono tabular-nums tracking-tight font-semibold text-[#F3F4F6]">{rating.toFixed(1)}</span>
+      <span className="font-mono tabular-nums tracking-tight text-[#6B7280]">({reviews})</span>
     </span>
   );
 }

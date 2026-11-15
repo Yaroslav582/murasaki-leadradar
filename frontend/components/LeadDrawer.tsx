@@ -173,12 +173,12 @@ export default function LeadDrawer({
   return (
     <div className="fixed inset-0 z-[85]">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-fadeIn" onClick={onClose} />
-      <div className="absolute right-0 top-0 flex h-full w-full max-w-[560px] flex-col border-l border-white/[0.08] bg-[#080a11] shadow-2xl animate-slideLeft">
+      <div className="absolute right-0 top-0 flex h-full w-full max-w-[560px] flex-col border-l border-white/[0.06] bg-[#111216] shadow-2xl animate-slideLeft pt-3">
         <div className="flex items-start gap-3 border-b border-white/[0.06] px-5 py-5">
           <Avatar name={lead.name} category={lead.category} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${categoryStyle(lead.category)}`}>
+              <span className="inline-flex items-center rounded-md bg-[#242731]/50 border border-white/[0.06] px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold text-[#9CA3AF]">
                 {lead.category}
               </span>
               <StatusBadge status={lead.status} />
@@ -194,20 +194,24 @@ export default function LeadDrawer({
                 title={`Lead Score: ${score.toFixed(1)} / 5.0 (${scoreBadge.label})`}
               >
                 <Flame size={11} className="fill-current text-amber-400" />
-                <span>{score.toFixed(1)}</span>
+                <span className="font-mono tabular-nums tracking-tight">{score.toFixed(1)}</span>
                 <span className="text-[9px] opacity-80">{scoreBadge.label}</span>
               </span>
             </div>
-            <h2 className="mt-2 text-xl font-extrabold leading-tight tracking-tight text-white">{lead.name}</h2>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+            <h2 className="mt-2 text-xl font-bold leading-tight tracking-tight text-[#F3F4F6]">{lead.name}</h2>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#9CA3AF]">
               <span className="inline-flex items-center gap-1">
-                <MapPin size={12} /> {lead.city}
+                <MapPin size={12} className="text-[#6B7280]" /> {lead.city}
               </span>
               <span className="inline-flex items-center gap-1">
                 <Star size={12} className="fill-amber-400 text-amber-400" />
-                {lead.rating ? lead.rating.toFixed(1) : "—"} · {lead.reviews_count} отзывов
+                <span className="font-mono tabular-nums tracking-tight font-semibold text-[#F3F4F6]">
+                  {lead.rating ? lead.rating.toFixed(1) : "—"}
+                </span>
+                <span>·</span>
+                <span className="font-mono tabular-nums tracking-tight">{lead.reviews_count}</span> отзывов
               </span>
-              <span className="text-slate-600">{SOURCE_LABELS[lead.source] ?? lead.source}</span>
+              <span className="text-[#6B7280]">{SOURCE_LABELS[lead.source] ?? lead.source}</span>
             </div>
           </div>
           <button onClick={onClose} className="icon-btn" aria-label="Закрыть">
@@ -358,7 +362,7 @@ export default function LeadDrawer({
                 {lead.phone ? (
                   <a
                     href={`tel:${phoneDigits(lead.phone)}`}
-                    className="text-sm font-semibold text-white transition hover:text-emerald-300"
+                    className="font-mono tabular-nums tracking-tight text-sm font-semibold text-[#F3F4F6] transition hover:text-emerald-300"
                   >
                     {lead.phone}
                   </a>

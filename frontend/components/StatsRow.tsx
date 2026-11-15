@@ -20,15 +20,9 @@ export default function StatsRow({
   const demos = stats?.demos ?? 0;
   const deals = stats?.by_status?.deal ?? 0;
   const statuses = stats?.by_status ?? { new: 0, database: 0, sent: 0, rejected: 0, deal: 0 };
-  const ratios = total
-    ? {
-        new: (statuses.new / total) * 100,
-        database: (statuses.database / total) * 100,
-        sent: (statuses.sent / total) * 100,
-        rejected: (statuses.rejected / total) * 100,
-        deal: (statuses.deal / total) * 100,
-      }
-    : { new: 0, database: 0, sent: 0, rejected: 0, deal: 0 };
+  const inWork = statuses.database + statuses.sent;
+  const inWorkRatio = total ? (inWork / total) * 100 : 0;
+  const dealRatio = total ? (deals / total) * 100 : 0;
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -49,7 +43,7 @@ export default function StatsRow({
           <p className="mt-0.5 text-xs text-[#6B7280]">
             {total ? (
               <>
-                <span className="font-mono tabular-nums">{Math.round((noWebsite / total) * 100)}%</span> базы
+                <span className="font-mono tabular-nums tracking-tight">{Math.round((noWebsite / total) * 100)}%</span> базы
               </>
             ) : (
               "Готовы к сайту"
@@ -104,32 +98,41 @@ export default function StatsRow({
               {formatNumber(total)}
             </span>
             <span className="text-xs text-[#6B7280]">
-              в базе · <span className="font-mono tabular-nums font-semibold text-[#10B981]">{formatNumber(deals)}</span> сделок
+              в базе · <span className="font-mono tabular-nums tracking-tight font-semibold text-[#10B981]">{formatNumber(deals)}</span> сделок
             </span>
           </div>
 
-          {/* Прогресс-бар воронки: slim 6px */}
-          <div className="mt-2.5 flex h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-            <div className="bg-[#6B7280] transition-all duration-500" style={{ width: `${ratios.new}%` }} title={`Новые: ${statuses.new}`} />
-            <div className="bg-[#8B5CF6] transition-all duration-500" style={{ width: `${ratios.database}%` }} title={`В базе: ${statuses.database}`} />
-            <div className="bg-[#F59E0B] transition-all duration-500" style={{ width: `${ratios.sent}%` }} title={`Отправлено: ${statuses.sent}`} />
-            <div className="bg-[#10B981] transition-all duration-500" style={{ width: `${ratios.deal}%` }} title={`Сделки: ${statuses.deal}`} />
-            <div className="bg-[#EF4444] transition-all duration-500" style={{ width: `${ratios.rejected}%` }} title={`Отказ: ${statuses.rejected}`} />
+          {/* Лаконичный 4px сегментированный трекер: серый фон, фиолетовый в работе, зеленый для сделок */}
+          <div className="mt-3 flex h-1 w-full overflow-hidden rounded-full bg-[#242731]">
+            {inWorkRatio > 0 && (
+              <div
+                className="bg-[#8B5CF6] transition-all duration-500"
+                style={{ width: `${inWorkRatio}%` }}
+                title={`В работе: ${inWork}`}
+              />
+            )}
+            {dealRatio > 0 && (
+              <div
+                className="bg-[#10B981] transition-all duration-500"
+                style={{ width: `${dealRatio}%` }}
+                title={`Сделки: ${deals}`}
+              />
+            )}
           </div>
 
-          {/* Легенда воронки */}
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#9CA3AF]">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#6B7280]" /> Новые (<span className="font-mono tabular-nums">{statuses.new}</span>)
+          {/* Легенда воронки без пестроты */}
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#9CA3AF]">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#8B5CF6] shadow-[0_0_6px_rgba(139,92,246,0.4)]" />
+              <span>В работе (<span className="font-mono tabular-nums tracking-tight text-[#F3F4F6]">{inWork}</span>)</span>
             </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#8B5CF6]" /> В базе (<span className="font-mono tabular-nums">{statuses.database}</span>)
+            <span className="inline-flex items-center gap-1.5 text-emerald-400 font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
+              <span>Сделки (<span className="font-mono tabular-nums tracking-tight">{deals}</span>)</span>
             </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#F59E0B]" /> Отправлено (<span className="font-mono tabular-nums">{statuses.sent}</span>)
-            </span>
-            <span className="inline-flex items-center gap-1 text-[#10B981] font-medium">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#10B981]" /> Сделки (<span className="font-mono tabular-nums">{statuses.deal}</span>)
+            <span className="inline-flex items-center gap-1.5 text-[#6B7280]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#323644]" />
+              <span>Новые (<span className="font-mono tabular-nums tracking-tight">{statuses.new}</span>)</span>
             </span>
           </div>
         </div>

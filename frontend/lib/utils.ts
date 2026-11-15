@@ -6,33 +6,33 @@ export const STATUS_META: Record<
 > = {
   new: {
     label: "Новый",
-    dot: "bg-sky-400",
-    badge: "border-sky-400/30 bg-sky-400/10 text-sky-300",
-    soft: "text-sky-300",
+    dot: "bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.6)]",
+    badge: "border-sky-500/20 bg-sky-500/10 text-sky-400",
+    soft: "text-sky-400",
   },
   database: {
     label: "В базе",
-    dot: "bg-violet-400",
-    badge: "border-violet-400/30 bg-violet-400/10 text-violet-300",
+    dot: "bg-[#8B5CF6] shadow-[0_0_6px_rgba(139,92,246,0.6)]",
+    badge: "border-[rgba(139,92,246,0.25)] bg-[rgba(139,92,246,0.12)] text-[#C4B5FD]",
     soft: "text-violet-300",
   },
   sent: {
     label: "Отправлено",
-    dot: "bg-amber-400",
-    badge: "border-amber-400/30 bg-amber-400/10 text-amber-300",
-    soft: "text-amber-300",
+    dot: "bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.6)]",
+    badge: "border-amber-500/20 bg-amber-500/10 text-amber-400",
+    soft: "text-amber-400",
   },
   rejected: {
     label: "Отказ",
-    dot: "bg-rose-400",
-    badge: "border-rose-400/30 bg-rose-400/10 text-rose-300",
-    soft: "text-rose-300",
+    dot: "bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.6)]",
+    badge: "border-rose-500/20 bg-rose-500/10 text-rose-400",
+    soft: "text-rose-400",
   },
   deal: {
     label: "Сделка",
-    dot: "bg-emerald-400",
-    badge: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
-    soft: "text-emerald-300",
+    dot: "bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)]",
+    badge: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+    soft: "text-emerald-400",
   },
 };
 

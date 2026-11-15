@@ -41,7 +41,7 @@ export default function BottomNav({
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.07] bg-[#111216]/85 px-3 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 backdrop-blur-xl md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.04] bg-[#111216]/80 px-3 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 backdrop-blur-md md:hidden">
       <div className="mx-auto flex max-w-md items-center justify-around">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
+  Download,
   FileSpreadsheet,
   FileText,
   Filter,
@@ -79,6 +80,8 @@ export default function HomePage() {
   const [sort, setSort] = useState<SortKey>("new");
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
   const [parseOpen, setParseOpen] = useState(false);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
   const [demoModal, setDemoModal] = useState<{ demo: Demo; lead: Lead } | null>(null);
@@ -102,6 +105,18 @@ export default function HomePage() {
   const dismissToast = useCallback((id: number) => {
     setToasts((previous) => previous.filter((item) => item.id !== id));
   }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(event.target as Node)) {
+        setExportOpen(false);
+      }
+    }
+    if (exportOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [exportOpen]);
 
   const refreshMetaStats = useCallback(async () => {
     try {
@@ -430,12 +445,12 @@ export default function HomePage() {
                   <h1 className="text-xl font-semibold text-[#F3F4F6] tracking-tight">
                     База лидов
                   </h1>
-                  <span className="font-mono text-xs text-[#9CA3AF] tabular-nums rounded-md bg-[#242731] border border-white/[0.06] px-2 py-0.5">
+                  <span className="font-mono text-xs text-[#9CA3AF] tabular-nums tracking-tight rounded-md bg-[#242731] border border-white/[0.06] px-2 py-0.5">
                     {formatNumber(total)}
                   </span>
                   {meta && (
                     <span className="text-xs text-[#6B7280] hidden sm:inline">
-                      · <span className="font-mono tabular-nums">{formatNumber(meta.no_website)}</span> без сайта
+                      · <span className="font-mono tabular-nums tracking-tight">{formatNumber(meta.no_website)}</span> без сайта
                     </span>
                   )}
                   {debouncedSearch ? (
@@ -445,8 +460,9 @@ export default function HomePage() {
                   ) : null}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative min-w-[200px] flex-1 sm:flex-none">
+                <div className="flex items-center gap-2">
+                  {/* Поиск */}
+                  <div className="relative min-w-[170px] flex-1 sm:w-64 sm:flex-none">
                     <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
                     <input
                       value={search}
@@ -465,6 +481,7 @@ export default function HomePage() {
                     ) : null}
                   </div>
 
+                  {/* Сортировка */}
                   <div className="relative">
                     <select
                       value={sort}
@@ -479,44 +496,79 @@ export default function HomePage() {
                     <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B7280]" />
                   </div>
 
-                  <div className="flex items-center gap-0.5 rounded-lg border border-white/[0.07] bg-[#1A1C23] p-0.5">
+                  {/* Компактный Экспорт [ ↓ ] с дропдауном */}
+                  <div className="relative" ref={exportRef}>
                     <button
-                      onClick={() => window.open(api.exportUrl(filters, debouncedSearch, sort, "csv"), "_blank")}
-                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[#9CA3AF] transition hover:bg-[#242731] hover:text-[#F3F4F6]"
-                      title="Экспорт в CSV"
+                      onClick={() => setExportOpen((prev) => !prev)}
+                      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition ${
+                        exportOpen
+                          ? "border-[#8B5CF6]/50 bg-[rgba(139,92,246,0.14)] text-[#C4B5FD]"
+                          : "border-white/[0.07] bg-[#1A1C23] text-[#9CA3AF] hover:border-white/20 hover:text-[#F3F4F6]"
+                      }`}
+                      title="Экспорт базы (CSV / Excel)"
+                      aria-label="Экспорт базы"
                     >
-                      <FileText size={12} /> CSV
+                      <Download size={14} />
                     </button>
-                    <button
-                      onClick={() => window.open(api.exportUrl(filters, debouncedSearch, sort, "xlsx"), "_blank")}
-                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[#9CA3AF] transition hover:bg-[#242731] hover:text-[#F3F4F6]"
-                      title="Экспорт в Excel"
-                    >
-                      <FileSpreadsheet size={12} /> XLSX
-                    </button>
+
+                    {exportOpen && (
+                      <div className="absolute right-0 top-full z-50 mt-1.5 w-44 rounded-xl border border-white/[0.08] bg-[#1A1C23] p-1.5 shadow-[0_10px_30px_rgba(0,0,0,0.5)] backdrop-blur-xl animate-fadeIn">
+                        <button
+                          onClick={() => {
+                            setExportOpen(false);
+                            window.open(api.exportUrl(filters, debouncedSearch, sort, "csv"), "_blank");
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-[#9CA3AF] transition hover:bg-[#242731] hover:text-[#F3F4F6]"
+                        >
+                          <FileText size={13} className="text-[#8B5CF6]" />
+                          <span>Экспорт в CSV</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setExportOpen(false);
+                            window.open(api.exportUrl(filters, debouncedSearch, sort, "xlsx"), "_blank");
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-[#9CA3AF] transition hover:bg-[#242731] hover:text-[#F3F4F6]"
+                        >
+                          <FileSpreadsheet size={13} className="text-[#10B981]" />
+                          <span>Экспорт в Excel (.xlsx)</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
 
+                  {/* Компактная квадратная кнопка Фильтры в одну строку с инпутом */}
                   <button
-                    onClick={() => {
-                      triggerHaptic("medium");
-                      setOutreachOpen(true);
-                    }}
-                    className="btn-primary !h-9 !px-3 text-xs font-medium"
-                    title="Запустить мягкий аутрич с AI-уникализацией оффера"
+                    onClick={() => setSidebarOpen(true)}
+                    className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.07] bg-[#1A1C23] text-[#9CA3AF] transition hover:border-white/20 hover:text-[#F3F4F6] lg:hidden"
+                    title="Фильтры"
+                    aria-label="Фильтры"
                   >
-                    <Send size={12} />
-                    <span>Касание по выборке</span>
-                  </button>
-
-                  <button onClick={() => setSidebarOpen(true)} className="btn-ghost !h-9 text-xs lg:hidden">
                     <SlidersHorizontal size={14} />
-                    Фильтры
                     {activeCount ? (
-                      <span className="font-mono rounded-full bg-[#8B5CF6] px-1.5 py-0.2 text-[10px] font-bold text-white tabular-nums">{activeCount}</span>
+                      <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#8B5CF6] px-1 font-mono text-[9px] font-bold text-white shadow-sm tabular-nums tracking-tight">
+                        {activeCount}
+                      </span>
                     ) : null}
                   </button>
                 </div>
               </div>
+
+              {/* Кнопка «Касание по выборке» на всю ширину с Murasaki Violet градиентом */}
+              <button
+                onClick={() => {
+                  triggerHaptic("medium");
+                  setOutreachOpen(true);
+                }}
+                className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] py-2.5 px-4 text-xs font-semibold text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25),0_4px_20px_rgba(139,92,246,0.3)] transition-all hover:brightness-110 active:scale-[0.99]"
+                title="Запустить мягкий аутрич с AI-уникализацией оффера"
+              >
+                <Send size={13} className="transition-transform group-hover:translate-x-0.5" />
+                <span>Касание по выборке</span>
+                <span className="rounded-full bg-white/20 px-2 py-0.2 font-mono text-[11px] font-medium text-white tabular-nums tracking-tight">
+                  {formatNumber(total)} лидов
+                </span>
+              </button>
 
               {activeCount ? (
                 <div className="flex flex-wrap items-center gap-1.5">

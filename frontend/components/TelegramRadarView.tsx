@@ -378,7 +378,7 @@ export default function TelegramRadarView({
   return (
     <div className="space-y-6">
       {/* Top Banner / Master Controls */}
-      <div className="rounded-2xl border border-white/[0.07] bg-[#1A1C23] p-5 shadow-surface sm:p-6">
+      <div className="rounded-2xl border border-white/[0.04] bg-[#1A1C23] p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05),0_4px_20px_rgba(0,0,0,0.3)] sm:p-6">
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2.5">
@@ -436,7 +436,7 @@ export default function TelegramRadarView({
         </div>
 
         {/* Working Hours & Status Banner */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-[#1a1a1a] px-4 py-2.5 text-xs">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-[#242731] px-4 py-2.5 text-xs">
           <div className="flex items-center gap-2">
             {status?.is_in_working_hours ? (
               <Sun size={15} className="text-amber-400" />
