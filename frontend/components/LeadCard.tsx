@@ -1,8 +1,18 @@
 "use client";
 
-import { Check, Database, MapPin, MoreHorizontal, Phone, Sparkles, Star } from "lucide-react";
+import { Check, Database, Flame, Globe2, MapPin, MessageCircle, MoreHorizontal, Phone, Send, Sparkles, Star } from "lucide-react";
 import type { Lead } from "@/lib/types";
-import { STATUS_META, categoryStyle, phoneDigits } from "@/lib/utils";
+import {
+  STATUS_META,
+  WEBSITE_STATUS_META,
+  categoryStyle,
+  getLeadScore,
+  getLeadScoreBadge,
+  getTelegramUrl,
+  getWebsiteStatus,
+  getWhatsAppUrl,
+  phoneDigits,
+} from "@/lib/utils";
 import { triggerHaptic } from "@/lib/telegram";
 import { SocialLinks, Spinner } from "./ui";
 
@@ -21,6 +31,15 @@ export default function LeadCard({
 }) {
   const status = STATUS_META[lead.status] ?? STATUS_META.new;
   const socials = Object.values(lead.social_links ?? {}).filter(Boolean).length;
+
+  const siteStatus = getWebsiteStatus(lead);
+  const siteMeta = WEBSITE_STATUS_META[siteStatus] ?? WEBSITE_STATUS_META.no_website;
+  const score = getLeadScore(lead);
+  const scoreBadge = getLeadScoreBadge(score);
+
+  const tgUrl = getTelegramUrl(lead);
+  const waUrl = getWhatsAppUrl(lead);
+  const digits = phoneDigits(lead.phone);
 
   const handleCardClick = () => {
     triggerHaptic("light");
@@ -41,9 +60,19 @@ export default function LeadCard({
       className="group card relative flex cursor-pointer flex-col p-4 transition duration-200 hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-[#1E202A] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B5CF6]/50"
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="inline-flex items-center rounded-md bg-[#242731] border border-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-[#9CA3AF]">
-          {lead.category}
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex items-center rounded-md bg-[#242731] border border-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-[#9CA3AF]">
+            {lead.category}
+          </span>
+          <span
+            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold ${scoreBadge.border} ${scoreBadge.bg} ${scoreBadge.text}`}
+            title={`Lead Score: ${score.toFixed(1)} / 5.0 (${scoreBadge.label})`}
+          >
+            <Flame size={10} className="fill-current text-amber-400" />
+            <span>{score.toFixed(1)}</span>
+          </span>
+        </div>
+
         <div className="flex items-center gap-1.5">
           {lead.demo_id ? (
             <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-[rgba(16,185,129,0.12)] px-1.5 py-0.5 text-[10px] font-medium text-[#10B981]">
@@ -74,39 +103,79 @@ export default function LeadCard({
           <span className="font-mono tabular-nums text-[#6B7280]">({lead.reviews_count})</span>
         </span>
         <span
-          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium ${
-            lead.has_website
-              ? "border-emerald-500/20 bg-[rgba(16,185,129,0.12)] text-[#10B981]"
-              : "border-rose-500/20 bg-rose-500/10 text-rose-400"
-          }`}
+          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold ${siteMeta.badge}`}
+          title={siteMeta.description}
         >
-          {lead.has_website ? "Есть сайт" : "Без сайта"}
+          <span className={`h-1.5 w-1.5 rounded-full ${siteMeta.dot}`} />
+          {siteMeta.label}
         </span>
       </div>
 
       <p className="mt-2 line-clamp-1 text-xs text-[#6B7280]">{lead.address || "Адрес не указан"}</p>
 
-      <div className="mt-3 flex items-center justify-between gap-2">
-        {lead.phone ? (
-          <a
-            href={`tel:${phoneDigits(lead.phone)}`}
-            onClick={(event) => event.stopPropagation()}
-            className="inline-flex items-center gap-1.5 text-xs font-mono tabular-nums text-[#9CA3AF] transition hover:text-[#F3F4F6]"
-          >
-            <Phone size={11} className="text-[#10B981]" />
-            {lead.phone}
-          </a>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 text-xs text-[#6B7280]">
-            <Phone size={11} /> Нет телефона
-          </span>
-        )}
+      {/* Быстрые контакты и мессенджеры */}
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/[0.04] pt-2.5">
+        <div className="flex items-center gap-1">
+          {digits ? (
+            <a
+              href={`tel:${digits}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                triggerHaptic("light");
+              }}
+              className="inline-flex h-7 items-center gap-1 rounded-lg border border-white/[0.08] bg-[#242731] px-2 text-[11px] font-medium text-[#9CA3AF] transition hover:border-[#10B981]/40 hover:text-[#10B981]"
+              title="Позвонить"
+            >
+              <Phone size={11} className="text-[#10B981]" />
+              <span className="font-mono">{lead.phone}</span>
+            </a>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[11px] text-[#6B7280]">
+              <Phone size={11} /> Нет тел.
+            </span>
+          )}
+        </div>
 
-        {socials ? (
-          <SocialLinks links={lead.social_links} />
-        ) : (
-          <span className="text-[10px] text-[#6B7280]">нет соцсетей</span>
-        )}
+        {/* Кнопки прямого перехода в мессенджеры */}
+        <div className="flex items-center gap-1">
+          {waUrl && (
+            <a
+              href={waUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) => {
+                event.stopPropagation();
+                triggerHaptic("light");
+              }}
+              className="inline-flex h-7 items-center gap-1 rounded-lg border border-emerald-500/25 bg-[rgba(16,185,129,0.1)] px-2 text-[11px] font-medium text-[#10B981] transition hover:bg-[rgba(16,185,129,0.2)]"
+              title="Написать в WhatsApp"
+            >
+              <MessageCircle size={11} />
+              <span>WhatsApp</span>
+            </a>
+          )}
+
+          {tgUrl && (
+            <a
+              href={tgUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) => {
+                event.stopPropagation();
+                triggerHaptic("light");
+              }}
+              className="inline-flex h-7 items-center gap-1 rounded-lg border border-sky-500/25 bg-sky-500/10 px-2 text-[11px] font-medium text-sky-400 transition hover:bg-sky-500/20"
+              title="Написать в Telegram"
+            >
+              <Send size={11} />
+              <span>TG</span>
+            </a>
+          )}
+
+          {socials && !waUrl && !tgUrl ? (
+            <SocialLinks links={lead.social_links} />
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-3 flex items-center gap-1.5 border-t border-white/[0.06] pt-2.5">

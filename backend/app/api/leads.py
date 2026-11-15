@@ -7,9 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.filters import LeadFilters, apply_lead_filters, lead_filters
 from app.config import settings
 from app.db import get_session
-from app.models import DemoSite, Lead
+from app.models import DemoSite, Lead, utcnow
 from app.schemas import (
     BulkStatusUpdate,
+    CustomDemoCreate,
     DemoOut,
     LeadOut,
     LeadsPage,
@@ -138,6 +139,47 @@ async def generate_demo(
     )
 
     demo = await create_demo(session, lead)
+    return demo_out(demo)
+
+
+@router.post("/{lead_id}/custom-demo", response_model=DemoOut)
+async def save_custom_demo(
+    lead_id: str,
+    payload: CustomDemoCreate,
+    session: AsyncSession = Depends(get_session),
+) -> DemoOut:
+    """Saves manually generated or prompt-pasted HTML demo for a lead for 0 credits."""
+    lead = await session.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Лид не найден")
+
+    demo = None
+    if lead.demo_id:
+        demo = await session.get(DemoSite, lead.demo_id)
+
+    if demo:
+        demo.html = payload.html
+        if payload.message:
+            demo.message = payload.message
+        if payload.title:
+            demo.title = payload.title
+        demo.published = True
+        demo.updated_at = utcnow()
+    else:
+        demo = DemoSite(
+            lead_id=lead.id,
+            title=payload.title or f"Демо для {lead.name}",
+            html=payload.html,
+            message=payload.message or "",
+            published=True,
+        )
+        session.add(demo)
+        await session.flush()
+        lead.demo_id = demo.id
+        session.add(lead)
+
+    await session.commit()
+    await session.refresh(demo)
     return demo_out(demo)
 
 

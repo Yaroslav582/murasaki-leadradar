@@ -120,7 +120,13 @@ async def health() -> dict:
 
 @app.get("/demo/{demo_id}", response_class=HTMLResponse)
 async def public_demo(demo_id: str, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
-    demo = await session.get(DemoSite, demo_id)
+    target_id = demo_id.strip()
+    demo = await session.get(DemoSite, target_id)
+    if demo is None:
+        stmt = select(DemoSite).where(DemoSite.lead_id == target_id).order_by(DemoSite.created_at.desc())
+        res = await session.execute(stmt)
+        demo = res.scalars().first()
+
     if demo is None or not demo.published:
         raise HTTPException(status_code=404, detail="Демо не найдено")
     return HTMLResponse(

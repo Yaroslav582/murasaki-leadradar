@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   CalendarDays,
   Check,
   Clock,
   Copy,
   ExternalLink,
+  Flame,
   Globe2,
   Mail,
   MapPin,
@@ -17,6 +19,7 @@ import {
   Sparkles,
   Star,
   StickyNote,
+  TrendingUp,
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -25,8 +28,17 @@ import {
   ALL_STATUSES,
   SOURCE_LABELS,
   STATUS_META,
+  WEBSITE_STATUS_META,
   categoryStyle,
   formatDate,
+  generatePromptForLead,
+  getFirstTouchOffer,
+  getGrowthPoints,
+  getLeadScore,
+  getLeadScoreBadge,
+  getTelegramUrl,
+  getWebsiteStatus,
+  getWhatsAppUrl,
   mapEmbedUrl,
   mapsUrl,
   phoneDigits,
@@ -94,6 +106,19 @@ export default function LeadDrawer({
   const hasSocials = Object.values(socials).some(Boolean);
   const priceLabel = lead.price_level ? "₽".repeat(Math.min(3, lead.price_level)) : null;
 
+  const siteStatus = getWebsiteStatus(lead);
+  const siteMeta = WEBSITE_STATUS_META[siteStatus] ?? WEBSITE_STATUS_META.no_website;
+  const score = getLeadScore(lead);
+  const scoreBadge = getLeadScoreBadge(score);
+  const growthPoints = getGrowthPoints(lead);
+  const publicDemoUrl = lead.demo_id
+    ? (typeof window !== "undefined" ? `${window.location.origin}/demo/${lead.demo_id}` : `/demo/${lead.demo_id}`)
+    : null;
+  const firstTouchOffer = getFirstTouchOffer(lead, publicDemoUrl);
+  const tgUrl = getTelegramUrl(lead);
+  const waUrl = getWhatsAppUrl(lead, firstTouchOffer);
+  const waDirectUrl = getWhatsAppUrl(lead);
+
   const handleSaveNotes = async () => {
     setSavingNotes(true);
     try {
@@ -157,6 +182,21 @@ export default function LeadDrawer({
                 {lead.category}
               </span>
               <StatusBadge status={lead.status} />
+              <span
+                className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold ${siteMeta.badge}`}
+                title={siteMeta.description}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${siteMeta.dot}`} />
+                {siteMeta.label}
+              </span>
+              <span
+                className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold ${scoreBadge.border} ${scoreBadge.bg} ${scoreBadge.text}`}
+                title={`Lead Score: ${score.toFixed(1)} / 5.0 (${scoreBadge.label})`}
+              >
+                <Flame size={11} className="fill-current text-amber-400" />
+                <span>{score.toFixed(1)}</span>
+                <span className="text-[9px] opacity-80">{scoreBadge.label}</span>
+              </span>
             </div>
             <h2 className="mt-2 text-xl font-extrabold leading-tight tracking-tight text-white">{lead.name}</h2>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
@@ -176,28 +216,137 @@ export default function LeadDrawer({
         </div>
 
         <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
+          {/* Кнопки быстрых действий */}
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => (lead.demo_id ? onOpenDemo(lead) : onGenerateDemo(lead))}
               disabled={generating}
-              className="btn-primary flex-1"
+              className="btn-primary flex-1 min-w-[170px]"
             >
               {generating ? <Spinner size={15} /> : <Sparkles size={15} />}
               {lead.demo_id ? "Открыть демо-лендинг" : "Сгенерировать демо"}
             </button>
+            {waDirectUrl && (
+              <a
+                href={waDirectUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-emerald-500/25 bg-[rgba(16,185,129,0.12)] px-3 text-xs font-semibold text-[#10B981] transition hover:bg-[rgba(16,185,129,0.22)]"
+              >
+                <MessageCircle size={14} />
+                WhatsApp
+              </a>
+            )}
+            {tgUrl && (
+              <a
+                href={tgUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 text-xs font-semibold text-sky-400 transition hover:bg-sky-500/20"
+              >
+                <Send size={14} />
+                Telegram
+              </a>
+            )}
             {lead.phone ? (
               <a href={`tel:${phoneDigits(lead.phone)}`} className="btn-ghost">
                 <Phone size={15} />
                 Позвонить
               </a>
             ) : null}
+            <button
+              onClick={() => handleCopy(generatePromptForLead(lead))}
+              className="btn-ghost"
+              title="Скопировать готовый промпт с данными компании для бесплатной генерации в ChatGPT / Claude"
+            >
+              <Copy size={13} />
+              Свой промпт (0 кр)
+            </button>
             {lead.website_url ? (
               <button onClick={() => onEnrich(lead)} disabled={enriching} className="btn-ghost">
                 {enriching ? <Spinner size={15} /> : <RefreshCw size={15} />}
-                {lead.enriched_at ? "Обновить контакты" : "Обогатить"}
+                {lead.enriched_at ? "Обновить" : "Обогатить"}
               </button>
             ) : null}
           </div>
+
+          {/* Блок «Что мешает (точки роста)» */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="label flex items-center gap-1.5 text-amber-300">
+                <TrendingUp size={13} className="text-amber-400" />
+                Что мешает (точки роста для продажи)
+              </p>
+              <span className="text-[10px] text-slate-500">2–3 аргумента для продажи</span>
+            </div>
+            <div className="space-y-2 rounded-2xl border border-amber-500/20 bg-amber-500/[0.04] p-3.5">
+              {growthPoints.map((point, index) => (
+                <div key={index} className="flex items-start gap-2.5 text-xs leading-relaxed text-slate-300">
+                  <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-bold text-amber-300">
+                    {index + 1}
+                  </div>
+                  <p>{point}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Блок «Первый контакт» */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="label flex items-center gap-1.5 text-[#C4B5FD]">
+                <Send size={13} className="text-[#8B5CF6]" />
+                Первый контакт (Готовый оффер)
+              </p>
+              <button
+                onClick={() => handleCopy(firstTouchOffer)}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[#C4B5FD] transition hover:text-white"
+              >
+                <Copy size={11} /> Скопировать
+              </button>
+            </div>
+            <div className="rounded-2xl border border-[rgba(139,92,246,0.3)] bg-[rgba(139,92,246,0.06)] p-4">
+              <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-200">
+                {firstTouchOffer}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => handleCopy(firstTouchOffer)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 transition hover:bg-white/[0.08]"
+                >
+                  <Copy size={12} /> Скопировать оффер
+                </button>
+                {waUrl && (
+                  <a
+                    href={waUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-[rgba(16,185,129,0.15)] px-2.5 py-1.5 text-[11px] font-semibold text-[#10B981] transition hover:bg-[rgba(16,185,129,0.25)]"
+                  >
+                    <MessageCircle size={12} /> Открыть в WhatsApp
+                  </a>
+                )}
+                {tgUrl && (
+                  <a
+                    href={tgUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/15 px-2.5 py-1.5 text-[11px] font-semibold text-sky-300 transition hover:bg-sky-500/25"
+                  >
+                    <Send size={12} /> Открыть в Telegram
+                  </a>
+                )}
+                {lead.demo_id ? (
+                  <button
+                    onClick={() => onOpenDemo(lead)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:text-white"
+                  >
+                    <ExternalLink size={11} /> Открыть демо
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </section>
 
           <section className="space-y-3">
             <p className="label">Контакты</p>
@@ -222,21 +371,22 @@ export default function LeadDrawer({
                 <span className="inline-flex items-center gap-2 text-sm text-slate-400">
                   <Globe2 size={14} className="text-sky-300" /> Сайт
                 </span>
-                {lead.website_url ? (
-                  <a
-                    href={lead.website_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex min-w-0 items-center gap-1 truncate text-sm font-semibold text-sky-300 hover:underline"
-                  >
-                    <span className="truncate">{lead.website_url.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
-                    <ExternalLink size={12} className="shrink-0" />
-                  </a>
-                ) : (
-                  <span className="rounded-full border border-rose-400/25 bg-rose-400/10 px-2.5 py-1 text-[11px] font-semibold text-rose-300">
-                    сайта нет
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${siteMeta.badge}`}>
+                    {siteMeta.label}
                   </span>
-                )}
+                  {lead.website_url ? (
+                    <a
+                      href={lead.website_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-w-0 items-center gap-1 truncate text-sm font-semibold text-sky-300 hover:underline"
+                    >
+                      <span className="truncate">{lead.website_url.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
+                      <ExternalLink size={12} className="shrink-0" />
+                    </a>
+                  ) : null}
+                </div>
               </div>
 
               <div className="flex items-center justify-between gap-3 border-b border-white/[0.05] px-4 py-3">

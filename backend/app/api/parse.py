@@ -28,16 +28,19 @@ async def start_parse(
     params = payload.model_dump()
     params["limit"] = min(payload.limit, settings.max_parse_limit)
 
-    # Spend 2 credits per 50 leads
-    user = await get_or_create_user(session)
-    credits_cost = max(2, int((params["limit"] / 50.0) * settings.credits_per_parse_50))
-    await check_and_spend(
-        session=session,
-        user_id=user.id,
-        amount=credits_cost,
-        module_name="parse_leads",
-        description=f"Парсинг {params['limit']} лидов с карт ({payload.city})",
-    )
+    # Calculate parsing cost (demo is free)
+    if payload.source != "demo":
+        user = await get_or_create_user(session)
+        credits_cost = max(2, int((params["limit"] / 50.0) * settings.credits_per_parse_50))
+        if payload.enrich:
+            credits_cost += 1
+        await check_and_spend(
+            session=session,
+            user_id=user.id,
+            amount=credits_cost,
+            module_name="parse_leads",
+            description=f"Парсинг {params['limit']} лидов ({payload.city})",
+        )
 
     job = ParseJob(source=payload.source, status="queued", params=params)
     session.add(job)

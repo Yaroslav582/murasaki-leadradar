@@ -152,6 +152,13 @@ export const api = {
     });
   },
 
+  saveCustomDemo(leadId: string, payload: { html: string; message?: string; title?: string }) {
+    return request<Demo>(`/api/leads/${leadId}/custom-demo`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   outreach(id: string) {
     return request<Outreach>(`/api/leads/${id}/message`, { method: "POST" });
   },

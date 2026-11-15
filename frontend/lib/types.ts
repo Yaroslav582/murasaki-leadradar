@@ -1,4 +1,5 @@
 export type LeadStatus = "new" | "database" | "sent" | "rejected" | "deal";
+export type WebsiteStatus = "no_website" | "only_social" | "weak_website" | "has_website";
 
 export interface Lead {
   id: string;
@@ -17,6 +18,7 @@ export interface Lead {
     instagram?: string;
     telegram?: string;
     whatsapp?: string;
+    vk?: string;
   };
   emails: string[];
   opening_hours: string[];
@@ -30,6 +32,12 @@ export interface Lead {
   enriched_at: string | null;
   created_at: string;
   updated_at: string;
+
+  // Best-in-class mechanics
+  website_status?: WebsiteStatus;
+  lead_score?: number;
+  growth_points?: string[];
+  first_touch_offer?: string;
 }
 
 export interface LeadsPage {

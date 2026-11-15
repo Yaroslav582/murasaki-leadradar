@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Check, Compass, Database, Globe2, Map, MapPin, Radar, Search, Sparkles, Store, Users, X } from "lucide-react";
+import { Bot, Check, Coins, Compass, Database, Globe2, Map, MapPin, Radar, Search, Sparkles, Store, Users, X } from "lucide-react";
 import type { Meta, ParseRequest } from "@/lib/types";
 import { CATEGORY_STYLES, POPULAR_CITIES } from "@/lib/utils";
 import Modal from "./Modal";
@@ -98,6 +98,33 @@ const FALLBACK_CATEGORIES = [
   "Отели",
   "Услуги",
   "Магазины",
+  "Стоматологии",
+  "Ремонт квартир",
+  "Юристы",
+];
+
+const POPULAR_QUICK_CITIES = [
+  "Москва",
+  "Санкт-Петербург",
+  "Казань",
+  "Екатеринбург",
+  "Краснодар",
+  "Новосибирск",
+  "Сочи",
+  "Нижний Новгород",
+];
+
+const POPULAR_QUICK_NICHES = [
+  "Бьюти",
+  "Рестораны",
+  "Автосервисы",
+  "Стоматологии",
+  "Медицина",
+  "Фитнес",
+  "Отели",
+  "Ремонт квартир",
+  "Юристы",
+  "Услуги",
 ];
 
 export default function ParseModal({
@@ -122,6 +149,11 @@ export default function ParseModal({
   const [error, setError] = useState<string | null>(null);
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
   const cityContainerRef = useRef<HTMLDivElement>(null);
+
+  const isFreeSource = source === "demo";
+  const baseCredits = isFreeSource ? 0 : Math.max(2, Math.ceil(limit / 50) * 2);
+  const enrichCredits = (!isFreeSource && enrich) ? 1 : 0;
+  const totalCreditsCost = baseCredits + enrichCredits;
 
   useEffect(() => {
     if (open) {
@@ -151,9 +183,10 @@ export default function ParseModal({
     return allCities.filter((c) => c.toLowerCase().includes(q)).slice(0, 12);
   }, [allCities, city]);
 
-  const categoriesAvailable = meta?.categories?.length
-    ? meta.categories.map((item) => item.value)
-    : FALLBACK_CATEGORIES;
+  const categoriesAvailable = useMemo(() => {
+    const list = meta?.categories?.length ? meta.categories.map((item) => item.value) : FALLBACK_CATEGORIES;
+    return [...new Set([...POPULAR_QUICK_NICHES, ...list])];
+  }, [meta?.categories]);
 
   const toggleCategory = (value: string) => {
     setCategories((previous) =>
@@ -314,6 +347,31 @@ export default function ParseModal({
                   })}
                 </div>
               )}
+
+              {/* Быстрые чипсы популярных городов */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-slate-500 font-medium">Быстрый выбор:</span>
+                {POPULAR_QUICK_CITIES.map((cName) => {
+                  const isSel = city.trim().toLowerCase() === cName.toLowerCase();
+                  return (
+                    <button
+                      key={cName}
+                      type="button"
+                      onClick={() => {
+                        setCity(cName);
+                        setCityDropdownOpen(false);
+                      }}
+                      className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition ${
+                        isSel
+                          ? "border-brand-500/60 bg-brand-500/20 text-brand-300"
+                          : "border-white/10 bg-white/[0.03] text-slate-400 hover:border-white/20 hover:text-white"
+                      }`}
+                    >
+                      {cName}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -374,6 +432,46 @@ export default function ParseModal({
               <span>5</span>
               <span>500</span>
             </div>
+          </section>
+
+          {/* Блок «Предрасчёт стоимости» */}
+          <section className="rounded-2xl border border-[rgba(139,92,246,0.3)] bg-[rgba(139,92,246,0.06)] p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-[#C4B5FD]">
+                <Coins size={14} className="text-[#8B5CF6]" />
+                Предрасчёт стоимости сбора
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-md border border-[rgba(139,92,246,0.3)] bg-[rgba(139,92,246,0.2)] px-2.5 py-0.5 text-xs font-bold text-white shadow-sm">
+                {totalCreditsCost === 0 ? "0 кредитов (Бесплатно)" : `${totalCreditsCost} кредитов`}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              <div className="rounded-xl border border-white/[0.06] bg-black/20 p-2.5">
+                <span className="block text-[10px] text-slate-500">Город</span>
+                <span className="font-semibold text-white truncate block">{city || "Не выбран"}</span>
+              </div>
+              <div className="rounded-xl border border-white/[0.06] bg-black/20 p-2.5">
+                <span className="block text-[10px] text-slate-500">Ниши</span>
+                <span className="font-semibold text-white truncate block">
+                  {categories.length > 0 ? `${categories.length} выбрано` : "Все ниши"}
+                </span>
+              </div>
+              <div className="rounded-xl border border-white/[0.06] bg-black/20 p-2.5">
+                <span className="block text-[10px] text-slate-500">Лимит сбора</span>
+                <span className="font-semibold text-white">{limit} лидов</span>
+              </div>
+              <div className="rounded-xl border border-white/[0.06] bg-black/20 p-2.5">
+                <span className="block text-[10px] text-slate-500">Обогащение</span>
+                <span className="font-semibold text-white">{enrich ? "+1 кр (вкл)" : "0 кр"}</span>
+              </div>
+            </div>
+
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              {isFreeSource
+                ? "Тестовая demo-база: сбор выполняется моментально без списания кредитов."
+                : `Тариф: 2 кредита за каждые 50 собранных лидов${enrich ? " + 1 кредит за поиск соцсетей и контактов" : ""}. Лиды попадут в общую базу.`}
+            </p>
           </section>
 
           <section className="space-y-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
