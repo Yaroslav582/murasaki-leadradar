@@ -1,9 +1,13 @@
 import type {
+  BillingBalance,
   BlogStatus,
+  ChatMessage,
   CommentLog,
   CommentTarget,
+  CreditTransaction,
   Demo,
   DemoUpdate,
+  Dialog,
   Lead,
   LeadFilters,
   LeadsPage,
@@ -13,6 +17,8 @@ import type {
   ParsedUser,
   ParseJob,
   ParseRequest,
+  Proxy,
+  ReferralInfo,
   SortKey,
   Stats,
   StoriesStatus,
@@ -20,6 +26,7 @@ import type {
   TelegramChatTarget,
   TelegramOrder,
   TelegramStatus,
+  TgAccount,
 } from "./types";
 
 export const API_URL =
@@ -338,5 +345,72 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+
+  // Accounts
+  listAccounts() { return request<TgAccount[]>("/api/accounts"); },
+  addAccount(payload: { phone: string; session_string?: string; proxy_id?: string }) {
+    return request<TgAccount>("/api/accounts", { method: "POST", body: JSON.stringify(payload) });
+  },
+  updateAccount(id: string, payload: Partial<Pick<TgAccount, "auto_warmup" | "warmup_preset" | "proxy_id">>) {
+    return request<TgAccount>(`/api/accounts/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+  deleteAccount(id: string) { return request<{status: string}>(`/api/accounts/${id}`, { method: "DELETE" }); },
+  checkAccount(id: string) { return request<TgAccount>(`/api/accounts/${id}/check`, { method: "POST" }); },
+
+  // Proxies
+  listProxies() { return request<Proxy[]>("/api/proxies"); },
+  addProxy(payload: { protocol: string; host: string; port: number; username?: string; password?: string }) {
+    return request<Proxy>("/api/proxies", { method: "POST", body: JSON.stringify(payload) });
+  },
+  deleteProxy(id: string) { return request<{status: string}>(`/api/proxies/${id}`, { method: "DELETE" }); },
+  checkProxy(id: string) { return request<Proxy>(`/api/proxies/${id}/check`, { method: "POST" }); },
+
+  // Billing
+  getBalance() { return request<BillingBalance>("/api/billing/balance"); },
+  getTransactions() { return request<CreditTransaction[]>("/api/billing/transactions"); },
+  depositCredits(payload: { amount: number; payment_method: string }) {
+    return request<BillingBalance>("/api/billing/deposit", { method: "POST", body: JSON.stringify(payload) });
+  },
+  getReferralInfo() { return request<ReferralInfo>("/api/billing/referral"); },
+
+  // Dialogs (Inbox)
+  listDialogs() { return request<Dialog[]>("/api/dialogs"); },
+  getDialogMessages(dialogId: string) { return request<ChatMessage[]>(`/api/dialogs/${dialogId}/messages`); },
+  sendMessage(dialogId: string, text: string) {
+    return request<ChatMessage>(`/api/dialogs/${dialogId}/messages`, { method: "POST", body: JSON.stringify({ text }) });
+  },
+  updateDialogStatus(dialogId: string, status: string) {
+    return request<Dialog>(`/api/dialogs/${dialogId}`, { method: "PATCH", body: JSON.stringify({ status }) });
+  },
+  triggerAiReply(dialogId: string) {
+    return request<{ message_id: string; text: string; status: string; is_deal: boolean }>(`/api/dialogs/${dialogId}/ai-reply`, {
+      method: "POST",
+    });
+  },
+
+  // Interactive Telegram Login & Archive Import
+  sendAuthCode(payload: { phone: string; proxy_id?: string; device_model?: string }) {
+    return request<{ status: string; phone: string; phone_code_hash: string }>("/api/accounts/auth/send-code", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  verifyAuthCode(payload: { phone: string; code: string; password?: string; proxy_id?: string }) {
+    return request<{ status: string; phone: string; username?: string; message?: string }>("/api/accounts/auth/verify", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // Soft Outreach
+  startOutreach(payload: { lead_ids: string[]; template: string; delay_min?: number; delay_max?: number }) {
+    return request<{ status: string; campaign_id: string; leads_count: number }>("/api/outreach/start", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getOutreachStatus() {
+    return request<{ total_sent: number; total_failed: number; is_running: boolean; current_lead: string | null }>("/api/outreach/status");
   },
 };

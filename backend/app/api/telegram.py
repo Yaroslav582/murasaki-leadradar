@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db import get_session
 from app.models import TelegramBroadcast, TelegramChatTarget, TelegramOrder, utcnow
+from app.services.billing import check_and_spend, get_or_create_user
 from app.services.freelance_fetcher import sync_external_freelance_orders
 from app.services.telegram_service import (
     DEFAULT_TARGETS,
@@ -313,6 +314,16 @@ async def trigger_order_response(order_id: str, session: AsyncSession = Depends(
     order = await session.get(TelegramOrder, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Заказ не найден")
+
+    # Deduct 1 credit for AI response
+    user = await get_or_create_user(session)
+    await check_and_spend(
+        session=session,
+        user_id=user.id,
+        amount=settings.credits_per_outreach,
+        module_name="ai_response",
+        description=f"AI-отклик на заказ {order.summary or order.id}",
+    )
 
     recipient = order.author_username or order.chat_id
     success = await telegram_manager.send_direct_message(recipient, order.response_text or "")

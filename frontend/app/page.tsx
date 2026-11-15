@@ -8,6 +8,7 @@ import {
   Filter,
   Plus,
   Search,
+  Send,
   SlidersHorizontal,
   Sparkles,
   X,
@@ -15,12 +16,16 @@ import {
 import { api } from "@/lib/api";
 import type { Demo, Lead, LeadFilters, LeadStatus, Meta, ParseJob, ParseRequest, SortKey, Stats } from "@/lib/types";
 import { SOURCE_LABELS, STATUS_META, formatNumber } from "@/lib/utils";
+import AccountsView from "@/components/AccountsView";
+import BillingModal from "@/components/BillingModal";
 import BottomNav, { type NavTab } from "@/components/BottomNav";
 import DemoModal from "@/components/DemoModal";
+import InboxView from "@/components/InboxView";
 import JobBanner from "@/components/JobBanner";
 import LeadCard from "@/components/LeadCard";
 import LeadDrawer from "@/components/LeadDrawer";
 import LLMSelectorModal from "@/components/LLMSelectorModal";
+import OutreachModal from "@/components/OutreachModal";
 import ParseModal from "@/components/ParseModal";
 import Sidebar from "@/components/Sidebar";
 import StatsRow from "@/components/StatsRow";
@@ -58,9 +63,11 @@ export default function HomePage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
-  const [mainView, setMainView] = useState<"leads" | "telegram">("leads");
+  const [mainView, setMainView] = useState<"leads" | "telegram" | "accounts" | "inbox">("leads");
   const [radarSubTab, setRadarSubTab] = useState<"orders" | "blog">("orders");
   const [pricingOpen, setPricingOpen] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
+  const [outreachOpen, setOutreachOpen] = useState(false);
 
   useEffect(() => {
     initTelegramWebApp();
@@ -367,8 +374,10 @@ export default function HomePage() {
   const currentBottomTab: NavTab =
     mainView === "leads"
       ? "leads"
-      : radarSubTab === "blog"
-      ? "autopost"
+      : mainView === "accounts"
+      ? "accounts"
+      : mainView === "inbox"
+      ? "inbox"
       : "telegram";
 
   const handleBottomTabSelect = (tab: NavTab) => {
@@ -377,11 +386,12 @@ export default function HomePage() {
     } else if (tab === "telegram") {
       setRadarSubTab("orders");
       setMainView("telegram");
-    } else if (tab === "autopost") {
-      setRadarSubTab("blog");
-      setMainView("telegram");
+    } else if (tab === "accounts") {
+      setMainView("accounts");
+    } else if (tab === "inbox") {
+      setMainView("inbox");
     } else if (tab === "pricing") {
-      setPricingOpen(true);
+      setBillingOpen(true);
     }
   };
 
@@ -398,11 +408,16 @@ export default function HomePage() {
             refreshing={refreshing}
             currentView={mainView}
             onViewChange={setMainView}
+            onOpenBilling={() => setBillingOpen(true)}
           />
 
           <main className="mx-auto max-w-[1640px] px-4 py-6 pb-24 lg:px-8 lg:py-8 lg:pb-8">
             {mainView === "telegram" ? (
               <TelegramRadarView showToast={showToast} initialTab={radarSubTab} />
+            ) : mainView === "accounts" ? (
+              <AccountsView showToast={showToast} />
+            ) : mainView === "inbox" ? (
+              <InboxView showToast={showToast} />
             ) : (
               <>
                 {job ? <JobBanner job={job} onDismiss={() => setJob(null)} /> : null}
@@ -475,6 +490,18 @@ export default function HomePage() {
                       <FileSpreadsheet size={13} /> XLSX
                     </button>
                   </div>
+
+                  <button
+                    onClick={() => {
+                      triggerHaptic("medium");
+                      setOutreachOpen(true);
+                    }}
+                    className="btn-primary h-10 px-3 text-xs font-bold"
+                    title="Запустить мягкий аутрич с AI-уникализацией оффера"
+                  >
+                    <Send size={13} />
+                    <span>Касание по выборке</span>
+                  </button>
 
                   <button onClick={() => setSidebarOpen(true)} className="btn-ghost h-10 lg:hidden">
                     <SlidersHorizontal size={15} />
@@ -625,6 +652,22 @@ export default function HomePage() {
       <LLMSelectorModal
         isOpen={pricingOpen}
         onClose={() => setPricingOpen(false)}
+      />
+
+      <BillingModal
+        isOpen={billingOpen}
+        onClose={() => setBillingOpen(false)}
+        showToast={showToast}
+      />
+
+      <OutreachModal
+        isOpen={outreachOpen}
+        onClose={() => setOutreachOpen(false)}
+        leads={leads}
+        showToast={showToast}
+        onStarted={() => {
+          showToast("Кампания аутрича запущена в фоне", "info");
+        }}
       />
     </div>
   );

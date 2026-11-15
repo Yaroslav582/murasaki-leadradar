@@ -263,3 +263,86 @@ export interface BlogStatus {
   topics: string[];
 }
 
+// == Accounts & Proxies ==
+export type AccountStatus = "active" | "warming" | "spamblock" | "floodwait" | "banned";
+
+export interface TgAccount {
+  id: string;
+  phone: string;
+  username: string | null;
+  status: AccountStatus;
+  warmup_level: number;
+  warmup_preset: string;
+  auto_warmup: boolean;
+  proxy_id: string | null;
+  daily_actions_count: number;
+  device_model?: string;
+  system_version?: string;
+  app_version?: string;
+  created_at: string;
+}
+
+export interface Proxy {
+  id: string;
+  protocol: string;
+  host: string;
+  port: number;
+  username: string | null;
+  is_alive: boolean;
+  last_check: string | null;
+}
+
+// == Dialogs (Inbox) ==
+export type DialogStatus = "new" | "ai_handling" | "manual" | "deal";
+
+export interface Dialog {
+  id: string;
+  account_id: string;
+  peer_id: string;
+  peer_username: string | null;
+  peer_name: string | null;
+  lead_id: string | null;
+  status: DialogStatus;
+  unread_count: number;
+  last_message_at: string | null;
+  last_message_preview?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  dialog_id: string;
+  direction: "in" | "out";
+  text: string;
+  is_ai_generated: boolean;
+  created_at: string;
+}
+
+// == Billing ==
+export interface BillingBalance {
+  credits_balance: number;
+  user_id: string;
+}
+
+export interface CreditTransaction {
+  id: string;
+  amount: number;
+  type: "deposit" | "spend" | "referral_bonus";
+  module_name: string | null;
+  description: string | null;
+  created_at: string;
+}
+
+export interface ReferralInfo {
+  referral_code: string;
+  referral_link: string;
+  invited_count: number;
+  earned_credits: number;
+}
+
+export interface OutreachStatus {
+  total_sent: number;
+  total_failed: number;
+  is_running: boolean;
+  current_lead: string | null;
+}
+

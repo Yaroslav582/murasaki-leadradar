@@ -181,3 +181,109 @@ class TelegramParsedUser(Base):
     stories_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    telegram_id: Mapped[int | None] = mapped_column(Integer, unique=True, index=True)
+    username: Mapped[str | None] = mapped_column(String(120))
+    first_name: Mapped[str | None] = mapped_column(String(255))
+    credits_balance: Mapped[int] = mapped_column(Integer, default=50)
+    referrer_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    referral_code: Mapped[str | None] = mapped_column(String(32), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Proxy(Base):
+    __tablename__ = "proxies"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    protocol: Mapped[str] = mapped_column(String(10), default="socks5")  # socks5 | http
+    host: Mapped[str] = mapped_column(String(255))
+    port: Mapped[int] = mapped_column(Integer)
+    username: Mapped[str | None] = mapped_column(String(255))
+    password: Mapped[str | None] = mapped_column(String(255))
+    is_alive: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_check: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TgAccount(Base):
+    __tablename__ = "tg_accounts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    phone: Mapped[str] = mapped_column(String(32), index=True)
+    username: Mapped[str | None] = mapped_column(String(120))
+    session_string: Mapped[str | None] = mapped_column(Text)  # Telethon StringSession
+    device_model: Mapped[str] = mapped_column(String(120), default="Samsung Galaxy S21")
+    system_version: Mapped[str] = mapped_column(String(60), default="SDK 30")
+    app_version: Mapped[str] = mapped_column(String(60), default="8.4.1")
+    proxy_id: Mapped[str | None] = mapped_column(
+        ForeignKey("proxies.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)  # active | warming | spamblock | floodwait | banned
+    flood_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    daily_actions_count: Mapped[int] = mapped_column(Integer, default=0)
+    daily_actions_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    warmup_level: Mapped[int] = mapped_column(Integer, default=0)  # 0-100
+    warmup_preset: Mapped[str] = mapped_column(String(24), default="optimal")  # light | optimal | active
+    auto_warmup: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class Dialog(Base):
+    __tablename__ = "dialogs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("tg_accounts.id", ondelete="CASCADE"), index=True
+    )
+    peer_id: Mapped[str] = mapped_column(String(120), index=True)  # telegram user/chat id
+    peer_username: Mapped[str | None] = mapped_column(String(120))
+    peer_name: Mapped[str | None] = mapped_column(String(255))
+    lead_id: Mapped[str | None] = mapped_column(
+        ForeignKey("leads.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(String(24), default="new", index=True)  # new | ai_handling | manual | deal
+    unread_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    dialog_id: Mapped[str] = mapped_column(
+        ForeignKey("dialogs.id", ondelete="CASCADE"), index=True
+    )
+    account_id: Mapped[str] = mapped_column(String(36), index=True)
+    direction: Mapped[str] = mapped_column(String(8))  # "in" | "out"
+    text: Mapped[str] = mapped_column(Text)
+    tg_message_id: Mapped[int | None] = mapped_column(Integer)
+    is_ai_generated: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    amount: Mapped[int] = mapped_column(Integer)  # кредиты (+/-)
+    type: Mapped[str] = mapped_column(String(24))  # deposit | spend | referral_bonus
+    module_name: Mapped[str | None] = mapped_column(String(64))  # ai_demo | parse_leads | outreach | warmup
+    description: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+

@@ -74,6 +74,21 @@ class Settings(BaseSettings):
     )
     telegram_stop_words: str = "в офис,fulltime,полный день,стажировка,500р,500 руб,1000р,бесплатно"
 
+    # Credits pricing
+    credits_per_demo: int = 5
+    credits_per_parse_50: int = 2
+    credits_per_outreach: int = 1
+    credits_per_warmup_day: int = 2
+    default_credits: int = 50
+    referral_bonus_percent: int = 15
+
+    # Warmup & Outreach settings
+    warmup_trusted_channels: str = "@telegram,@durov,@thebell_io,@rbc_news,@ria_novosti"
+    warmup_max_daily_actions: int = 50
+    outreach_daily_limit: int = 12
+    outreach_min_delay: int = 180
+    outreach_max_delay: int = 600
+
     # AI Auto-Blogger for Telegram Channel
     channel_blog_enabled: bool = True
     channel_blog_chat_id: str = "@Murasaki_website"
@@ -88,6 +103,10 @@ class Settings(BaseSettings):
     @property
     def telegram_stop_words_list(self) -> list[str]:
         return [w.strip().lower() for w in self.telegram_stop_words.split(",") if w.strip()]
+
+    @property
+    def warmup_channels_list(self) -> list[str]:
+        return [c.strip() for c in self.warmup_trusted_channels.split(",") if c.strip()]
 
     @property
     def cors_origin_list(self) -> list[str]:

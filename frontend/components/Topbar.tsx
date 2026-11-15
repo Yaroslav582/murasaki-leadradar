@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Coins, Database, ExternalLink, Plus, Radar, Radio, RefreshCw, Sparkles } from "lucide-react";
-import { api, API_URL } from "@/lib/api";
+import { Coins, Database, MessageSquare, Plus, Radar, Radio, RefreshCw, Settings, Sparkles, Users } from "lucide-react";
+import { api } from "@/lib/api";
 import { triggerHaptic } from "@/lib/telegram";
 import LLMSelectorModal from "./LLMSelectorModal";
 import { Spinner } from "./ui";
@@ -14,22 +14,32 @@ export default function Topbar({
   refreshing,
   currentView = "leads",
   onViewChange,
+  onOpenBilling,
 }: {
   onParse: () => void;
   onToggleSidebar?: () => void;
   onRefresh?: () => void;
   refreshing?: boolean;
-  currentView?: "leads" | "telegram";
-  onViewChange?: (view: "leads" | "telegram") => void;
+  currentView?: "leads" | "telegram" | "accounts" | "inbox";
+  onViewChange?: (view: "leads" | "telegram" | "accounts" | "inbox") => void;
+  onOpenBilling?: () => void;
 }) {
   const [showLLMModal, setShowLLMModal] = useState(false);
   const [activeModel, setActiveModel] = useState<string>("gpt-4o");
+  const [credits, setCredits] = useState<number>(50);
 
   useEffect(() => {
     api
       .getLLMConfig()
       .then((cfg) => {
         if (cfg?.model) setActiveModel(cfg.model);
+      })
+      .catch(() => {});
+
+    api
+      .getBalance()
+      .then((bal) => {
+        if (typeof bal?.credits_balance === "number") setCredits(bal.credits_balance);
       })
       .catch(() => {});
   }, []);
@@ -83,26 +93,62 @@ export default function Topbar({
                 <Radio size={13} className={currentView === "telegram" ? "animate-pulse" : ""} />
                 TG-Радар
               </button>
+              <button
+                onClick={() => {
+                  triggerHaptic("light");
+                  onViewChange("accounts");
+                }}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  currentView === "accounts"
+                    ? "bg-brand-500 text-white shadow-[0_0_18px_rgba(124,92,255,0.4)]"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <Users size={13} />
+                Аккаунты
+              </button>
+              <button
+                onClick={() => {
+                  triggerHaptic("light");
+                  onViewChange("inbox");
+                }}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  currentView === "inbox"
+                    ? "bg-brand-500 text-white shadow-[0_0_18px_rgba(124,92,255,0.4)]"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <MessageSquare size={13} />
+                Диалоги
+              </button>
             </div>
           )}
 
-          {/* Справа: кликабельный баланс SOL + целевая кнопка + Собрать */}
+          {/* Справа: кликабельный баланс кредитов + настройки LLM + Собрать */}
           <div className="flex items-center gap-2">
-            {/* Кликабельный баланс SOL / активная модель */}
+            {/* Кликабельный баланс кредитов */}
+            <button
+              onClick={() => {
+                triggerHaptic("light");
+                if (onOpenBilling) onOpenBilling();
+              }}
+              className="group flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:border-amber-400/60 hover:bg-amber-500/20 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+              title="Баланс кредитов и пополнение"
+            >
+              <Coins size={14} className="text-amber-400 group-hover:scale-110 transition-transform" />
+              <span className="font-mono text-[12px] font-bold text-amber-300">{credits} cr</span>
+            </button>
+
+            {/* Кнопка настроек LLM */}
             <button
               onClick={() => {
                 triggerHaptic("light");
                 setShowLLMModal(true);
               }}
-              className="group flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#13131a]/90 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:border-brand-500/50 hover:bg-[#181824]"
-              title="Баланс SOL и настройки нейросети"
+              className="icon-btn !h-9 !w-9 hidden sm:inline-flex"
+              title="Выбор AI-модели"
             >
-              <Coins size={13} className="text-amber-400 group-hover:scale-110 transition-transform" />
-              <span className="font-mono text-[11px] font-bold text-amber-300">0.85 SOL</span>
-              <span className="text-slate-600">·</span>
-              <span className="font-mono text-[11px] text-slate-400 group-hover:text-slate-200">
-                {activeModel.replace("gpt-", "")}
-              </span>
+              <Sparkles size={14} className="text-brand-300" />
             </button>
 
             {/* Десктопные кнопки */}

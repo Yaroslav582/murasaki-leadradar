@@ -13,10 +13,11 @@ from app.api import api_router
 from app.config import settings
 from app.db import get_session, init_db
 from app.models import DemoSite
-from app.seed import seed_demo_data, seed_telegram_data
+from app.seed import seed_accounts_and_dialogs_data, seed_demo_data, seed_telegram_data
 from app.services.bot_runner import bot_runner
 from app.services.jobs import fail_stale_jobs
 from app.services.telegram_service import telegram_manager
+from app.services.warmup_worker import warmup_worker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -40,14 +41,19 @@ async def lifespan(app: FastAPI):
             tg_seeded = await seed_telegram_data()
             if tg_seeded.get("chats") or tg_seeded.get("orders"):
                 logger.info("Telegram demo data seeded: %s", tg_seeded)
+            acc_seeded = await seed_accounts_and_dialogs_data()
+            if acc_seeded.get("accounts"):
+                logger.info("Accounts and dialogs demo data seeded: %s", acc_seeded)
         except Exception:
             logger.exception("Failed to seed demo data")
     # Initialize Telegram & Bot runner in background
     init_task = asyncio.create_task(telegram_manager.initialize())
     bot_runner.start()
+    warmup_worker.start()
     try:
         yield
     finally:
+        warmup_worker.stop()
         bot_runner.stop()
         if getattr(telegram_manager, "_background_task", None) and not telegram_manager._background_task.done():
             telegram_manager._background_task.cancel()

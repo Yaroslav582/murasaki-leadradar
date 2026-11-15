@@ -70,6 +70,32 @@ async def init_db() -> None:
                     if col_name not in existing_order_cols:
                         cursor.execute(f"ALTER TABLE telegram_orders ADD COLUMN {col_name} {col_def}")
 
+                # users (if existing)
+                cursor.execute("PRAGMA table_info(users)")
+                existing_user_cols = {row[1] for row in cursor.fetchall()}
+                if existing_user_cols:
+                    new_user_cols = [
+                        ("credits_balance", "INTEGER DEFAULT 50"),
+                        ("referrer_id", "VARCHAR(36)"),
+                        ("referral_code", "VARCHAR(32)"),
+                    ]
+                    for col_name, col_def in new_user_cols:
+                        if col_name not in existing_user_cols:
+                            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+
+                # tg_accounts (if existing)
+                cursor.execute("PRAGMA table_info(tg_accounts)")
+                existing_acc_cols = {row[1] for row in cursor.fetchall()}
+                if existing_acc_cols:
+                    new_acc_cols = [
+                        ("warmup_preset", "VARCHAR(24) DEFAULT 'optimal'"),
+                        ("auto_warmup", "BOOLEAN DEFAULT 0"),
+                        ("daily_actions_reset_at", "DATETIME"),
+                    ]
+                    for col_name, col_def in new_acc_cols:
+                        if col_name not in existing_acc_cols:
+                            cursor.execute(f"ALTER TABLE tg_accounts ADD COLUMN {col_name} {col_def}")
+
             await conn.run_sync(_migrate_columns)
 
 

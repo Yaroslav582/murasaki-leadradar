@@ -1,9 +1,9 @@
 "use client";
 
-import { Coins, Database, Radio, SendHorizontal } from "lucide-react";
+import { Coins, Database, MessageSquare, Radio, SendHorizontal, Users } from "lucide-react";
 import { triggerHaptic } from "@/lib/telegram";
 
-export type NavTab = "leads" | "telegram" | "autopost" | "pricing";
+export type NavTab = "leads" | "telegram" | "accounts" | "inbox" | "pricing";
 
 export default function BottomNav({
   activeTab,
@@ -24,9 +24,14 @@ export default function BottomNav({
       icon: Radio,
     },
     {
-      id: "autopost" as const,
-      label: "Автопостинг",
-      icon: SendHorizontal,
+      id: "accounts" as const,
+      label: "Аккаунты",
+      icon: Users,
+    },
+    {
+      id: "inbox" as const,
+      label: "Диалоги",
+      icon: MessageSquare,
     },
     {
       id: "pricing" as const,

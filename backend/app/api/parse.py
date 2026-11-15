@@ -9,6 +9,7 @@ from app.db import get_session
 from app.models import ParseJob
 from app.providers import ProviderError, get_provider
 from app.schemas import ParseJobOut, ParseRequest
+from app.services.billing import check_and_spend, get_or_create_user
 from app.services.jobs import dispatch_parse_job
 
 router = APIRouter(tags=["parsing"])
@@ -26,6 +27,18 @@ async def start_parse(
 
     params = payload.model_dump()
     params["limit"] = min(payload.limit, settings.max_parse_limit)
+
+    # Spend 2 credits per 50 leads
+    user = await get_or_create_user(session)
+    credits_cost = max(2, int((params["limit"] / 50.0) * settings.credits_per_parse_50))
+    await check_and_spend(
+        session=session,
+        user_id=user.id,
+        amount=credits_cost,
+        module_name="parse_leads",
+        description=f"Парсинг {params['limit']} лидов с карт ({payload.city})",
+    )
+
     job = ParseJob(source=payload.source, status="queued", params=params)
     session.add(job)
     await session.commit()

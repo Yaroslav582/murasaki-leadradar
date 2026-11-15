@@ -6,7 +6,7 @@ import logging
 from sqlalchemy import func, select
 
 from app.db import SessionLocal, init_db
-from app.models import Lead
+from app.models import Dialog, Lead, Message, Proxy, TgAccount, Transaction, User, utcnow
 from app.providers.demo import CATEGORIES, CITIES, DemoProvider
 from app.services.demos import create_demo
 from app.services.jobs import save_places
@@ -170,6 +170,140 @@ async def seed_telegram_data() -> dict[str, int]:
     if seeded_counts["chats"] or seeded_counts["orders"]:
         logger.info("Seeded Telegram targets/orders: %s", seeded_counts)
     return seeded_counts
+
+
+async def seed_accounts_and_dialogs_data() -> dict[str, int]:
+    counts = {"accounts": 0, "proxies": 0, "dialogs": 0}
+    async with SessionLocal() as session:
+        # Check if accounts exist
+        existing_acc = await session.scalar(select(func.count(TgAccount.id))) or 0
+        if existing_acc:
+            return counts
+
+        # Seed Proxy
+        proxy = Proxy(
+            protocol="socks5",
+            host="185.220.101.5",
+            port=1080,
+            username="murasaki_proxy",
+            password="secret_password",
+            is_alive=True,
+            last_check=utcnow(),
+        )
+        session.add(proxy)
+        await session.flush()
+        counts["proxies"] += 1
+
+        # Seed 2 Demo Accounts
+        acc1 = TgAccount(
+            phone="+79991234567",
+            username="murasaki_radar_main",
+            device_model="Samsung Galaxy S22 Ultra",
+            system_version="Android 13, One UI 5.1",
+            app_version="Telegram Android 9.6.5",
+            proxy_id=proxy.id,
+            status="active",
+            warmup_level=85,
+            warmup_preset="optimal",
+            auto_warmup=True,
+            daily_actions_count=4,
+        )
+        acc2 = TgAccount(
+            phone="+79189876543",
+            username="lead_hunter_pro",
+            device_model="Google Pixel 7 Pro",
+            system_version="Android 14, UpsideDownCake",
+            app_version="Telegram Android 10.1.2",
+            proxy_id=proxy.id,
+            status="warming",
+            warmup_level=45,
+            warmup_preset="light",
+            auto_warmup=True,
+            daily_actions_count=2,
+        )
+        session.add_all([acc1, acc2])
+        await session.flush()
+        counts["accounts"] += 2
+
+        # Seed Dialogs & Messages
+        from datetime import timedelta
+        now = utcnow()
+
+        # Dialog 1: Deal
+        d1 = Dialog(
+            account_id=acc1.id,
+            peer_id="594812301",
+            peer_username="artem_barber",
+            peer_name="Артём (Барбершоп 'OldBoy')",
+            status="deal",
+            unread_count=0,
+            last_message_at=now - timedelta(minutes=14),
+        )
+        session.add(d1)
+        await session.flush()
+
+        m1 = Message(
+            dialog_id=d1.id,
+            account_id=acc1.id,
+            direction="out",
+            text="Здравствуйте, Артём! Обратили внимание на ваш барбершоп в Москве. Собрали для вас интерактивное демо нового сайта с онлайн-записью: https://murasaki-portfolio.vercel.app/",
+            is_ai_generated=True,
+            created_at=now - timedelta(hours=2),
+        )
+        m2 = Message(
+            dialog_id=d1.id,
+            account_id=acc1.id,
+            direction="in",
+            text="Добрый день! Посмотрел демо, выглядит очень круто. Сколько будет стоить внедрить такое под наш филиал и возможен ли созвон сегодня в 17:00?",
+            is_ai_generated=False,
+            created_at=now - timedelta(minutes=35),
+        )
+        m3 = Message(
+            dialog_id=d1.id,
+            account_id=acc1.id,
+            direction="out",
+            text="Отлично! Да, созвон в 17:00 идеально подойдёт. Стоимость базовой интеграции около 35 000 ₽. Ссылку на Google Meet пришлю за 15 минут до созвона.",
+            is_ai_generated=True,
+            created_at=now - timedelta(minutes=14),
+        )
+        session.add_all([m1, m2, m3])
+
+        # Dialog 2: AI Handling
+        d2 = Dialog(
+            account_id=acc1.id,
+            peer_id="481920311",
+            peer_username="elena_yoga",
+            peer_name="Елена Смирнова (Йога-студия)",
+            status="ai_handling",
+            unread_count=1,
+            last_message_at=now - timedelta(minutes=4),
+        )
+        session.add(d2)
+        await session.flush()
+
+        m2_1 = Message(
+            dialog_id=d2.id,
+            account_id=acc1.id,
+            direction="out",
+            text="Елена, здравствуйте! Заметили, что у вашей студии йоги много отзывов на картах, но нет удобного сайта с расписанием тренировок. Мы сделали готовый концепт, показать?",
+            is_ai_generated=True,
+            created_at=now - timedelta(hours=3),
+        )
+        m2_2 = Message(
+            dialog_id=d2.id,
+            account_id=acc1.id,
+            direction="in",
+            text="Здравствуйте! Да, пришлите пожалуйста ссылку, как раз думаем об обновлении сайта.",
+            is_ai_generated=False,
+            created_at=now - timedelta(minutes=4),
+        )
+        session.add_all([m2_1, m2_2])
+        counts["dialogs"] += 2
+
+        await session.commit()
+        logger.info("Seeded accounts, proxy, dialogs: %s", counts)
+
+    return counts
 
 
 async def _main() -> None:

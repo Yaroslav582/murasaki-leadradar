@@ -5,6 +5,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.filters import LeadFilters, apply_lead_filters, lead_filters
+from app.config import settings
 from app.db import get_session
 from app.models import DemoSite, Lead
 from app.schemas import (
@@ -15,6 +16,7 @@ from app.schemas import (
     LeadUpdate,
     OutreachOut,
 )
+from app.services.billing import check_and_spend, get_or_create_user
 from app.services.demos import create_demo, demo_out, lead_to_dict, public_demo_url
 from app.services.enrichment import enrich_leads
 from app.services.landing import build_outreach, generate_outreach_message
@@ -124,6 +126,17 @@ async def generate_demo(
     lead = await session.get(Lead, lead_id)
     if lead is None:
         raise HTTPException(status_code=404, detail="Лид не найден")
+
+    # Spend 5 credits for AI demo generation
+    user = await get_or_create_user(session)
+    await check_and_spend(
+        session=session,
+        user_id=user.id,
+        amount=settings.credits_per_demo,
+        module_name="ai_demo",
+        description=f"Генерация AI-демо сайта для {lead.name}",
+    )
+
     demo = await create_demo(session, lead)
     return demo_out(demo)
 
