@@ -86,40 +86,40 @@ export default function OutreachModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-[#13131a] p-6 shadow-2xl space-y-4 animate-fadeIn">
+      <div className="relative w-full max-w-lg rounded-2xl border border-white/[0.08] bg-[#1A1C23] p-5 shadow-2xl space-y-4 animate-fadeIn">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/15 border border-brand-500/20 text-brand-300">
-              <Send size={18} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#242731] border border-white/[0.08] text-[#8B5CF6]">
+              <Send size={16} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                Запустить касание по выборке
-                <span className="rounded-full bg-brand-500/20 px-2 py-0.5 text-[9px] font-bold text-brand-300 border border-brand-500/30">
+              <h2 className="text-base font-semibold text-[#F3F4F6] flex items-center gap-2">
+                Касание по выборке
+                <span className="rounded-md bg-[rgba(139,92,246,0.14)] border border-[rgba(139,92,246,0.3)] px-1.5 py-0.2 text-[10px] font-medium text-[#C4B5FD]">
                   AI-уникализация
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">
-                Мягкий аутрич через пул аккаунтов LeadRadar
+              <p className="text-xs text-[#6B7280]">
+                Мягкий аутрич через пул Telegram аккаунтов
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="icon-btn !h-8 !w-8">
-            <X size={15} />
+          <button onClick={onClose} className="icon-btn !h-7 !w-7">
+            <X size={14} />
           </button>
         </div>
 
         {/* Lead Count Card */}
-        <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3 flex items-center justify-between text-xs">
+        <div className="rounded-xl border border-white/[0.07] bg-[#242731] p-3 flex items-center justify-between text-xs">
           <div>
-            <span className="text-slate-400 block">Выбрано лидов для касания:</span>
-            <span className="font-bold text-white text-sm">
-              {validLeads.length} из {leads.length} лидов с контактами
+            <span className="text-[#9CA3AF] block">Выбрано лидов:</span>
+            <span className="font-semibold text-[#F3F4F6] text-sm">
+              <span className="font-mono tabular-nums">{validLeads.length}</span> из <span className="font-mono tabular-nums">{leads.length}</span> с контактами
             </span>
           </div>
           <div className="text-right">
-            <span className="text-slate-400 block">Стоимость:</span>
-            <span className="font-mono font-bold text-amber-300 flex items-center gap-1 justify-end">
+            <span className="text-[#9CA3AF] block">Стоимость:</span>
+            <span className="font-mono tabular-nums font-semibold text-[#F59E0B] flex items-center gap-1 justify-end">
               <Coins size={12} /> {creditsRequired} cr
             </span>
           </div>
@@ -127,47 +127,45 @@ export default function OutreachModal({
 
         {/* Template Input */}
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label className="label">Шаблон оффера (перед отправкой уникализируется нейросетью)</label>
-          </div>
+          <label className="label">Шаблон оффера (AI уникализирует каждое сообщение)</label>
           <textarea
             rows={4}
             value={template}
             onChange={(e) => setTemplate(e.target.value)}
             className="input text-xs font-mono leading-relaxed"
           />
-          <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-400">
+          <div className="flex flex-wrap gap-1 text-[10px] text-[#9CA3AF]">
             <span>Переменные:</span>
-            <span className="rounded bg-white/5 px-1 font-mono text-brand-300">&#123;company_name&#125;</span>
-            <span className="rounded bg-white/5 px-1 font-mono text-brand-300">&#123;city&#125;</span>
-            <span className="rounded bg-white/5 px-1 font-mono text-brand-300">&#123;category&#125;</span>
+            <span className="rounded bg-[#242731] border border-white/[0.06] px-1 font-mono text-[#C4B5FD]">&#123;company_name&#125;</span>
+            <span className="rounded bg-[#242731] border border-white/[0.06] px-1 font-mono text-[#C4B5FD]">&#123;city&#125;</span>
+            <span className="rounded bg-[#242731] border border-white/[0.06] px-1 font-mono text-[#C4B5FD]">&#123;category&#125;</span>
           </div>
         </div>
 
         {/* Safety Limits */}
-        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 space-y-2 text-xs">
-          <div className="flex items-center gap-1.5 text-slate-300 font-semibold">
-            <Flame size={14} className="text-amber-400" />
+        <div className="rounded-xl border border-white/[0.06] bg-[#242731] p-3 space-y-1.5 text-xs">
+          <div className="flex items-center gap-1.5 text-[#F3F4F6] font-medium">
+            <Flame size={13} className="text-[#F59E0B]" />
             Защита от спам-блоков (Антифлуд)
           </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            • Не более 10–15 новых диалогов в сутки на один прогретый аккаунт
+          <p className="text-[11px] text-[#9CA3AF] leading-relaxed">
+            • 10–15 новых диалогов в сутки на прогретый аккаунт
             <br />• Рандомная задержка 180–600 сек между отправками
-            <br />• Автоматическая ротация при FloodWaitError
+            <br />• Автоматическая ротация при FloodWait
           </p>
         </div>
 
         <button
           onClick={handleStart}
           disabled={submitting || validLeads.length === 0}
-          className="btn-primary w-full !py-3 font-bold text-sm"
+          className="btn-primary w-full !h-10 text-xs font-medium"
         >
           {submitting ? (
-            <Spinner size={16} />
+            <Spinner size={14} />
           ) : (
-            <Play size={16} className="fill-white" />
+            <Play size={14} className="fill-white" />
           )}
-          Запустить рассылку ({validLeads.length} лидов)
+          Запустить касание (<span className="font-mono tabular-nums">{validLeads.length}</span> лидов)
         </button>
       </div>
     </div>

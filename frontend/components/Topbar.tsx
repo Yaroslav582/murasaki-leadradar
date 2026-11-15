@@ -46,17 +46,17 @@ export default function Topbar({
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#09090d]/85 backdrop-blur-xl">
-        <div className="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
+      <header className="sticky top-0 z-40 border-b border-white/[0.07] bg-[#111216]/85 backdrop-blur-xl">
+        <div className="flex h-14 items-center justify-between gap-3 px-4 lg:px-8">
           {/* Слева: Название + бренд */}
           <div className="flex items-center gap-2.5">
-            <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-fuchsia-500 text-white shadow-[0_0_16px_rgba(124,92,255,0.35)]">
-              <Radar size={17} />
-              <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-[#09090d]" />
+            <div className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]">
+              <Radar size={15} />
+              <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400 ring-2 ring-[#111216]" />
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-[15px] font-black tracking-tight text-white">LeadRadar</span>
-              <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-brand-300 border border-brand-500/20">
+              <span className="text-sm font-semibold tracking-tight text-[#F3F4F6]">LeadRadar</span>
+              <span className="rounded bg-brand-500/15 px-1.5 py-0.2 text-[9px] font-semibold text-brand-300 border border-brand-500/25">
                 PRO
               </span>
             </div>
@@ -64,16 +64,16 @@ export default function Topbar({
 
           {/* Десктопная навигация */}
           {onViewChange && (
-            <div className="hidden md:flex items-center gap-1 rounded-xl border border-white/[0.08] bg-[#12131a]/80 p-1">
+            <div className="hidden md:flex items-center gap-1 rounded-lg border border-white/[0.06] bg-[#242731] p-1">
               <button
                 onClick={() => {
                   triggerHaptic("light");
                   onViewChange("leads");
                 }}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition ${
                   currentView === "leads"
-                    ? "bg-brand-500 text-white shadow-[0_0_18px_rgba(124,92,255,0.4)]"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-brand-500 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                    : "text-[#9CA3AF] hover:text-[#F3F4F6]"
                 }`}
               >
                 <Database size={13} />
@@ -84,13 +84,13 @@ export default function Topbar({
                   triggerHaptic("light");
                   onViewChange("telegram");
                 }}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition ${
                   currentView === "telegram"
-                    ? "bg-brand-500 text-white shadow-[0_0_18px_rgba(124,92,255,0.4)]"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-brand-500 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                    : "text-[#9CA3AF] hover:text-[#F3F4F6]"
                 }`}
               >
-                <Radio size={13} className={currentView === "telegram" ? "animate-pulse" : ""} />
+                <Radio size={13} className={currentView === "telegram" ? "animate-pulse text-brand-300" : ""} />
                 TG-Радар
               </button>
               <button
@@ -98,10 +98,10 @@ export default function Topbar({
                   triggerHaptic("light");
                   onViewChange("accounts");
                 }}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition ${
                   currentView === "accounts"
-                    ? "bg-brand-500 text-white shadow-[0_0_18px_rgba(124,92,255,0.4)]"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-brand-500 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                    : "text-[#9CA3AF] hover:text-[#F3F4F6]"
                 }`}
               >
                 <Users size={13} />
@@ -112,10 +112,10 @@ export default function Topbar({
                   triggerHaptic("light");
                   onViewChange("inbox");
                 }}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition ${
                   currentView === "inbox"
-                    ? "bg-brand-500 text-white shadow-[0_0_18px_rgba(124,92,255,0.4)]"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-brand-500 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                    : "text-[#9CA3AF] hover:text-[#F3F4F6]"
                 }`}
               >
                 <MessageSquare size={13} />
@@ -132,11 +132,11 @@ export default function Topbar({
                 triggerHaptic("light");
                 if (onOpenBilling) onOpenBilling();
               }}
-              className="group flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:border-amber-400/60 hover:bg-amber-500/20 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+              className="group flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-[#242731] px-2.5 py-1 text-xs font-medium text-[#F3F4F6] transition hover:border-brand-500/40 hover:bg-[#2C303D]"
               title="Баланс кредитов и пополнение"
             >
-              <Coins size={14} className="text-amber-400 group-hover:scale-110 transition-transform" />
-              <span className="font-mono text-[12px] font-bold text-amber-300">{credits} cr</span>
+              <Coins size={13} className="text-[#F59E0B] group-hover:scale-105 transition-transform" />
+              <span className="font-mono tabular-nums text-xs font-medium text-[#F59E0B]">{credits} cr</span>
             </button>
 
             {/* Кнопка настроек LLM */}
@@ -145,10 +145,10 @@ export default function Topbar({
                 triggerHaptic("light");
                 setShowLLMModal(true);
               }}
-              className="icon-btn !h-9 !w-9 hidden sm:inline-flex"
+              className="icon-btn hidden sm:inline-flex"
               title="Выбор AI-модели"
             >
-              <Sparkles size={14} className="text-brand-300" />
+              <Sparkles size={13} className="text-brand-300" />
             </button>
 
             {/* Десктопные кнопки */}
@@ -162,7 +162,7 @@ export default function Topbar({
                 title="Обновить данные"
                 aria-label="Обновить"
               >
-                {refreshing ? <Spinner size={14} /> : <RefreshCw size={14} />}
+                {refreshing ? <Spinner size={13} /> : <RefreshCw size={13} />}
               </button>
             )}
 
@@ -174,8 +174,8 @@ export default function Topbar({
               }}
               className="btn-primary"
             >
-              <Plus size={15} />
-              <span className="text-xs font-bold sm:inline">Собрать</span>
+              <Plus size={14} />
+              <span className="text-xs font-medium sm:inline">Собрать</span>
             </button>
           </div>
         </div>

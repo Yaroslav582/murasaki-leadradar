@@ -31,57 +31,60 @@ export default function StatsRow({
     : { new: 0, database: 0, sent: 0, rejected: 0, deal: 0 };
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-      {/* Bento 1 (50% на мобильных): Без сайта */}
-      <div className="card group relative flex flex-col justify-between overflow-hidden p-4 sm:p-5">
-        <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-rose-500/15 blur-2xl transition group-hover:bg-rose-500/25" />
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* Bento 1: Без сайта */}
+      <div className="card group relative flex flex-col justify-between p-3.5 sm:p-4">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-rose-300/90 sm:text-[11px]">
+          <span className="text-xs font-medium text-[#9CA3AF]">
             Без сайта
           </span>
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-rose-400/20 bg-rose-500/10 text-rose-300">
-            <Globe2 size={16} />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-[#242731] text-rose-400">
+            <Globe2 size={14} />
           </div>
         </div>
-        <div className="mt-3">
-          <p className="text-2xl font-black tracking-tight text-white sm:text-3xl">
+        <div className="mt-2.5">
+          <p className="font-mono text-2xl font-semibold tracking-tight text-[#F3F4F6] tabular-nums sm:text-[26px]">
             {formatNumber(noWebsite)}
           </p>
-          <p className="mt-0.5 text-[11px] text-slate-400">
-            {total ? `${Math.round((noWebsite / total) * 100)}% базы` : "Готовы к сайту"}
+          <p className="mt-0.5 text-xs text-[#6B7280]">
+            {total ? (
+              <>
+                <span className="font-mono tabular-nums">{Math.round((noWebsite / total) * 100)}%</span> базы
+              </>
+            ) : (
+              "Готовы к сайту"
+            )}
           </p>
         </div>
       </div>
 
-      {/* Bento 2 (50% на мобильных): С соцсетями */}
-      <div className="card group relative flex flex-col justify-between overflow-hidden p-4 sm:p-5">
-        <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-sky-500/15 blur-2xl transition group-hover:bg-sky-500/25" />
+      {/* Bento 2: С соцсетями */}
+      <div className="card group relative flex flex-col justify-between p-3.5 sm:p-4">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-sky-300/90 sm:text-[11px]">
+          <span className="text-xs font-medium text-[#9CA3AF]">
             С соцсетями
           </span>
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-sky-400/20 bg-sky-500/10 text-sky-300">
-            <MessageCircle size={16} />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-[#242731] text-[#8B5CF6]">
+            <MessageCircle size={14} />
           </div>
         </div>
-        <div className="mt-3">
-          <p className="text-2xl font-black tracking-tight text-white sm:text-3xl">
+        <div className="mt-2.5">
+          <p className="font-mono text-2xl font-semibold tracking-tight text-[#F3F4F6] tabular-nums sm:text-[26px]">
             {formatNumber(withSocial)}
           </p>
-          <p className="mt-0.5 text-[11px] text-slate-400">Прямой контакт в TG/IG</p>
+          <p className="mt-0.5 text-xs text-[#6B7280]">Прямой контакт в TG/IG</p>
         </div>
       </div>
 
-      {/* Bento 3 (100% на мобильных, col-span-2): Широкая карточка с прогресс-баром воронки */}
-      <div className="card col-span-2 relative overflow-hidden p-4 sm:p-5 lg:col-span-2">
-        <div className="pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full bg-brand-500/20 blur-3xl" />
+      {/* Bento 3: Воронка лидов */}
+      <div className="card col-span-2 relative p-3.5 sm:p-4 lg:col-span-2">
         <div className="relative">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-500/15 text-brand-300">
+              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#242731] border border-white/[0.06] text-[#8B5CF6]">
                 <Radar size={13} />
               </span>
-              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-300">
+              <span className="text-xs font-medium text-[#9CA3AF]">
                 Воронка лидов
               </span>
             </div>
@@ -90,43 +93,43 @@ export default function StatsRow({
                 triggerHaptic("light");
                 onParse();
               }}
-              className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-brand-500/40 hover:bg-brand-500/15 hover:text-white"
+              className="inline-flex items-center gap-1 rounded-md border border-white/[0.06] bg-[#242731] px-2 py-0.5 text-xs font-medium text-[#9CA3AF] transition hover:bg-white/[0.08] hover:text-[#F3F4F6]"
             >
               <ArrowUpRight size={12} /> Собрать ещё
             </button>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="text-3xl font-black tracking-tight text-white sm:text-4xl">
+          <div className="mt-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+            <span className="font-mono text-2xl font-semibold tracking-tight text-[#F3F4F6] tabular-nums sm:text-[28px]">
               {formatNumber(total)}
             </span>
-            <span className="text-xs text-slate-400">
-              лидов в базе · <span className="font-semibold text-emerald-300">{formatNumber(deals)}</span> сделок
+            <span className="text-xs text-[#6B7280]">
+              в базе · <span className="font-mono tabular-nums font-semibold text-[#10B981]">{formatNumber(deals)}</span> сделок
             </span>
           </div>
 
-          {/* Прогресс-бар воронки */}
-          <div className="mt-3.5 flex h-2 overflow-hidden rounded-full bg-white/[0.06]">
-            <div className="bg-sky-400 transition-all duration-500" style={{ width: `${ratios.new}%` }} title={`Новые: ${statuses.new}`} />
-            <div className="bg-violet-400 transition-all duration-500" style={{ width: `${ratios.database}%` }} title={`В базе: ${statuses.database}`} />
-            <div className="bg-amber-400 transition-all duration-500" style={{ width: `${ratios.sent}%` }} title={`Отправлено: ${statuses.sent}`} />
-            <div className="bg-emerald-400 transition-all duration-500" style={{ width: `${ratios.deal}%` }} title={`Сделки: ${statuses.deal}`} />
-            <div className="bg-rose-400 transition-all duration-500" style={{ width: `${ratios.rejected}%` }} title={`Отказ: ${statuses.rejected}`} />
+          {/* Прогресс-бар воронки: slim 6px */}
+          <div className="mt-2.5 flex h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+            <div className="bg-[#6B7280] transition-all duration-500" style={{ width: `${ratios.new}%` }} title={`Новые: ${statuses.new}`} />
+            <div className="bg-[#8B5CF6] transition-all duration-500" style={{ width: `${ratios.database}%` }} title={`В базе: ${statuses.database}`} />
+            <div className="bg-[#F59E0B] transition-all duration-500" style={{ width: `${ratios.sent}%` }} title={`Отправлено: ${statuses.sent}`} />
+            <div className="bg-[#10B981] transition-all duration-500" style={{ width: `${ratios.deal}%` }} title={`Сделки: ${statuses.deal}`} />
+            <div className="bg-[#EF4444] transition-all duration-500" style={{ width: `${ratios.rejected}%` }} title={`Отказ: ${statuses.rejected}`} />
           </div>
 
           {/* Легенда воронки */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-400 sm:text-[11px]">
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#9CA3AF]">
             <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-sky-400" /> Новые ({statuses.new})
+              <span className="h-1.5 w-1.5 rounded-full bg-[#6B7280]" /> Новые (<span className="font-mono tabular-nums">{statuses.new}</span>)
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-400" /> В базе ({statuses.database})
+              <span className="h-1.5 w-1.5 rounded-full bg-[#8B5CF6]" /> В базе (<span className="font-mono tabular-nums">{statuses.database}</span>)
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Отправлено ({statuses.sent})
+              <span className="h-1.5 w-1.5 rounded-full bg-[#F59E0B]" /> Отправлено (<span className="font-mono tabular-nums">{statuses.sent}</span>)
             </span>
-            <span className="inline-flex items-center gap-1 font-semibold text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Сделки ({statuses.deal})
+            <span className="inline-flex items-center gap-1 text-[#10B981] font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#10B981]" /> Сделки (<span className="font-mono tabular-nums">{statuses.deal}</span>)
             </span>
           </div>
         </div>

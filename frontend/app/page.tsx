@@ -424,38 +424,43 @@ export default function HomePage() {
 
                 <StatsRow stats={stats} meta={meta} onParse={() => setParseOpen(true)} />
 
-            <div className="mt-8 flex flex-col gap-4">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-300">Рабочая область</p>
-                  <h1 className="mt-1 flex items-center gap-3 text-2xl font-black tracking-tight text-white sm:text-[28px]">
+            <div className="mt-6 flex flex-col gap-3">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="flex items-center gap-2.5">
+                  <h1 className="text-xl font-semibold text-[#F3F4F6] tracking-tight">
                     База лидов
-                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-bold text-slate-300">
-                      {formatNumber(total)}
-                    </span>
                   </h1>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {meta ? `${formatNumber(meta.no_website)} без сайта из ${formatNumber(meta.total)}` : "Загружаем данные..."}
-                    {debouncedSearch ? ` · поиск: «${debouncedSearch}»` : ""}
-                  </p>
+                  <span className="font-mono text-xs text-[#9CA3AF] tabular-nums rounded-md bg-[#242731] border border-white/[0.06] px-2 py-0.5">
+                    {formatNumber(total)}
+                  </span>
+                  {meta && (
+                    <span className="text-xs text-[#6B7280] hidden sm:inline">
+                      · <span className="font-mono tabular-nums">{formatNumber(meta.no_website)}</span> без сайта
+                    </span>
+                  )}
+                  {debouncedSearch ? (
+                    <span className="text-xs text-[#6B7280] hidden md:inline">
+                      · «{debouncedSearch}»
+                    </span>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative min-w-[220px] flex-1 sm:flex-none">
-                    <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <div className="relative min-w-[200px] flex-1 sm:flex-none">
+                    <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" />
                     <input
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Компания, адрес, телефон..."
-                      className="input h-10 pl-9 pr-9"
+                      placeholder="Поиск по базе..."
+                      className="input !h-9 pl-9 pr-8 text-xs bg-[#1A1C23] border-white/[0.07] text-[#F3F4F6]"
                     />
                     {search ? (
                       <button
                         onClick={() => setSearch("")}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-white"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B7280] transition hover:text-[#F3F4F6]"
                         aria-label="Очистить поиск"
                       >
-                        <X size={14} />
+                        <X size={13} />
                       </button>
                     ) : null}
                   </div>
@@ -464,30 +469,30 @@ export default function HomePage() {
                     <select
                       value={sort}
                       onChange={(event) => setSort(event.target.value as SortKey)}
-                      className="h-10 appearance-none rounded-xl border border-white/10 bg-white/[0.04] pl-3 pr-9 text-xs font-semibold text-slate-300 outline-none transition hover:border-white/20 focus:border-brand-500/50"
+                      className="h-9 appearance-none rounded-lg border border-white/[0.07] bg-[#1A1C23] pl-3 pr-8 text-xs font-medium text-[#F3F4F6] outline-none transition hover:border-white/20"
                     >
-                      <option value="new" className="bg-[#0a0c15]">Сначала новые</option>
-                      <option value="rating" className="bg-[#0a0c15]">По рейтингу</option>
-                      <option value="reviews" className="bg-[#0a0c15]">По отзывам</option>
-                      <option value="name" className="bg-[#0a0c15]">По названию</option>
+                      <option value="new" className="bg-[#1A1C23]">Сначала новые</option>
+                      <option value="rating" className="bg-[#1A1C23]">По рейтингу</option>
+                      <option value="reviews" className="bg-[#1A1C23]">По отзывам</option>
+                      <option value="name" className="bg-[#1A1C23]">По названию</option>
                     </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6B7280]" />
                   </div>
 
-                  <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] p-1">
+                  <div className="flex items-center gap-0.5 rounded-lg border border-white/[0.07] bg-[#1A1C23] p-0.5">
                     <button
                       onClick={() => window.open(api.exportUrl(filters, debouncedSearch, sort, "csv"), "_blank")}
-                      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[#9CA3AF] transition hover:bg-[#242731] hover:text-[#F3F4F6]"
                       title="Экспорт в CSV"
                     >
-                      <FileText size={13} /> CSV
+                      <FileText size={12} /> CSV
                     </button>
                     <button
                       onClick={() => window.open(api.exportUrl(filters, debouncedSearch, sort, "xlsx"), "_blank")}
-                      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[#9CA3AF] transition hover:bg-[#242731] hover:text-[#F3F4F6]"
                       title="Экспорт в Excel"
                     >
-                      <FileSpreadsheet size={13} /> XLSX
+                      <FileSpreadsheet size={12} /> XLSX
                     </button>
                   </div>
 
@@ -496,18 +501,18 @@ export default function HomePage() {
                       triggerHaptic("medium");
                       setOutreachOpen(true);
                     }}
-                    className="btn-primary h-10 px-3 text-xs font-bold"
+                    className="btn-primary !h-9 !px-3 text-xs font-medium"
                     title="Запустить мягкий аутрич с AI-уникализацией оффера"
                   >
-                    <Send size={13} />
+                    <Send size={12} />
                     <span>Касание по выборке</span>
                   </button>
 
-                  <button onClick={() => setSidebarOpen(true)} className="btn-ghost h-10 lg:hidden">
-                    <SlidersHorizontal size={15} />
+                  <button onClick={() => setSidebarOpen(true)} className="btn-ghost !h-9 text-xs lg:hidden">
+                    <SlidersHorizontal size={14} />
                     Фильтры
                     {activeCount ? (
-                      <span className="rounded-full bg-brand-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{activeCount}</span>
+                      <span className="font-mono rounded-full bg-[#8B5CF6] px-1.5 py-0.2 text-[10px] font-bold text-white tabular-nums">{activeCount}</span>
                     ) : null}
                   </button>
                 </div>
@@ -515,20 +520,20 @@ export default function HomePage() {
 
               {activeCount ? (
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="mr-1 inline-flex items-center gap-1 text-[11px] text-slate-500">
+                  <span className="mr-1 inline-flex items-center gap-1 text-xs text-[#6B7280]">
                     <Filter size={11} /> Фильтры:
                   </span>
                   {activeChips.map((chip) => (
                     <button
                       key={chip.key}
                       onClick={chip.remove}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-brand-500/30 bg-brand-500/10 px-2.5 py-1 text-[11px] font-semibold text-brand-200 transition hover:bg-brand-500/20"
+                      className="inline-flex items-center gap-1 rounded-md border border-[rgba(139,92,246,0.3)] bg-[rgba(139,92,246,0.14)] px-2 py-0.5 text-xs font-medium text-[#C4B5FD] transition hover:bg-[rgba(139,92,246,0.22)]"
                     >
                       {chip.label}
                       <X size={10} />
                     </button>
                   ))}
-                  <button onClick={resetFilters} className="ml-1 text-[11px] font-semibold text-slate-500 transition hover:text-white">
+                  <button onClick={resetFilters} className="ml-1 text-xs font-medium text-[#6B7280] transition hover:text-[#9CA3AF]">
                     Сбросить всё
                   </button>
                 </div>

@@ -26,27 +26,27 @@ const STATUS_BADGES: Record<
 > = {
   new: {
     label: "Новый",
-    bg: "bg-sky-500/10",
-    text: "text-sky-300",
-    border: "border-sky-500/20",
+    bg: "bg-[#242731]",
+    text: "text-[#9CA3AF]",
+    border: "border-white/[0.08]",
   },
   ai_handling: {
     label: "AI-дожим",
-    bg: "bg-brand-500/15",
-    text: "text-brand-300",
-    border: "border-brand-500/30",
+    bg: "bg-[rgba(139,92,246,0.14)]",
+    text: "text-[#C4B5FD]",
+    border: "border-[rgba(139,92,246,0.3)]",
   },
   manual: {
     label: "Вручную",
-    bg: "bg-slate-500/15",
-    text: "text-slate-300",
-    border: "border-slate-500/20",
+    bg: "bg-[#242731]",
+    text: "text-[#9CA3AF]",
+    border: "border-white/[0.06]",
   },
   deal: {
     label: "Сделка 🔥",
-    bg: "bg-emerald-500/15",
-    text: "text-emerald-300",
-    border: "border-emerald-500/30",
+    bg: "bg-[rgba(16,185,129,0.12)]",
+    text: "text-[#10B981]",
+    border: "border-emerald-500/25",
   },
 };
 
@@ -180,27 +180,17 @@ export default function InboxView({
   return (
     <div className="space-y-4">
       {/* Top Header */}
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-300">
-              Сквозная коммуникация
-            </span>
-            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/20">
-              Live Feed
-            </span>
-          </div>
-          <h1 className="mt-0.5 text-2xl font-black tracking-tight text-white sm:text-[28px]">
-            Единый Inbox
-          </h1>
-          <p className="text-xs text-slate-400">
-            Все переписки фермы в одном окне с AI-дожимом и автоквалификацией сделок.
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-semibold text-[#F3F4F6] tracking-tight">Единый Inbox</h1>
+          <span className="font-mono text-xs text-[#9CA3AF] tabular-nums rounded-md bg-[#242731] border border-white/[0.06] px-2 py-0.5">
+            {dialogs.length} диалогов
+          </span>
         </div>
 
         <button
           onClick={() => loadDialogs()}
-          className="btn-ghost self-start sm:self-auto !px-3 !py-1.5 text-xs text-slate-300"
+          className="btn-ghost !px-3 !py-1.5 text-xs text-[#9CA3AF] hover:text-[#F3F4F6]"
         >
           <RefreshCw size={13} />
           Обновить
@@ -208,29 +198,29 @@ export default function InboxView({
       </div>
 
       {/* Main Split Layout: Dialogs List + Chat View */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 h-[calc(100vh-230px)] min-h-[500px]">
-        {/* Left Side: Dialogs List (Hidden on mobile if chat is active) */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 h-[calc(100vh-210px)] min-h-[500px]">
+        {/* Left Side: Dialogs List */}
         <div
           className={`card flex flex-col overflow-hidden md:col-span-5 lg:col-span-4 ${
             activeDialog ? "hidden md:flex" : "flex"
           }`}
         >
-          <div className="p-3.5 border-b border-white/[0.06] flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Диалоги ({dialogs.length})
+          <div className="p-3 border-b border-white/[0.07] flex items-center justify-between bg-[#1A1C23]">
+            <span className="text-xs font-medium text-[#9CA3AF]">
+              Диалоги (<span className="font-mono tabular-nums">{dialogs.length}</span>)
             </span>
-            <span className="text-[11px] text-slate-500">Автообновление 6с</span>
+            <span className="text-[11px] text-[#6B7280] font-mono tabular-nums">auto 6s</span>
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-white/[0.04]">
             {loading ? (
-              <div className="p-4 text-center text-xs text-slate-500">Загрузка диалогов...</div>
+              <div className="p-4 text-center text-xs text-[#6B7280]">Загрузка диалогов...</div>
             ) : dialogs.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-500 space-y-2">
-                <MessageSquare size={24} className="mx-auto text-slate-600" />
+              <div className="p-8 text-center text-xs text-[#6B7280] space-y-2">
+                <MessageSquare size={22} className="mx-auto text-[#6B7280]" />
                 <p>Пока нет входящих диалогов.</p>
-                <p className="text-[11px] text-slate-600">
-                  Запустите рассылку по лидам или дождитесь откликов с радара.
+                <p className="text-[11px] text-[#6B7280]">
+                  Запустите касание по лидам или дождитесь откликов.
                 </p>
               </div>
             ) : (
@@ -245,15 +235,15 @@ export default function InboxView({
                       triggerHaptic("light");
                       setActiveDialog(d);
                     }}
-                    className={`w-full text-left p-3.5 transition flex items-start gap-3 hover:bg-white/[0.03] ${
-                      isActive ? "bg-white/[0.06] border-l-2 border-brand-500" : ""
+                    className={`w-full text-left p-3 transition flex items-start gap-2.5 hover:bg-[#242731]/50 ${
+                      isActive ? "bg-[#242731] border-l-2 border-[#8B5CF6]" : ""
                     }`}
                   >
                     {/* Avatar */}
-                    <div className="relative h-10 w-10 shrink-0 rounded-full bg-gradient-to-tr from-brand-600/40 to-fuchsia-600/40 border border-brand-500/30 flex items-center justify-center text-white font-bold text-xs">
+                    <div className="relative h-9 w-9 shrink-0 rounded-full bg-[#242731] border border-white/[0.08] flex items-center justify-center text-[#C4B5FD] font-semibold text-xs">
                       {d.peer_name ? d.peer_name.slice(0, 2).toUpperCase() : "TG"}
                       {d.unread_count > 0 && (
-                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-500 text-[9px] font-bold text-white shadow-[0_0_8px_rgba(124,92,255,0.9)]">
+                        <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-[#8B5CF6] text-[9px] font-mono font-bold text-white tabular-nums">
                           {d.unread_count}
                         </span>
                       )}
@@ -262,10 +252,10 @@ export default function InboxView({
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1">
-                        <p className="text-xs font-bold text-white truncate">
+                        <p className="text-xs font-semibold text-[#F3F4F6] truncate">
                           {d.peer_name || d.peer_username || `ID ${d.peer_id}`}
                         </p>
-                        <span className="text-[10px] text-slate-500 shrink-0">
+                        <span className="text-[10px] text-[#6B7280] font-mono tabular-nums shrink-0">
                           {d.last_message_at
                             ? new Date(d.last_message_at).toLocaleTimeString([], {
                                 hour: "2-digit",
@@ -275,19 +265,19 @@ export default function InboxView({
                         </span>
                       </div>
 
-                      <p className="mt-1 text-xs text-slate-400 line-clamp-1">
+                      <p className="mt-0.5 text-xs text-[#9CA3AF] line-clamp-1">
                         {d.last_message_preview || "Нет сообщений"}
                       </p>
 
-                      <div className="mt-2 flex items-center justify-between">
+                      <div className="mt-1.5 flex items-center justify-between">
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${statusMeta.bg} ${statusMeta.text} ${statusMeta.border}`}
+                          className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium border ${statusMeta.bg} ${statusMeta.text} ${statusMeta.border}`}
                         >
                           {statusMeta.label}
                         </span>
                         {d.account_id && (
-                          <span className="text-[10px] text-slate-500 font-mono">
-                            ферма TG
+                          <span className="text-[10px] text-[#6B7280] font-mono tabular-nums">
+                            TG
                           </span>
                         )}
                       </div>
@@ -299,7 +289,7 @@ export default function InboxView({
           </div>
         </div>
 
-        {/* Right Side: Active Chat View (Full width on mobile when active) */}
+        {/* Right Side: Active Chat View */}
         <div
           className={`card flex flex-col overflow-hidden md:col-span-7 lg:col-span-8 ${
             !activeDialog ? "hidden md:flex" : "flex"
@@ -308,29 +298,29 @@ export default function InboxView({
           {activeDialog ? (
             <>
               {/* Chat Header */}
-              <div className="p-3.5 border-b border-white/[0.06] flex items-center justify-between bg-[#111218]">
+              <div className="p-3 border-b border-white/[0.07] flex items-center justify-between bg-[#1A1C23]">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <button
                     onClick={() => setActiveDialog(null)}
-                    className="icon-btn !h-8 !w-8 md:hidden shrink-0"
+                    className="icon-btn !h-7 !w-7 md:hidden shrink-0"
                     title="Назад к списку"
                   >
-                    <ArrowLeft size={15} />
+                    <ArrowLeft size={14} />
                   </button>
 
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <h2 className="text-sm font-bold text-white truncate">
+                      <h2 className="text-sm font-semibold text-[#F3F4F6] truncate">
                         {activeDialog.peer_name || activeDialog.peer_username || activeDialog.peer_id}
                       </h2>
                       {activeDialog.peer_username && (
-                        <span className="text-xs text-brand-300 font-medium hidden sm:inline">
+                        <span className="text-xs text-[#8B5CF6] font-medium hidden sm:inline">
                           @{activeDialog.peer_username}
                         </span>
                       )}
                     </div>
-                    <p className="text-[10px] text-slate-400 truncate">
-                      Диалог в Telegram · Статус: {activeDialog.status}
+                    <p className="text-[10px] text-[#6B7280] truncate font-mono tabular-nums">
+                      Telegram · {activeDialog.status}
                     </p>
                   </div>
                 </div>
@@ -350,7 +340,7 @@ export default function InboxView({
                   <select
                     value={activeDialog.status}
                     onChange={(e) => handleStatusChange(e.target.value as DialogStatus)}
-                    className="h-8 rounded-lg border border-white/10 bg-[#161722] px-2 text-xs font-semibold text-slate-200 outline-none"
+                    className="h-7.5 rounded-lg border border-white/[0.08] bg-[#242731] px-2 text-xs font-medium text-[#F3F4F6] outline-none"
                   >
                     <option value="new">Новый</option>
                     <option value="ai_handling">AI-дожим</option>
@@ -361,14 +351,14 @@ export default function InboxView({
               </div>
 
               {/* Chat Messages Body */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0a0b10]">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#111216]">
                 {messagesLoading && messages.length === 0 ? (
                   <div className="flex h-full items-center justify-center">
                     <Spinner size={24} />
                   </div>
                 ) : messages.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center text-center p-6 text-slate-500 space-y-2">
-                    <MessageSquare size={32} className="text-slate-600" />
+                  <div className="flex h-full flex-col items-center justify-center text-center p-6 text-[#6B7280] space-y-2">
+                    <MessageSquare size={28} className="text-[#6B7280]" />
                     <p className="text-xs">В этом диалоге ещё нет сообщений.</p>
                   </div>
                 ) : (
@@ -381,21 +371,21 @@ export default function InboxView({
                         className={`flex flex-col ${isOut ? "items-end" : "items-start"}`}
                       >
                         <div
-                          className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-sm ${
+                          className={`max-w-[85%] rounded-xl px-3.5 py-2 text-xs leading-relaxed ${
                             isOut
-                              ? "bg-brand-500/20 border border-brand-500/30 text-white rounded-br-none"
-                              : "bg-[#181924] border border-white/[0.08] text-slate-200 rounded-bl-none"
+                              ? "bg-[rgba(139,92,246,0.16)] border border-[#8B5CF6]/30 text-[#F3F4F6] rounded-br-none"
+                              : "bg-[#242731] border border-white/[0.06] text-[#F3F4F6] rounded-bl-none"
                           }`}
                         >
                           {m.text}
 
                           <div
-                            className={`mt-1.5 flex items-center gap-1.5 text-[9px] ${
-                              isOut ? "text-brand-300 justify-end" : "text-slate-500"
+                            className={`mt-1 flex items-center gap-1.5 text-[9px] font-mono tabular-nums ${
+                              isOut ? "text-[#C4B5FD] justify-end" : "text-[#6B7280]"
                             }`}
                           >
                             {m.is_ai_generated && (
-                              <span className="inline-flex items-center gap-0.5 rounded bg-brand-500/30 px-1 py-0.2 font-bold text-[8px] text-brand-200">
+                              <span className="inline-flex items-center gap-0.5 rounded bg-[rgba(139,92,246,0.25)] px-1 py-0.2 font-sans font-semibold text-[8px] text-[#C4B5FD]">
                                 <Sparkles size={8} /> AI
                               </span>
                             )}
@@ -415,7 +405,7 @@ export default function InboxView({
               </div>
 
               {/* Chat Input Footer */}
-              <div className="p-3 border-t border-white/[0.06] bg-[#111218] flex items-center gap-2">
+              <div className="p-3 border-t border-white/[0.07] bg-[#1A1C23] flex items-center gap-2">
                 <input
                   type="text"
                   placeholder="Напишите ответ клиенту..."
@@ -427,25 +417,25 @@ export default function InboxView({
                       void handleSendMessage();
                     }
                   }}
-                  className="input !h-10 text-xs"
+                  className="input !h-9 text-xs"
                 />
 
                 <button
                   onClick={handleSendMessage}
                   disabled={sending || !inputText.trim()}
-                  className="btn-primary !h-10 !w-10 !p-0 shrink-0"
+                  className="btn-primary !h-9 !w-9 !p-0 shrink-0"
                 >
-                  {sending ? <Spinner size={14} /> : <Send size={15} />}
+                  {sending ? <Spinner size={14} /> : <Send size={14} />}
                 </button>
               </div>
             </>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center p-8 text-center text-slate-500 space-y-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-300 border border-brand-500/20">
-                <MessageSquare size={26} />
+            <div className="flex h-full flex-col items-center justify-center p-8 text-center text-[#6B7280] space-y-2.5">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#242731] text-[#8B5CF6] border border-white/[0.08]">
+                <MessageSquare size={22} />
               </div>
-              <h3 className="text-sm font-bold text-white">Выберите диалог</h3>
-              <p className="max-w-xs text-xs text-slate-400">
+              <h3 className="text-sm font-semibold text-[#F3F4F6]">Выберите диалог</h3>
+              <p className="max-w-xs text-xs text-[#9CA3AF]">
                 Выберите диалог из списка слева, чтобы просмотреть переписку и включить AI-дожим.
               </p>
             </div>

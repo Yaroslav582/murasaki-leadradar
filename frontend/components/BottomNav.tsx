@@ -41,7 +41,7 @@ export default function BottomNav({
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-[#09090d]/90 px-3 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 backdrop-blur-xl md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.07] bg-[#111216]/85 px-3 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 backdrop-blur-xl md:hidden">
       <div className="mx-auto flex max-w-md items-center justify-around">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
@@ -54,21 +54,21 @@ export default function BottomNav({
                 triggerHaptic("light");
                 onSelectTab(tab.id);
               }}
-              className={`relative flex flex-col items-center justify-center gap-1 rounded-xl px-3 py-1 transition-all ${
-                isActive ? "text-brand-300" : "text-slate-400 hover:text-slate-200"
+              className={`relative flex flex-col items-center justify-center gap-1 rounded-lg px-2.5 py-1 transition-all ${
+                isActive ? "text-brand-300" : "text-[#9CA3AF] hover:text-[#F3F4F6]"
               }`}
             >
               <div
-                className={`relative flex h-7 w-7 items-center justify-center rounded-lg transition-transform ${
-                  isActive ? "scale-110" : ""
+                className={`relative flex h-6 w-6 items-center justify-center rounded-md transition-transform ${
+                  isActive ? "scale-105" : ""
                 }`}
               >
-                <Icon size={19} className={isActive ? "text-brand-400" : ""} />
+                <Icon size={18} className={isActive ? "text-brand-400" : "text-[#9CA3AF]"} />
                 {isActive && (
-                  <span className="absolute -bottom-1 h-1 w-1 rounded-full bg-brand-400 shadow-[0_0_8px_rgba(124,92,255,0.8)]" />
+                  <span className="absolute -bottom-1 h-1 w-1 rounded-full bg-brand-400 shadow-[0_0_6px_rgba(139,92,246,0.8)]" />
                 )}
               </div>
-              <span className={`text-[10px] tracking-tight ${isActive ? "font-bold text-white" : "font-medium"}`}>
+              <span className={`text-[10px] tracking-tight ${isActive ? "font-semibold text-[#F3F4F6]" : "font-normal text-[#9CA3AF]"}`}>
                 {tab.label}
               </span>
             </button>

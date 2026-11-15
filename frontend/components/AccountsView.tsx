@@ -33,17 +33,17 @@ const STATUS_CONFIG: Record<
 > = {
   active: {
     label: "Активен",
-    bg: "bg-emerald-500/10",
-    text: "text-emerald-400",
+    bg: "bg-[rgba(16,185,129,0.12)]",
+    text: "text-[#10B981]",
     border: "border-emerald-500/20",
-    dot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]",
+    dot: "bg-[#10B981] shadow-[0_0_6px_rgba(16,185,129,0.5)]",
   },
   warming: {
     label: "Прогрев",
     bg: "bg-amber-500/10",
-    text: "text-amber-400",
+    text: "text-[#F59E0B]",
     border: "border-amber-500/20",
-    dot: "bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.6)]",
+    dot: "bg-[#F59E0B] shadow-[0_0_6px_rgba(245,158,11,0.5)]",
   },
   floodwait: {
     label: "FloodWait",
@@ -55,9 +55,9 @@ const STATUS_CONFIG: Record<
   spamblock: {
     label: "Спам-блок",
     bg: "bg-rose-500/10",
-    text: "text-rose-400",
+    text: "text-[#EF4444]",
     border: "border-rose-500/20",
-    dot: "bg-rose-400",
+    dot: "bg-[#EF4444]",
   },
   banned: {
     label: "Забанен",
@@ -87,17 +87,17 @@ function Switch({
         triggerHaptic("medium");
         onChange(!checked);
       }}
-      className={`relative h-6 w-11 shrink-0 rounded-full border transition ${
+      className={`relative h-5 w-9 shrink-0 rounded-full border transition ${
         checked
-          ? "border-brand-500/60 bg-brand-500/80 shadow-[0_0_12px_rgba(124,92,255,0.4)]"
-          : "border-white/10 bg-white/10"
+          ? "border-brand-500/60 bg-brand-500 shadow-[0_0_8px_rgba(139,92,246,0.35)]"
+          : "border-white/10 bg-[#242731]"
       } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
     >
       <span
         className={`absolute top-0.5 rounded-full bg-white shadow transition-all ${
-          checked ? "left-[22px]" : "left-0.5"
+          checked ? "left-[18px]" : "left-0.5"
         }`}
-        style={{ height: 18, width: 18 }}
+        style={{ height: 14, width: 14 }}
       />
     </button>
   );
@@ -337,56 +337,47 @@ export default function AccountsView({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header & Sub-Navigation */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-300">
-              Инфраструктура фермы
-            </span>
-            <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold text-brand-300 border border-brand-500/20">
-              Account Pool
-            </span>
-          </div>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-[28px]">
+          <h1 className="text-xl font-semibold tracking-tight text-[#F3F4F6]">
             Аккаунты и Прокси
           </h1>
-          <p className="mt-1 text-xs text-slate-400">
-            Мультиаккаунтинг Telethon с автопрогревом, пулом ротации при FloodWait и защитой от спамб-блоков.
-          </p>
         </div>
 
         {/* Buttons / Tabs switch */}
         <div className="flex items-center gap-2">
-          <div className="flex rounded-xl border border-white/[0.08] bg-[#12131a] p-1">
+          <div className="flex rounded-lg border border-white/[0.06] bg-[#242731] p-1">
             <button
               onClick={() => {
                 triggerHaptic("light");
                 setTab("accounts");
               }}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
                 tab === "accounts"
-                  ? "bg-brand-500 text-white shadow-[0_0_16px_rgba(124,92,255,0.4)]"
-                  : "text-slate-400 hover:text-white"
+                  ? "bg-brand-500 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                  : "text-[#9CA3AF] hover:text-[#F3F4F6]"
               }`}
             >
               <Users size={13} />
-              Аккаунты ({accounts.length})
+              <span>Аккаунты</span>
+              <span className="font-mono tabular-nums text-[11px] opacity-80">({accounts.length})</span>
             </button>
             <button
               onClick={() => {
                 triggerHaptic("light");
                 setTab("proxies");
               }}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
                 tab === "proxies"
-                  ? "bg-brand-500 text-white shadow-[0_0_16px_rgba(124,92,255,0.4)]"
-                  : "text-slate-400 hover:text-white"
+                  ? "bg-brand-500 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                  : "text-[#9CA3AF] hover:text-[#F3F4F6]"
               }`}
             >
               <Wifi size={13} />
-              Прокси ({proxies.length})
+              <span>Прокси</span>
+              <span className="font-mono tabular-nums text-[11px] opacity-80">({proxies.length})</span>
             </button>
           </div>
 
@@ -398,7 +389,7 @@ export default function AccountsView({
               }}
               className="btn-primary"
             >
-              <Plus size={15} />
+              <Plus size={14} />
               <span className="hidden sm:inline">Добавить аккаунт</span>
               <span className="sm:hidden">Добавить</span>
             </button>
@@ -410,8 +401,8 @@ export default function AccountsView({
               }}
               className="btn-primary"
             >
-              <Plus size={15} />
-              Добавить прокси
+              <Plus size={14} />
+              <span>Добавить прокси</span>
             </button>
           )}
         </div>
@@ -447,7 +438,7 @@ export default function AccountsView({
             </button>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {accounts.map((acc) => {
               const statusCfg = STATUS_CONFIG[acc.status] || STATUS_CONFIG.active;
               const linkedProxy = proxies.find((p) => p.id === acc.proxy_id);
@@ -455,38 +446,38 @@ export default function AccountsView({
               return (
                 <div
                   key={acc.id}
-                  className="card p-5 relative overflow-hidden transition-all hover:border-white/15 hover:shadow-[0_4px_24px_rgba(0,0,0,0.5)]"
+                  className="card p-3.5 space-y-3 relative overflow-hidden transition-all hover:border-white/[0.12]"
                 >
                   {/* Top info: phone, username, status badge */}
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Smartphone size={16} className="text-brand-300 shrink-0" />
-                        <span className="font-mono text-sm font-bold text-white truncate">
+                      <div className="flex items-center gap-1.5">
+                        <Smartphone size={14} className="text-brand-400 shrink-0" />
+                        <span className="font-mono tabular-nums text-xs font-semibold text-[#F3F4F6] truncate">
                           {acc.phone}
                         </span>
                       </div>
                       {acc.username && (
-                        <p className="mt-0.5 text-xs text-brand-300/80 truncate">
+                        <p className="mt-0.5 text-[11px] text-brand-300/80 truncate">
                           @{acc.username}
                         </p>
                       )}
                     </div>
 
                     <div
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
                     >
                       <span className={`h-1.5 w-1.5 rounded-full ${statusCfg.dot}`} />
                       {statusCfg.label}
                     </div>
                   </div>
 
-                  {/* Device model / proxy tag */}
-                  <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
-                    <span className="rounded-md border border-white/5 bg-white/[0.03] px-2 py-0.5 truncate max-w-[160px]">
+                  {/* Device model / proxy pills */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded-md border border-white/[0.06] bg-[#242731] px-2 py-0.5 text-[10px] text-[#9CA3AF] truncate max-w-[140px]">
                       {acc.device_model || "Samsung S21"}
                     </span>
-                    <span className="rounded-md border border-white/5 bg-white/[0.03] px-2 py-0.5">
+                    <span className="rounded-md border border-white/[0.06] bg-[#242731] px-2 py-0.5 text-[10px] text-[#9CA3AF]">
                       {linkedProxy
                         ? `${linkedProxy.protocol.toUpperCase()} ${linkedProxy.host}:${linkedProxy.port}`
                         : "Прямой IP"}
@@ -494,84 +485,84 @@ export default function AccountsView({
                   </div>
 
                   {/* Warmup Progress Bar */}
-                  <div className="mt-4 space-y-1.5">
+                  <div className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-1 text-slate-400">
-                        <Flame size={13} className="text-amber-400" />
-                        Уровень прогрева
+                      <span className="flex items-center gap-1 text-[#9CA3AF] text-[11px]">
+                        <Flame size={12} className="text-[#F59E0B]" />
+                        Прогрев
                       </span>
-                      <span className="font-mono font-bold text-white">
+                      <span className="font-mono tabular-nums text-xs font-medium text-[#F3F4F6]">
                         {acc.warmup_level}%
                       </span>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-white/5 overflow-hidden p-[1px]">
+                    <div className="h-1.5 w-full rounded-full bg-[#242731] overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-brand-500 via-fuchsia-500 to-emerald-400 transition-all duration-500 shadow-[0_0_8px_rgba(124,92,255,0.7)]"
-                        style={{ width: `${Math.max(5, acc.warmup_level)}%` }}
+                        className="h-full rounded-full bg-gradient-to-r from-[#7C3AED] to-[#A78BFA] transition-all duration-500 shadow-[0_0_8px_rgba(139,92,246,0.4)]"
+                        style={{ width: `${Math.max(4, acc.warmup_level)}%` }}
                       />
                     </div>
                   </div>
 
                   {/* Presets and Actions counter */}
-                  <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs">
+                  <div className="pt-2.5 border-t border-white/[0.06] flex items-center justify-between text-xs">
                     <div>
-                      <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">
-                        Пресет прогрева
+                      <span className="text-[#6B7280] block text-[10px] font-medium">
+                        Пресет
                       </span>
                       <select
                         value={acc.warmup_preset || "optimal"}
                         onChange={(e) => handleChangePreset(acc, e.target.value)}
-                        className="mt-0.5 bg-transparent text-xs font-semibold text-slate-200 outline-none cursor-pointer hover:text-white"
+                        className="mt-0.5 rounded-md border border-white/[0.06] bg-[#242731] px-1.5 py-0.5 text-[11px] text-[#F3F4F6] outline-none cursor-pointer hover:border-white/20"
                       >
-                        <option value="light" className="bg-[#13131a]">Лайт (1-2/д)</option>
-                        <option value="optimal" className="bg-[#13131a]">Оптимальный (3-4/д)</option>
-                        <option value="active" className="bg-[#13131a]">Активный (5-6/д)</option>
+                        <option value="light" className="bg-[#1A1C23]">Лайт (1-2/д)</option>
+                        <option value="optimal" className="bg-[#1A1C23]">Оптимальный (3-4/д)</option>
+                        <option value="active" className="bg-[#1A1C23]">Активный (5-6/д)</option>
                       </select>
                     </div>
 
                     <div className="text-right">
-                      <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">
-                        Действий сегодня
+                      <span className="text-[#6B7280] block text-[10px] font-medium">
+                        Действий
                       </span>
-                      <span className="font-mono text-xs font-bold text-slate-300">
+                      <span className="font-mono tabular-nums text-[11px] font-medium text-[#9CA3AF]">
                         {acc.daily_actions_count} / 50
                       </span>
                     </div>
                   </div>
 
                   {/* Footer: Switch auto-warmup + Check + Delete */}
-                  <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="pt-2.5 border-t border-white/[0.06] flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
                       <Switch
                         checked={acc.auto_warmup}
                         onChange={(val) => handleToggleAutoWarmup(acc, val)}
                       />
-                      <span className="text-xs font-medium text-slate-300">
+                      <span className="text-[11px] font-medium text-[#9CA3AF]">
                         Автопрогрев
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleCheckAccount(acc)}
                         disabled={checkingId === acc.id}
-                        className="btn-ghost !px-2.5 !py-1 text-xs"
+                        className="btn-ghost !px-2 !py-0.5 text-[11px]"
                         title="Проверить здоровье (@SpamBot)"
                       >
                         {checkingId === acc.id ? (
-                          <Spinner size={12} />
+                          <Spinner size={11} />
                         ) : (
-                          <Activity size={12} className="text-brand-300" />
+                          <Activity size={11} className="text-brand-300" />
                         )}
-                        <span className="hidden sm:inline">Чек</span>
+                        <span>Чек</span>
                       </button>
 
                       <button
                         onClick={() => handleDeleteAccount(acc.id)}
-                        className="icon-btn !h-7 !w-7 text-slate-500 hover:text-rose-400 hover:border-rose-500/30"
+                        className="icon-btn !h-6 !w-6 text-[#6B7280] hover:text-[#EF4444]"
                         title="Удалить аккаунт"
                       >
-                        <Trash2 size={13} />
+                        <Trash2 size={12} />
                       </button>
                     </div>
                   </div>
@@ -583,39 +574,39 @@ export default function AccountsView({
       ) : (
         /* Proxies Tab */
         proxies.length === 0 ? (
-          <div className="card flex flex-col items-center justify-center p-12 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-300 border border-brand-500/20 mb-4">
-              <Server size={28} />
+          <div className="card flex flex-col items-center justify-center p-10 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-500/10 text-brand-300 border border-brand-500/20 mb-3">
+              <Server size={22} />
             </div>
-            <h3 className="text-lg font-bold text-white">Нет добавленных прокси</h3>
-            <p className="mt-1.5 max-w-sm text-xs text-slate-400">
-              Добавьте SOCKS5 или HTTP прокси для изоляции аккаунтов и предотвращения флуд-блокировок по IP.
+            <h3 className="text-sm font-semibold text-[#F3F4F6]">Нет добавленных прокси</h3>
+            <p className="mt-1 max-w-sm text-xs text-[#9CA3AF]">
+              Добавьте SOCKS5 или HTTP прокси для изоляции аккаунтов фермы.
             </p>
-            <button onClick={() => setAddProxyOpen(true)} className="btn-primary mt-5">
-              <Plus size={15} />
-              Добавить первый прокси
+            <button onClick={() => setAddProxyOpen(true)} className="btn-primary mt-4">
+              <Plus size={14} />
+              Добавить прокси
             </button>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {proxies.map((p) => (
-              <div key={p.id} className="card p-5 space-y-4">
+              <div key={p.id} className="card p-3.5 space-y-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2">
                     <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg border ${
+                      className={`flex h-7 w-7 items-center justify-center rounded-lg border ${
                         p.is_alive
-                          ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-400"
-                          : "border-rose-500/30 bg-rose-500/15 text-rose-400"
+                          ? "border-emerald-500/20 bg-[rgba(16,185,129,0.12)] text-[#10B981]"
+                          : "border-rose-500/20 bg-rose-500/10 text-[#EF4444]"
                       }`}
                     >
-                      <Wifi size={15} />
+                      <Wifi size={14} />
                     </div>
                     <div>
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                      <span className="text-[9px] uppercase font-semibold text-[#6B7280]">
                         {p.protocol.toUpperCase()}
                       </span>
-                      <p className="font-mono text-sm font-bold text-white">
+                      <p className="font-mono tabular-nums text-xs font-semibold text-[#F3F4F6]">
                         {p.host}:{p.port}
                       </p>
                     </div>
@@ -623,41 +614,41 @@ export default function AccountsView({
 
                   <div className="flex items-center gap-1.5">
                     <span
-                      className={`h-2.5 w-2.5 rounded-full ${
+                      className={`h-2 w-2 rounded-full ${
                         p.is_alive
-                          ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-                          : "bg-rose-500"
+                          ? "bg-[#10B981] shadow-[0_0_6px_rgba(16,185,129,0.7)]"
+                          : "bg-[#EF4444]"
                       }`}
                     />
-                    <span className="text-xs text-slate-400">
+                    <span className="text-[11px] text-[#9CA3AF]">
                       {p.is_alive ? "В сети" : "Оффлайн"}
                     </span>
                   </div>
                 </div>
 
                 {p.username && (
-                  <p className="text-xs text-slate-400 font-mono truncate">
-                    Логин: {p.username}
+                  <p className="text-[11px] text-[#9CA3AF] font-mono truncate">
+                    user: {p.username}
                   </p>
                 )}
 
-                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs text-slate-500">
-                  <span>
-                    Чек: {p.last_check ? new Date(p.last_check).toLocaleTimeString() : "Никогда"}
+                <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-[#6B7280]">
+                  <span className="font-mono tabular-nums">
+                    {p.last_check ? new Date(p.last_check).toLocaleTimeString() : "Не проверен"}
                   </span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => handleCheckProxy(p)}
-                      className="btn-ghost !px-2.5 !py-1 text-xs"
+                      className="btn-ghost !px-2 !py-0.5 text-[11px]"
                     >
-                      <RefreshCw size={11} />
-                      Проверить
+                      <RefreshCw size={10} />
+                      Чек
                     </button>
                     <button
                       onClick={() => handleDeleteProxy(p.id)}
-                      className="icon-btn !h-7 !w-7 text-slate-500 hover:text-rose-400"
+                      className="icon-btn !h-6 !w-6 text-[#6B7280] hover:text-[#EF4444]"
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={12} />
                     </button>
                   </div>
                 </div>
@@ -674,43 +665,43 @@ export default function AccountsView({
             className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             onClick={() => setAddAccountOpen(false)}
           />
-          <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#13131a] p-6 shadow-2xl space-y-5 animate-fadeIn">
+          <div className="relative w-full max-w-md rounded-xl border border-white/[0.08] bg-[#1A1C23] p-5 shadow-2xl space-y-4 animate-fadeIn">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500/15 border border-brand-500/20 text-brand-300">
-                  <Smartphone size={18} />
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/15 border border-brand-500/25 text-brand-300">
+                  <Smartphone size={16} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Подключить Telegram</h3>
-                  <p className="text-xs text-slate-400">Вход по коду или сессии</p>
+                  <h3 className="text-sm font-semibold text-[#F3F4F6]">Подключить Telegram</h3>
+                  <p className="text-[11px] text-[#9CA3AF]">Вход по коду или сессии</p>
                 </div>
               </div>
               <button
                 onClick={() => setAddAccountOpen(false)}
-                className="icon-btn !h-8 !w-8"
+                className="icon-btn !h-7 !w-7"
               >
-                <X size={15} />
+                <X size={14} />
               </button>
             </div>
 
             {/* Sub-tabs: Phone vs Session */}
-            <div className="flex rounded-xl border border-white/[0.08] bg-[#0c0d12] p-1">
+            <div className="flex rounded-lg border border-white/[0.06] bg-[#242731] p-1">
               <button
                 onClick={() => setManualTab("phone")}
-                className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
+                className={`flex-1 rounded-md py-1 text-xs font-medium transition ${
                   manualTab === "phone"
                     ? "bg-brand-500 text-white shadow"
-                    : "text-slate-400 hover:text-white"
+                    : "text-[#9CA3AF] hover:text-[#F3F4F6]"
                 }`}
               >
                 По номеру телефона
               </button>
               <button
                 onClick={() => setManualTab("session")}
-                className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
+                className={`flex-1 rounded-md py-1 text-xs font-medium transition ${
                   manualTab === "session"
                     ? "bg-brand-500 text-white shadow"
-                    : "text-slate-400 hover:text-white"
+                    : "text-[#9CA3AF] hover:text-[#F3F4F6]"
                 }`}
               >
                 StringSession
@@ -719,9 +710,9 @@ export default function AccountsView({
 
             {manualTab === "phone" ? (
               authStep === "phone" ? (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div>
-                    <label className="label mb-1.5 block">Номер телефона (с кодом страны)</label>
+                    <label className="label mb-1 block">Номер телефона (с кодом страны)</label>
                     <input
                       type="text"
                       placeholder="+7 999 123-45-67"
@@ -732,7 +723,7 @@ export default function AccountsView({
                   </div>
 
                   <div>
-                    <label className="label mb-1.5 block">Привязать прокси (рекомендуется)</label>
+                    <label className="label mb-1 block">Привязать прокси (рекомендуется)</label>
                     <select
                       value={authProxyId}
                       onChange={(e) => setAuthProxyId(e.target.value)}
@@ -752,41 +743,41 @@ export default function AccountsView({
                     disabled={authLoading}
                     className="btn-primary w-full"
                   >
-                    {authLoading ? <Spinner size={16} /> : <ArrowRight size={16} />}
+                    {authLoading ? <Spinner size={14} /> : <ArrowRight size={14} />}
                     Получить код в Telegram
                   </button>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <p className="text-xs text-slate-300">
-                    Код отправлен на номер <span className="font-bold text-white">{authPhone}</span> в официальное приложение Telegram.
+                <div className="space-y-3">
+                  <p className="text-xs text-[#9CA3AF]">
+                    Код отправлен на номер <span className="font-semibold text-[#F3F4F6]">{authPhone}</span> в Telegram.
                   </p>
 
                   <div>
-                    <label className="label mb-1.5 block">Код подтверждения</label>
+                    <label className="label mb-1 block">Код подтверждения</label>
                     <input
                       type="text"
                       placeholder="12345"
                       value={authCode}
                       onChange={(e) => setAuthCode(e.target.value)}
-                      className="input text-center text-lg font-mono tracking-widest"
+                      className="input text-center text-base font-mono tracking-widest"
                     />
                   </div>
 
                   <div>
-                    <label className="label mb-1.5 block flex items-center gap-1">
-                      <Lock size={11} /> Облачный пароль 2FA (если установлен)
+                    <label className="label mb-1 block flex items-center gap-1">
+                      <Lock size={11} /> Пароль 2FA (если установлен)
                     </label>
                     <input
                       type="password"
-                      placeholder="Ваш пароль двухфакторной защиты"
+                      placeholder="Пароль двухфакторной защиты"
                       value={authPassword}
                       onChange={(e) => setAuthPassword(e.target.value)}
                       className="input"
                     />
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 pt-1">
                     <button
                       onClick={() => setAuthStep("phone")}
                       className="btn-ghost flex-1"
@@ -798,16 +789,16 @@ export default function AccountsView({
                       disabled={authLoading}
                       className="btn-primary flex-1"
                     >
-                      {authLoading ? <Spinner size={16} /> : <Check size={16} />}
+                      {authLoading ? <Spinner size={14} /> : <Check size={14} />}
                       Подтвердить
                     </button>
                   </div>
                 </div>
               )
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div>
-                  <label className="label mb-1.5 block">Номер телефона</label>
+                  <label className="label mb-1 block">Номер телефона</label>
                   <input
                     type="text"
                     placeholder="+7 999 123-45-67"
@@ -818,18 +809,18 @@ export default function AccountsView({
                 </div>
 
                 <div>
-                  <label className="label mb-1.5 block">Telethon StringSession</label>
+                  <label className="label mb-1 block">Telethon StringSession</label>
                   <textarea
                     rows={4}
                     placeholder="1BJWap1wB..."
                     value={sessionInput}
                     onChange={(e) => setSessionInput(e.target.value)}
-                    className="input font-mono text-xs"
+                    className="input font-mono text-[11px]"
                   />
                 </div>
 
                 <div>
-                  <label className="label mb-1.5 block">Прокси</label>
+                  <label className="label mb-1 block">Прокси</label>
                   <select
                     value={authProxyId}
                     onChange={(e) => setAuthProxyId(e.target.value)}
@@ -849,7 +840,7 @@ export default function AccountsView({
                   disabled={authLoading}
                   className="btn-primary w-full"
                 >
-                  {authLoading ? <Spinner size={16} /> : <Check size={16} />}
+                  {authLoading ? <Spinner size={14} /> : <Check size={14} />}
                   Сохранить аккаунт
                 </button>
               </div>
@@ -865,23 +856,23 @@ export default function AccountsView({
             className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             onClick={() => setAddProxyOpen(false)}
           />
-          <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#13131a] p-6 shadow-2xl space-y-4 animate-fadeIn">
+          <div className="relative w-full max-w-md rounded-xl border border-white/[0.08] bg-[#1A1C23] p-5 shadow-2xl space-y-3.5 animate-fadeIn">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Wifi size={17} className="text-brand-300" />
+              <h3 className="text-sm font-semibold text-[#F3F4F6] flex items-center gap-2">
+                <Wifi size={15} className="text-brand-400" />
                 Новый прокси-сервер
               </h3>
               <button
                 onClick={() => setAddProxyOpen(false)}
-                className="icon-btn !h-8 !w-8"
+                className="icon-btn !h-7 !w-7"
               >
-                <X size={15} />
+                <X size={14} />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="label mb-1.5 block">Протокол</label>
+                <label className="label mb-1 block">Протокол</label>
                 <select
                   value={proxyProto}
                   onChange={(e) => setProxyProto(e.target.value as "socks5" | "http")}
@@ -892,7 +883,7 @@ export default function AccountsView({
                 </select>
               </div>
               <div>
-                <label className="label mb-1.5 block">Порт</label>
+                <label className="label mb-1 block">Порт</label>
                 <input
                   type="number"
                   value={proxyPort}
@@ -904,7 +895,7 @@ export default function AccountsView({
             </div>
 
             <div>
-              <label className="label mb-1.5 block">Хост / IP</label>
+              <label className="label mb-1 block">Хост / IP</label>
               <input
                 type="text"
                 value={proxyHost}
@@ -914,9 +905,9 @@ export default function AccountsView({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="label mb-1.5 block">Логин (опционально)</label>
+                <label className="label mb-1 block">Логин (опционально)</label>
                 <input
                   type="text"
                   value={proxyUser}
@@ -926,7 +917,7 @@ export default function AccountsView({
                 />
               </div>
               <div>
-                <label className="label mb-1.5 block">Пароль</label>
+                <label className="label mb-1 block">Пароль</label>
                 <input
                   type="password"
                   value={proxyPass}
@@ -940,9 +931,9 @@ export default function AccountsView({
             <button
               onClick={handleAddProxy}
               disabled={proxySubmitting}
-              className="btn-primary w-full mt-2"
+              className="btn-primary w-full mt-1"
             >
-              {proxySubmitting ? <Spinner size={16} /> : <Check size={16} />}
+              {proxySubmitting ? <Spinner size={14} /> : <Check size={14} />}
               Добавить прокси
             </button>
           </div>

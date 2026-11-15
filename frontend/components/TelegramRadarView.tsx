@@ -378,20 +378,20 @@ export default function TelegramRadarView({
   return (
     <div className="space-y-6">
       {/* Top Banner / Master Controls */}
-      <div className="rounded-2xl border border-white/10 bg-[#161616] p-5 shadow-xl sm:p-6">
+      <div className="rounded-2xl border border-white/[0.07] bg-[#1A1C23] p-5 shadow-surface sm:p-6">
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2.5">
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-500/20 text-brand-300">
-                <Radio size={16} className={status?.auto_response_enabled ? "animate-pulse" : ""} />
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#242731] border border-white/[0.06] text-[#8B5CF6]">
+                <Radio size={14} className={status?.auto_response_enabled ? "animate-pulse" : ""} />
               </span>
-              <h2 className="text-xl font-bold tracking-tight text-white">TG-Радар заказов и автопосев</h2>
-              <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-300">
+              <h2 className="text-xl font-semibold tracking-tight text-[#F3F4F6]">TG-Радар заказов и автопосев</h2>
+              <span className="rounded-md border border-emerald-500/20 bg-[rgba(16,185,129,0.12)] px-2 py-0.5 text-xs font-medium text-[#10B981]">
                 {status?.is_connected ? "UserBot @loves_kyni активен" : "Готов к подключению"}
               </span>
             </div>
-            <p className="text-xs text-slate-400 max-w-2xl">
-              Мониторит каналы фриланса, перехватывает заказы на сайты, готовит вежливый отклик через нейросеть с таймером ~10 мин и сеет промо по расписанию с разным КД.
+            <p className="text-xs text-[#9CA3AF] max-w-2xl">
+              Мониторит каналы фриланса, перехватывает заказы на сайты, готовит вежливый отклик через нейросеть с таймером ~10 мин и сеет промо по расписанию.
             </p>
           </div>
 
@@ -400,20 +400,20 @@ export default function TelegramRadarView({
             {/* Auto-response Start / Stop button */}
             <button
               onClick={handleToggleAutoResponse}
-              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition shadow-lg ${
+              className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
                 status?.auto_response_enabled
-                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30"
-                  : "bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-500/20"
+                  ? "bg-rose-500/15 text-rose-300 border border-rose-500/30 hover:bg-rose-500/25"
+                  : "bg-[#10B981] text-white hover:bg-emerald-600"
               }`}
             >
               {status?.auto_response_enabled ? (
                 <>
-                  <Pause size={14} />
+                  <Pause size={13} />
                   <span>Остановить автоотклик</span>
                 </>
               ) : (
                 <>
-                  <Play size={14} />
+                  <Play size={13} />
                   <span>Возобновить автоотклик</span>
                 </>
               )}
@@ -476,22 +476,22 @@ export default function TelegramRadarView({
         </div>
 
         {/* Quick Stats Grid */}
-        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-white/[0.06] pt-4 sm:grid-cols-4">
-          <div className="rounded-xl border border-white/[0.05] bg-[#1a1a1a] p-3">
-            <p className="text-[11px] font-medium text-slate-400">Перехвачено заказов</p>
-            <p className="mt-1 text-lg font-bold text-white">{orders.length}</p>
+        <div className="mt-4 grid grid-cols-2 gap-2.5 border-t border-white/[0.06] pt-4 sm:grid-cols-4">
+          <div className="rounded-lg border border-white/[0.06] bg-[#242731] p-3">
+            <p className="text-[11px] font-medium text-[#9CA3AF]">Перехвачено заказов</p>
+            <p className="mt-1 text-lg font-semibold font-mono tabular-nums text-[#F3F4F6]">{orders.length}</p>
           </div>
-          <div className="rounded-xl border border-white/[0.05] bg-[#1a1a1a] p-3">
-            <p className="text-[11px] font-medium text-slate-400">Автопосевов сделано</p>
-            <p className="mt-1 text-lg font-bold text-white">{broadcasts.length}</p>
+          <div className="rounded-lg border border-white/[0.06] bg-[#242731] p-3">
+            <p className="text-[11px] font-medium text-[#9CA3AF]">Автопосевов сделано</p>
+            <p className="mt-1 text-lg font-semibold font-mono tabular-nums text-[#F3F4F6]">{broadcasts.length}</p>
           </div>
-          <div className="rounded-xl border border-white/[0.05] bg-[#1a1a1a] p-3">
-            <p className="text-[11px] font-medium text-slate-400">Каналов на радаре</p>
-            <p className="mt-1 text-lg font-bold text-white">{chats.length}</p>
+          <div className="rounded-lg border border-white/[0.06] bg-[#242731] p-3">
+            <p className="text-[11px] font-medium text-[#9CA3AF]">Каналов на радаре</p>
+            <p className="mt-1 text-lg font-semibold font-mono tabular-nums text-[#F3F4F6]">{chats.length}</p>
           </div>
-          <div className="rounded-xl border border-white/[0.05] bg-[#1a1a1a] p-3">
-            <p className="text-[11px] font-medium text-slate-400">КД отклика</p>
-            <p className="mt-1 text-lg font-bold text-brand-300">~{delayInput} минут</p>
+          <div className="rounded-lg border border-white/[0.06] bg-[#242731] p-3">
+            <p className="text-[11px] font-medium text-[#9CA3AF]">КД отклика</p>
+            <p className="mt-1 text-lg font-semibold font-mono tabular-nums text-[#C4B5FD]">~{delayInput} мин</p>
           </div>
         </div>
       </div>
@@ -568,21 +568,21 @@ export default function TelegramRadarView({
       )}
 
       {/* Main Tabs Navigation */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] pb-3">
+        <div className="flex flex-wrap gap-1.5">
           <button
             onClick={() => {
               triggerHaptic("light");
               setTab("orders");
             }}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
               tab === "orders"
-                ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
-                : "border border-white/10 bg-[#161616] text-slate-400 hover:text-white"
+                ? "bg-[#8B5CF6] text-white"
+                : "border border-white/[0.06] bg-[#242731] text-[#9CA3AF] hover:text-[#F3F4F6]"
             }`}
           >
-            <MessageSquare size={14} />
-            Заказы фриланса ({orders.length})
+            <MessageSquare size={13} />
+            Заказы фриланса (<span className="font-mono tabular-nums">{orders.length}</span>)
           </button>
 
           <button
@@ -590,14 +590,14 @@ export default function TelegramRadarView({
               triggerHaptic("light");
               setTab("blog");
             }}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
               tab === "blog"
-                ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
-                : "border border-white/10 bg-[#161616] text-slate-400 hover:text-white"
+                ? "bg-[#8B5CF6] text-white"
+                : "border border-white/[0.06] bg-[#242731] text-[#9CA3AF] hover:text-[#F3F4F6]"
             }`}
           >
-            <BookOpen size={14} className={tab === "blog" ? "text-white" : "text-amber-400"} />
-            Автоблогер канала (24 ч)
+            <BookOpen size={13} className={tab === "blog" ? "text-white" : "text-amber-400"} />
+            Автоблогер (24 ч)
           </button>
 
           <button
@@ -605,13 +605,13 @@ export default function TelegramRadarView({
               triggerHaptic("light");
               setTab("comments");
             }}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
               tab === "comments"
-                ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
-                : "border border-white/10 bg-[#161616] text-slate-400 hover:text-white"
+                ? "bg-[#8B5CF6] text-white"
+                : "border border-white/[0.06] bg-[#242731] text-[#9CA3AF] hover:text-[#F3F4F6]"
             }`}
           >
-            <MessageCircle size={14} className={tab === "comments" ? "text-white" : "text-brand-400"} />
+            <MessageCircle size={13} className={tab === "comments" ? "text-white" : "text-[#8B5CF6]"} />
             Нейрокомментинг
           </button>
 
@@ -620,13 +620,13 @@ export default function TelegramRadarView({
               triggerHaptic("light");
               setTab("scraper");
             }}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
               tab === "scraper"
-                ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
-                : "border border-white/10 bg-[#161616] text-slate-400 hover:text-white"
+                ? "bg-[#8B5CF6] text-white"
+                : "border border-white/[0.06] bg-[#242731] text-[#9CA3AF] hover:text-[#F3F4F6]"
             }`}
           >
-            <UserCheck size={14} className={tab === "scraper" ? "text-white" : "text-emerald-400"} />
+            <UserCheck size={13} className={tab === "scraper" ? "text-white" : "text-emerald-400"} />
             Парсер чатов
           </button>
 
@@ -635,14 +635,14 @@ export default function TelegramRadarView({
               triggerHaptic("light");
               setTab("stories");
             }}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
               tab === "stories"
-                ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
-                : "border border-white/10 bg-[#161616] text-slate-400 hover:text-white"
+                ? "bg-[#8B5CF6] text-white"
+                : "border border-white/[0.06] bg-[#242731] text-[#9CA3AF] hover:text-[#F3F4F6]"
             }`}
           >
-            <Eye size={14} className={tab === "stories" ? "text-white" : "text-amber-400"} />
-            Просмотр Stories
+            <Eye size={13} className={tab === "stories" ? "text-white" : "text-amber-400"} />
+            Stories
           </button>
 
           <button
@@ -650,14 +650,14 @@ export default function TelegramRadarView({
               triggerHaptic("light");
               setTab("promo");
             }}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
               tab === "promo"
-                ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
-                : "border border-white/10 bg-[#161616] text-slate-400 hover:text-white"
+                ? "bg-[#8B5CF6] text-white"
+                : "border border-white/[0.06] bg-[#242731] text-[#9CA3AF] hover:text-[#F3F4F6]"
             }`}
           >
-            <Share2 size={14} />
-            История автопосева ({broadcasts.length})
+            <Share2 size={13} />
+            История автопосева (<span className="font-mono tabular-nums">{broadcasts.length}</span>)
           </button>
 
           <button
@@ -665,14 +665,14 @@ export default function TelegramRadarView({
               triggerHaptic("light");
               setTab("chats");
             }}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
               tab === "chats"
-                ? "bg-brand-500 text-white shadow-lg shadow-brand-500/25"
-                : "border border-white/10 bg-[#161616] text-slate-400 hover:text-white"
+                ? "bg-[#8B5CF6] text-white"
+                : "border border-white/[0.06] bg-[#242731] text-[#9CA3AF] hover:text-[#F3F4F6]"
             }`}
           >
-            <Users size={14} />
-            Каналы & Автопостинг ({chats.length})
+            <Users size={13} />
+            Каналы & Автопостинг (<span className="font-mono tabular-nums">{chats.length}</span>)
           </button>
         </div>
 
