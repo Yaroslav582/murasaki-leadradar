@@ -56,7 +56,7 @@ class OutreachWorker:
         )
 
         try:
-            personalized = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="fast", max_tokens=250, temperature=0.7)
+            personalized = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="fast", max_tokens=200, temperature=0.7)
             if personalized and len(personalized.strip()) > 20:
                 return personalized.strip()
         except Exception as e:

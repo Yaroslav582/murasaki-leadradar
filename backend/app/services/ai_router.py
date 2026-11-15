@@ -1,17 +1,33 @@
 """
 Unified AI routing and multi-provider fallback engine for Murasaki LeadRadar.
 Uses AsyncOpenAI with OpenAI-compatible endpoints across:
-1. Groq (Ultra-fast, Llama 3)
-2. Google AI Studio / Gemini (/v1beta/openai/)
-3. OpenRouter (Free tier / community models)
-4. MXR / OpenAI-compatible paid provider (Last-resort reserve)
+1. Google AI Studio / Gemini (https://generativelanguage.googleapis.com/v1beta/openai/)
+2. Groq (https://api.groq.com/openai/v1)
+3. OpenRouter (https://openrouter.ai/api/v1)
+4. MXR / OpenAI-compatible paid provider (Last-resort paid reserve)
 
-Features:
-- Task-type adaptive routing: "fast", "smart", "code"
-- Automatic provider health check & instant fallback on 429 / 5xx / timeout / 403
-- Hard daily rate limiter (MAX_DAILY_LLM_CALLS = 300) with UTC day rollover and DB sync
-- Optional HTTP/SOCKS5 proxy support via AI_PROXY_URL
-- Structured logging into Supabase system_logs
+Chains configured per task_type:
+- "fast":
+  1. Groq -> openai/gpt-oss-20b (fallback: llama-3.1-8b-instant)
+  2. Google AI Studio -> gemini-3.5-flash-lite (fallback: gemini-2.5-flash-lite)
+  3. Groq -> qwen/qwen3.8-27b (fallback: llama-3.3-70b-versatile)
+  4. OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.1-8b-instruct:free)
+  5. MXR -> reserve model (from .env)
+
+- "smart":
+  1. Groq -> qwen/qwen3.8-27b (fallback: llama-3.3-70b-versatile)
+  2. Google AI Studio -> gemini-3.8-flash (fallback: gemini-2.5-flash)
+  3. Google AI Studio -> gemini-3.6-flash (fallback: gemini-2.0-flash-lite)
+  4. Groq -> openai/gpt-oss-120b (fallback: llama-3.3-70b-versatile)
+  5. OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.3-70b-instruct:free)
+  6. MXR -> reserve model (from .env)
+
+- "code":
+  1. Google AI Studio -> gemini-4-hydrogen (fallback: gemini-3.8-flash)
+  2. Google AI Studio -> gemini-3.8-flash (fallback: gemini-2.5-flash)
+  3. Groq -> openai/gpt-oss-120b (fallback: llama-3.3-70b-versatile)
+  4. OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.3-70b-instruct:free)
+  5. MXR -> reserve model (from .env)
 """
 
 from __future__ import annotations
@@ -41,11 +57,11 @@ class AllProvidersFailedError(RuntimeError):
     pass
 
 
-# ── Daily Rate Limiter ────────────────────────────────────────────────────────
+# ── Daily Rate Limiter (Max 400 calls per day) ────────────────────────────────
 class AIRateLimiter:
     """In-memory rate limiter with daily UTC reset and database persistence."""
 
-    def __init__(self, max_calls: int = 300) -> None:
+    def __init__(self, max_calls: int = 400) -> None:
         self.max_calls = max_calls
         self.today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         self.calls_count = 0
@@ -103,7 +119,7 @@ class AIRateLimiter:
             self.calls_count += 1
             current = self.calls_count
 
-            # Asynchronously persist to DB every 5 calls or first call
+            # Asynchronously persist to DB every 5 calls or on first call
             if current == 1 or current % 5 == 0:
                 asyncio.create_task(self._persist_to_db())
 
@@ -119,7 +135,7 @@ class AIRateLimiter:
         }
 
 
-rate_limiter = AIRateLimiter()
+rate_limiter = AIRateLimiter(max_calls=400)
 
 
 # ── Client Pool with Optional Proxy ───────────────────────────────────────────
@@ -179,7 +195,7 @@ def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
         if not key:
             return None
         return {
-            "name": "Google Gemini",
+            "name": "Google AI Studio",
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
             "api_key": key,
             "extra_headers": None,
@@ -216,7 +232,7 @@ def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
             or "https://mxr.one/v1"
         ).strip()
         return {
-            "name": "MXR Reserve",
+            "name": "MXR Reserve (Paid)",
             "base_url": base_url,
             "api_key": key,
             "extra_headers": None,
@@ -227,42 +243,65 @@ def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
 
 def get_task_chain(task_type: str) -> list[tuple[str, list[str]]]:
     """
-    Returns priority list of (provider_id, [model_candidates]) for a given task type:
-    1. fast: Groq -> Gemini -> OpenRouter -> MXR
-    2. smart: Gemini -> Groq -> OpenRouter -> MXR
-    3. code: Gemini -> OpenRouter -> MXR
+    Returns ordered steps for task_type: list of (provider_id, [model_candidates]).
+
+    1. fast:
+       - Groq -> openai/gpt-oss-20b (fallback: llama-3.1-8b-instant)
+       - Google AI Studio -> gemini-3.5-flash-lite (fallback: gemini-2.5-flash-lite)
+       - Groq -> qwen/qwen3.8-27b (fallback: llama-3.3-70b-versatile)
+       - OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.1-8b-instruct:free)
+       - MXR -> current reserve model
+
+    2. smart:
+       - Groq -> qwen/qwen3.8-27b (fallback: llama-3.3-70b-versatile)
+       - Google AI Studio -> gemini-3.8-flash (fallback: gemini-2.5-flash)
+       - Google AI Studio -> gemini-3.6-flash (fallback: gemini-2.0-flash-lite)
+       - Groq -> openai/gpt-oss-120b (fallback: llama-3.3-70b-versatile)
+       - OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.3-70b-instruct:free)
+       - MXR -> current reserve model
+
+    3. code:
+       - Google AI Studio -> gemini-4-hydrogen (fallback: gemini-3.8-flash)
+       - Google AI Studio -> gemini-3.8-flash (fallback: gemini-2.5-flash)
+       - Groq -> openai/gpt-oss-120b (fallback: llama-3.3-70b-versatile)
+       - OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.3-70b-instruct:free)
+       - MXR -> current reserve model
     """
     reserve_model = settings.openai_model or "gpt-6-sol"
 
     if task_type == "fast":
         return [
-            ("groq", ["llama-3.1-8b-instant"]),
+            ("groq", ["openai/gpt-oss-20b", "llama-3.1-8b-instant", "llama-3.2-3b-preview"]),
             ("gemini", ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-1.5-flash"]),
+            ("groq", ["qwen/qwen3.8-27b", "llama-3.3-70b-versatile"]),
             ("openrouter", ["openrouter/free", "meta-llama/llama-3.1-8b-instruct:free"]),
-            ("mxr", [reserve_model]),
+            ("mxr", [reserve_model, "gpt-4o-mini"]),
         ]
 
     if task_type == "smart":
         return [
+            ("groq", ["qwen/qwen3.8-27b", "llama-3.3-70b-versatile"]),
             ("gemini", ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]),
-            ("groq", ["llama-3.3-70b-versatile"]),
+            ("gemini", ["gemini-3.6-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]),
+            ("groq", ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"]),
             ("openrouter", ["openrouter/free", "meta-llama/llama-3.3-70b-instruct:free"]),
-            ("mxr", [reserve_model]),
+            ("mxr", [reserve_model, "gpt-4o-mini"]),
         ]
 
     if task_type == "code":
         return [
-            ("gemini", ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"]),
+            ("gemini", ["gemini-4-hydrogen", "gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]),
+            ("gemini", ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]),
+            ("groq", ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"]),
             ("openrouter", ["openrouter/free", "meta-llama/llama-3.3-70b-instruct:free"]),
-            ("mxr", [reserve_model]),
+            ("mxr", [reserve_model, "gpt-4o-mini"]),
         ]
 
-    # Default fallback chain
     return [
-        ("groq", ["llama-3.1-8b-instant"]),
-        ("gemini", ["gemini-2.5-flash", "gemini-1.5-flash"]),
+        ("groq", ["openai/gpt-oss-20b", "llama-3.1-8b-instant"]),
+        ("gemini", ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-1.5-flash"]),
         ("openrouter", ["openrouter/free"]),
-        ("mxr", [reserve_model]),
+        ("mxr", [reserve_model, "gpt-4o-mini"]),
     ]
 
 
@@ -276,16 +315,17 @@ async def ask_ai(
 ) -> str:
     """
     Unified entry point for all AI calls across Murasaki LeadRadar.
-    Automatically handles rate limiting, model selection, timeouts, and fallbacks.
+    Automatically handles rate limiting (max 400 calls/day), model selection,
+    per-task timeouts (15s fast/smart, 45s code), and instant fallback across models.
 
     :param prompt: User prompt or main task description
     :param system_prompt: System role instructions
     :param task_type: "fast" | "smart" | "code"
     :param max_tokens: Max tokens to generate (defaults: fast=200, smart=500, code=4000)
-    :param temperature: Generation temperature
+    :param temperature: Generation temperature (0.7 default)
     :return: Generated text response
     """
-    # 1. Check daily rate limiter
+    # 1. Check daily rate limiter (max 400 calls per day)
     await rate_limiter.check_and_increment()
 
     # 2. Determine default tokens & timeouts
@@ -324,9 +364,9 @@ async def ask_ai(
 
         for model in model_candidates:
             try:
-                logger.debug(
-                    "AI Router: Calling %s (model=%s, task=%s, max_tokens=%d)...",
-                    prov_cfg["name"], model, task_type, max_tokens
+                logger.info(
+                    "AI Router: Trying %s [model=%s, task=%s, timeout=%ss]...",
+                    prov_cfg["name"], model, task_type, timeout
                 )
                 response = await asyncio.wait_for(
                     client.chat.completions.create(
@@ -349,22 +389,19 @@ async def ask_ai(
 
             except asyncio.TimeoutError:
                 err_msg = f"{prov_cfg['name']} ({model}) timed out after {timeout}s"
-                logger.warning("AI Router timeout: %s", err_msg)
+                logger.warning("AI Router fallback: %s -> switching to next model in list", err_msg)
                 errors_encountered.append(err_msg)
-                log_event_bg("ai_router", err_msg, level="WARNING", details={"task_type": task_type, "model": model})
-                break  # try next provider
+                log_event_bg("ai_router", err_msg, level="WARNING", details={"task_type": task_type, "model": model, "reason": "timeout"})
+                # Proceed to next model or provider immediately
+                continue
 
             except Exception as exc:
                 err_msg = f"{prov_cfg['name']} ({model}) error: {type(exc).__name__}: {exc}"
-                logger.warning("AI Router error: %s", err_msg)
+                logger.warning("AI Router fallback: %s -> switching to next model in list", err_msg)
                 errors_encountered.append(err_msg)
-                log_event_bg("ai_router", err_msg, level="WARNING", details={"task_type": task_type, "model": model})
-                # If error is a 404 model not found (e.g. Gemini preview versions), continue to candidate model;
-                # otherwise jump to next provider on rate limit or auth issues
-                err_str = str(exc).lower()
-                if "404" in err_str or "not_found" in err_str or "does not exist" in err_str:
-                    continue
-                break
+                log_event_bg("ai_router", err_msg, level="WARNING", details={"task_type": task_type, "model": model, "error": str(exc)})
+                # Proceed to next model or provider immediately
+                continue
 
     all_errs = "; ".join(errors_encountered) if errors_encountered else "Все провайдеры в цепочке отключены или не настроены"
     logger.error("AI Router: All providers failed for task '%s'. Errors: %s", task_type, all_errs)
@@ -377,8 +414,8 @@ def get_ai_router_stats() -> dict[str, Any]:
     """Returns active rate limiter usage and configured provider statuses."""
     stats = rate_limiter.get_stats()
     stats["providers"] = {
-        "groq": bool(settings.groq_api_key or os.getenv("GROQ_API_KEY")),
         "gemini": bool(settings.gemini_api_key or os.getenv("GEMINI_API_KEY")),
+        "groq": bool(settings.groq_api_key or os.getenv("GROQ_API_KEY")),
         "openrouter": bool(settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY")),
         "mxr": bool(
             settings.mxr_api_key

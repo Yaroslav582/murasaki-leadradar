@@ -115,7 +115,7 @@ class InboxService:
         )
 
         try:
-            ai_text = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="smart", max_tokens=350, temperature=0.7)
+            ai_text = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="smart", max_tokens=500, temperature=0.7)
             if not ai_text or len(ai_text.strip()) < 5:
                 ai_text = f"Здравствуйте! С удовольствием покажем вам кейсы и обсудим разработку: {portfolio_url}. Когда вам удобно созвониться на 5 минут?"
         except Exception as e:
