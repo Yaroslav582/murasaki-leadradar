@@ -3,7 +3,7 @@ import json
 
 BOT_TOKEN = "9286221746:AAFZapvWPAsJS1llwaydBUiyngF3RPlVyRI"
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
-WEB_APP_URL = "https://decimal-logical-karen-penn.trycloudflare.com"
+WEB_APP_URL = "https://frontend-mocha-three-gfa8fzsldf.vercel.app"
 
 def main():
     print(f"Configuring Telegram Bot via Bot API...")

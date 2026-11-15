@@ -16,6 +16,7 @@ from app.models import DemoSite
 from app.seed import seed_accounts_and_dialogs_data, seed_demo_data, seed_telegram_data
 from app.services.bot_runner import bot_runner
 from app.services.jobs import fail_stale_jobs
+from app.services.keep_alive import keep_alive_service
 from app.services.telegram_service import telegram_manager
 from app.services.warmup_worker import warmup_worker
 
@@ -50,9 +51,11 @@ async def lifespan(app: FastAPI):
     init_task = asyncio.create_task(telegram_manager.initialize())
     bot_runner.start()
     warmup_worker.start()
+    keep_alive_service.start()
     try:
         yield
     finally:
+        keep_alive_service.stop()
         warmup_worker.stop()
         bot_runner.stop()
         if getattr(telegram_manager, "_background_task", None) and not telegram_manager._background_task.done():

@@ -1,0 +1,16 @@
+name: LeadRadar 24/7 Keep-Alive
+
+on:
+  schedule:
+    # Runs every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render Backend
+        run: |
+          echo "Pinging Murasaki LeadRadar Render Backend..."
+          curl -s -f -m 30 https://murasaki-leadradar-1.onrender.com/health || echo "Ping dispatched"
