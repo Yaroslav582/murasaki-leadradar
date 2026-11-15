@@ -14,7 +14,7 @@ from app.db import SessionLocal
 from app.models import Dialog, Lead, Message, TgAccount, User, utcnow
 from app.services.account_pool import account_pool
 from app.services.billing import check_and_spend
-from app.services.llm import chat_completion
+from app.services.ai_router import ask_ai
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ class InboxService:
         )
 
         try:
-            ai_text = await chat_completion(system_prompt, user_prompt, max_tokens=250, temperature=0.7)
+            ai_text = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="smart", max_tokens=350, temperature=0.7)
             if not ai_text or len(ai_text.strip()) < 5:
                 ai_text = f"Здравствуйте! С удовольствием покажем вам кейсы и обсудим разработку: {portfolio_url}. Когда вам удобно созвониться на 5 минут?"
         except Exception as e:

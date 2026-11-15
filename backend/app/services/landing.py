@@ -7,7 +7,7 @@ from string import Template
 from urllib.parse import quote
 
 from app.config import settings
-from app.services.llm import chat_completion
+from app.services.ai_router import ask_ai
 
 ACCENTS = {
     "Бьюти": "rose",
@@ -743,7 +743,7 @@ async def generate_landing_html(lead: dict) -> tuple[str, str]:
         city=lead.get("city") or "Россия",
     )
     try:
-        raw = await chat_completion(LANDING_SYSTEM, prompt, max_tokens=7000, temperature=0.75)
+        raw = await ask_ai(prompt, system_prompt=LANDING_SYSTEM, task_type="code", max_tokens=4000, temperature=0.7)
         parsed = _extract_html(raw)
         if parsed:
             return parsed, "llm"
@@ -827,7 +827,7 @@ async def generate_outreach_message(lead: dict, demo_url: str) -> str:
             demo_url=demo_url,
         )
         try:
-            raw = await chat_completion(OUTREACH_SYSTEM, prompt, max_tokens=1000, temperature=0.7)
+            raw = await ask_ai(prompt, system_prompt=OUTREACH_SYSTEM, task_type="fast", max_tokens=300, temperature=0.7)
             cleaned = raw.strip().strip('"').strip("'")
             if cleaned and len(cleaned) > 50:
                 return cleaned

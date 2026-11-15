@@ -17,7 +17,7 @@ from app.models import (
     TelegramParsedUser,
     utcnow,
 )
-from app.services.llm import chat_completion
+from app.services.ai_router import ask_ai
 from app.services.telegram_service import telegram_manager
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ async def generate_ai_comment(
     user_prompt = f"Пост из канала '{channel_title}':\n\n{post_text[:800]}\n\nНапиши комментарий:"
 
     try:
-        res = await chat_completion(system=system_prompt, user=user_prompt, max_tokens=150)
+        res = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="smart", max_tokens=200)
         cleaned = res.strip().strip('"').strip("'")
         if cleaned and len(cleaned) > 10:
             return cleaned
@@ -394,7 +394,7 @@ async def generate_ai_blog_post(
     user_prompt = f"Тема поста: {topic}\n\nНапиши готовый пост:"
 
     try:
-        res = await chat_completion(system=system_prompt, user=user_prompt, max_tokens=1500)
+        res = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="smart", max_tokens=1500)
         cleaned = res.strip()
         lines = cleaned.split("\n")
         title = lines[0].strip("*# ").strip() if lines else topic

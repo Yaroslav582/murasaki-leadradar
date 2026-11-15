@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     anthropic_model: str = "claude-3-5-sonnet-latest"
 
+    # AI Multi-Provider Router (.env)
+    gemini_api_key: str | None = None
+    groq_api_key: str | None = None
+    openrouter_api_key: str | None = None
+    mxr_api_key: str | None = None
+    mxr_base_url: str | None = "https://mxr.one/v1"
+    ai_proxy_url: str | None = None
+    max_daily_llm_calls: int = 300
+
     http_timeout: float = 12.0
     enrichment_concurrency: int = 8
     max_parse_limit: int = 500

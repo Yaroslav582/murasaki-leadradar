@@ -205,6 +205,22 @@ class WarmupWorker:
         acc1, acc2 = random.sample(accounts, 2)
         phrase1, phrase2 = random.choice(FARM_CHAT_TEMPLATES)
 
+        # Generate unique human dialogue via AI router if available
+        try:
+            from app.services.ai_router import ask_ai
+            ai_dialog = await ask_ai(
+                "Придумай очень короткий живой нейтральный диалог из двух реплик (вопрос и ответ) между двумя знакомыми в Telegram. "
+                "Каждая реплика 1 короткое предложение до 8 слов. Формат строго: Реплика 1 | Реплика 2",
+                task_type="fast",
+                max_tokens=60,
+            )
+            if "|" in ai_dialog:
+                p1, p2 = [p.strip().strip('"').strip("'") for p in ai_dialog.split("|", 1)]
+                if len(p1) > 3 and len(p2) > 3:
+                    phrase1, phrase2 = p1, p2
+        except Exception as ai_err:
+            logger.debug("AI cross-chat generation fallback to template: %s", ai_err)
+
         try:
             client1 = await account_pool.get_client_for_account(acc1)
             await client1.connect()

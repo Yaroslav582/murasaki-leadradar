@@ -210,65 +210,27 @@ async def chat_completion(
     *,
     max_tokens: int = 6000,
     temperature: float = 0.8,
+    task_type: str | None = None,
 ) -> str:
-    cfg = load_llm_config()
-    provider = (cfg.get("provider") or settings.llm_provider or "mock").lower()
-    model = cfg.get("model") or settings.openai_model or "gpt-6-sol"
-    api_key = cfg.get("api_key") or settings.openai_api_key
+    """Delegates chat completions to the unified ai_router with automatic task-type inference."""
+    from app.services.ai_router import ask_ai
 
-    if provider == "openai":
-        if not api_key:
-            raise LLMUnavailable("API-ключ для нейросети не задан")
-        base_url = (cfg.get("base_url") or settings.openai_base_url or "https://api.openai.com/v1").rstrip("/")
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                f"{base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LeadRadar/1.0",
-                },
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user},
-                    ],
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            msg = data["choices"][0]["message"]
-            content = msg.get("content") or ""
-            if not content and msg.get("reasoning_content"):
-                content = msg.get("reasoning_content") or ""
-            return content
+    if task_type is None:
+        if max_tokens > 2000 or "html" in system.lower() or "лендинг" in system.lower():
+            task_type = "code"
+        elif max_tokens > 300 or "менеджер" in system.lower() or "отклик" in system.lower():
+            task_type = "smart"
+        else:
+            task_type = "fast"
 
-    if provider == "anthropic":
-        anthropic_key = cfg.get("anthropic_key") or cfg.get("api_key") or settings.anthropic_api_key
-        if not anthropic_key:
-            raise LLMUnavailable("ANTHROPIC_API_KEY не задан")
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": anthropic_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "max_tokens": max_tokens,
-                    "temperature": temperature,
-                    "system": system,
-                    "messages": [{"role": "user", "content": user}],
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            return "".join(
-                block.get("text", "") for block in data.get("content", []) if block.get("type") == "text"
-            )
+    try:
+        return await ask_ai(
+            prompt=user,
+            system_prompt=system,
+            task_type=task_type,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    except Exception as exc:
+        raise LLMUnavailable(str(exc)) from exc
 
-    raise LLMUnavailable("LLM_PROVIDER=mock")

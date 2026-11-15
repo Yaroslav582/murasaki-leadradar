@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import DATA_DIR, settings
 from app.db import SessionLocal
 from app.models import TelegramBroadcast, TelegramChatTarget, TelegramOrder, utcnow
-from app.services.llm import chat_completion
+from app.services.ai_router import ask_ai
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +169,7 @@ async def generate_ai_response(order_text: str, category: str = "лендинг"
     user_prompt = f"Текст заказа:\n{order_text[:600]}\n\nНапиши персональный отклик:"
 
     try:
-        res = await chat_completion(system=system_prompt, user=user_prompt, max_tokens=2000)
+        res = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="smart", max_tokens=300)
         if res and len(res.strip()) > 30:
             return res.strip()
     except Exception as exc:
@@ -194,7 +194,7 @@ async def generate_ai_promo(portfolio_url: str | None = None) -> str:
     user_prompt = f"Ссылка на портфолио: {url}. Напиши уникальный текст визитки:"
 
     try:
-        res = await chat_completion(system=system_prompt, user=user_prompt, max_tokens=2000)
+        res = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="fast", max_tokens=300)
         if res and len(res.strip()) > 40:
             return res.strip()
     except Exception as exc:

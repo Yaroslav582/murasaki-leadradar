@@ -20,6 +20,14 @@ def get_llm_config():
     return get_current_llm_info()
 
 
+@router.get("/router-stats")
+def get_router_stats():
+    """Returns AI multi-provider router diagnostics, active providers, and daily rate limit usage."""
+    from app.services.ai_router import get_ai_router_stats
+    return get_ai_router_stats()
+
+
+
 @router.post("/config")
 def update_llm_config(payload: LLMUpdateIn):
     return update_llm_info(

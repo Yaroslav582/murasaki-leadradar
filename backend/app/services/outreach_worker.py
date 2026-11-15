@@ -13,7 +13,7 @@ from app.db import SessionLocal
 from app.models import Dialog, Lead, Message, TgAccount, utcnow
 from app.services.account_pool import account_pool
 from app.services.billing import check_and_spend
-from app.services.llm import chat_completion
+from app.services.ai_router import ask_ai
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class OutreachWorker:
         )
 
         try:
-            personalized = await chat_completion(system_prompt, user_prompt, max_tokens=300, temperature=0.7)
+            personalized = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="fast", max_tokens=250, temperature=0.7)
             if personalized and len(personalized.strip()) > 20:
                 return personalized.strip()
         except Exception as e:
