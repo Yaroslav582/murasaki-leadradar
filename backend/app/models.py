@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -106,7 +106,7 @@ class TelegramOrder(Base):
     chat_title: Mapped[str] = mapped_column(String(255), default="")
     source: Mapped[str] = mapped_column(String(32), default="telegram", index=True)  # telegram, kwork, fl
     source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    message_id: Mapped[int] = mapped_column(Integer, default=0)
+    message_id: Mapped[int] = mapped_column(BigInteger, default=0)
     author_id: Mapped[str | None] = mapped_column(String(120))
     author_username: Mapped[str | None] = mapped_column(String(120))
     author_name: Mapped[str | None] = mapped_column(String(255))
@@ -158,7 +158,7 @@ class TelegramCommentLog(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     channel_id: Mapped[str] = mapped_column(String(120), index=True)
     channel_title: Mapped[str] = mapped_column(String(255), default="")
-    post_id: Mapped[int] = mapped_column(Integer, default=0)
+    post_id: Mapped[int] = mapped_column(BigInteger, default=0)
     post_text: Mapped[str] = mapped_column(Text)
     comment_text: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(24), default="sent")  # sent, failed, simulated
@@ -170,7 +170,7 @@ class TelegramParsedUser(Base):
     __tablename__ = "telegram_parsed_users"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    telegram_id: Mapped[int] = mapped_column(Integer, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
     username: Mapped[str | None] = mapped_column(String(120), index=True)
     first_name: Mapped[str | None] = mapped_column(String(255))
     last_name: Mapped[str | None] = mapped_column(String(255))
@@ -186,7 +186,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    telegram_id: Mapped[int | None] = mapped_column(Integer, unique=True, index=True)
+    telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, index=True)
     username: Mapped[str | None] = mapped_column(String(120))
     first_name: Mapped[str | None] = mapped_column(String(255))
     credits_balance: Mapped[int] = mapped_column(Integer, default=50)
@@ -272,7 +272,7 @@ class Message(Base):
     account_id: Mapped[str] = mapped_column(String(36), index=True)
     direction: Mapped[str] = mapped_column(String(8))  # "in" | "out"
     text: Mapped[str] = mapped_column(Text)
-    tg_message_id: Mapped[int | None] = mapped_column(Integer)
+    tg_message_id: Mapped[int | None] = mapped_column(BigInteger)
     is_ai_generated: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -287,4 +287,28 @@ class Transaction(Base):
     module_name: Mapped[str | None] = mapped_column(String(64))  # ai_demo | parse_leads | outreach | warmup
     description: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class SystemLog(Base):
+    __tablename__ = "system_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    level: Mapped[str] = mapped_column(String(16), default="INFO", index=True)
+    module: Mapped[str] = mapped_column(String(64), index=True)
+    message: Mapped[str] = mapped_column(Text)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
 

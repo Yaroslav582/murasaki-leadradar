@@ -73,15 +73,57 @@ DEFAULT_PRESETS = [
 ]
 
 
+_in_memory_llm_cfg: dict[str, Any] | None = None
+
+
+async def load_llm_config_from_db() -> dict[str, Any] | None:
+    """Preloads LLM config from Supabase app_settings table into memory cache."""
+    global _in_memory_llm_cfg
+    try:
+        from app.db import SessionLocal
+        from app.models import AppSetting
+
+        async with SessionLocal() as session:
+            setting = await session.get(AppSetting, "llm_config")
+            if setting and setting.value:
+                _in_memory_llm_cfg = setting.value
+                return setting.value
+    except Exception as exc:
+        logger.debug("Could not load llm_config from Supabase app_settings: %s", exc)
+    return None
+
+
+async def save_llm_config_to_db(cfg: dict[str, Any]) -> None:
+    """Persists LLM configuration into Supabase app_settings table."""
+    try:
+        from app.db import SessionLocal
+        from app.models import AppSetting
+
+        async with SessionLocal() as session:
+            setting = await session.get(AppSetting, "llm_config")
+            if setting:
+                setting.value = cfg
+            else:
+                session.add(AppSetting(key="llm_config", value=cfg))
+            await session.commit()
+    except Exception as exc:
+        logger.error("Could not persist llm_config to Supabase: %s", exc)
+
+
 def load_llm_config() -> dict[str, Any]:
+    global _in_memory_llm_cfg
+    if _in_memory_llm_cfg is not None:
+        return dict(_in_memory_llm_cfg)
+
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                _in_memory_llm_cfg = json.load(f)
+                return dict(_in_memory_llm_cfg)
         except Exception as exc:
             logger.warning("Failed to load llm_config.json: %s", exc)
 
-    return {
+    _in_memory_llm_cfg = {
         "provider": settings.llm_provider or "openai",
         "model": settings.openai_model or "gpt-6-sol",
         "base_url": settings.openai_base_url or "https://mxr.one/v1",
@@ -89,14 +131,24 @@ def load_llm_config() -> dict[str, Any]:
         "anthropic_key": settings.anthropic_api_key or "",
         "anthropic_model": settings.anthropic_model or "claude-3-5-sonnet-latest",
     }
+    return dict(_in_memory_llm_cfg)
 
 
 def save_llm_config(cfg: dict[str, Any]) -> None:
+    global _in_memory_llm_cfg
+    _in_memory_llm_cfg = cfg
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(save_llm_config_to_db(cfg))
+    except RuntimeError:
+        pass
+
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except Exception as exc:
-        logger.error("Failed to save llm_config.json: %s", exc)
+    except Exception:
+        pass
+
 
 
 def get_current_llm_info() -> dict[str, Any]:

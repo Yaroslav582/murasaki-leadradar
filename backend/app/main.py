@@ -28,6 +28,27 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+
+    # Preload dynamic settings from Supabase app_settings (LLM config, bot tokens)
+    try:
+        from app.services.llm import load_llm_config_from_db
+        await load_llm_config_from_db()
+    except Exception as exc:
+        logger.debug("Failed preloading llm_config: %s", exc)
+
+    try:
+        from app.models import AppSetting
+        from app.db import SessionLocal
+        async with SessionLocal() as db_session:
+            bot_token_setting = await db_session.get(AppSetting, "telegram_bot_token")
+            if bot_token_setting and bot_token_setting.value:
+                if bot_token_setting.value.get("token"):
+                    settings.telegram_bot_token = bot_token_setting.value["token"]
+                if bot_token_setting.value.get("bot_username"):
+                    settings.telegram_bot_username = bot_token_setting.value["bot_username"]
+    except Exception as exc:
+        logger.debug("Failed preloading telegram_bot_token: %s", exc)
+
     if not settings.use_celery:
         try:
             stale = await fail_stale_jobs()

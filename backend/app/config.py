@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None
     telegram_phone: str | None = None
+    telegram_session_string: str | None = None
     telegram_session_name: str = "leadradar_user"
     telegram_owner_id: int | None = None
     telegram_portfolio_url: str = "https://murasaki-portfolio.vercel.app/"

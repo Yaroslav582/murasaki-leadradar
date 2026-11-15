@@ -92,3 +92,33 @@ async def get_stats(session: AsyncSession = Depends(get_session)) -> StatsOut:
         by_status=by_status,
         latest_job=ParseJobOut.model_validate(latest_job) if latest_job else None,
     )
+
+
+@router.get("/logs")
+async def get_system_logs(
+    limit: int = 50,
+    module: str | None = None,
+    level: str | None = None,
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    """Retrieve recent structured system logs persisted in Supabase."""
+    from app.models import SystemLog
+
+    stmt = select(SystemLog).order_by(SystemLog.created_at.desc()).limit(min(limit, 100))
+    if module:
+        stmt = stmt.where(SystemLog.module == module)
+    if level:
+        stmt = stmt.where(SystemLog.level == level.upper())
+    logs = (await session.scalars(stmt)).all()
+    return [
+        {
+            "id": l.id,
+            "level": l.level,
+            "module": l.module,
+            "message": l.message,
+            "details": l.details,
+            "created_at": l.created_at.isoformat() if l.created_at else None,
+        }
+        for l in logs
+    ]
+

@@ -539,6 +539,7 @@ class AccountPool:
                 app_version = "8.4.1"
                 phone = base.split("/")[-1].replace("+", "")
 
+                session_str = None
                 if json_path in file_names:
                     try:
                         meta = json.loads(zf.read(json_path).decode("utf-8"))
@@ -546,14 +547,20 @@ class AccountPool:
                         system_version = meta.get("system_version") or meta.get("sdk") or system_version
                         app_version = meta.get("app_version") or meta.get("app") or app_version
                         phone = meta.get("phone") or phone
+                        if meta.get("session_string"):
+                            session_str = meta["session_string"]
                     except Exception as err:
                         logger.warning("Failed parsing json %s: %s", json_path, err)
 
-                session_str = None
-                if session_path in file_names:
-                    # In real telethon, SQLiteSession is a binary SQLite db. We can extract it or convert
-                    # to a StringSession by opening a temp client.
+                if not session_str and session_path in file_names:
                     session_bytes = zf.read(session_path)
+                    # Check if the session file is actually a plaintext StringSession
+                    try:
+                        decoded_str = session_bytes.decode("utf-8").strip()
+                        if len(decoded_str) > 200 and not decoded_str.startswith("SQLite format"):
+                            session_str = decoded_str
+                    except Exception:
+                        pass
                     import tempfile
                     with tempfile.NamedTemporaryFile(suffix=".session", delete=False) as tmp:
                         tmp.write(session_bytes)

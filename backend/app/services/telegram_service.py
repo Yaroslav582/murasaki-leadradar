@@ -236,10 +236,50 @@ class TelegramClientManager:
 
         try:
             from telethon import TelegramClient
+            from telethon.sessions import StringSession
+            from app.models import TgAccount
 
-            session_path = (DATA_DIR / "leadradar_user").as_posix()
+            session_str = getattr(settings, "telegram_session_string", None)
+
+            # 1. Try loading StringSession from Supabase tg_accounts
+            if not session_str:
+                try:
+                    async with SessionLocal() as db_session:
+                        stmt = select(TgAccount).where(
+                            TgAccount.session_string.isnot(None),
+                            TgAccount.status.in_(["active", "warming"]),
+                        )
+                        if settings.telegram_phone:
+                            stmt = select(TgAccount).where(
+                                TgAccount.phone == settings.telegram_phone,
+                                TgAccount.session_string.isnot(None),
+                            )
+                        acc = (await db_session.execute(stmt)).scalars().first()
+                        if acc and acc.session_string:
+                            session_str = acc.session_string
+                            logger.info("Loaded Telethon session from Supabase tg_accounts (phone=%s)", acc.phone)
+                except Exception as db_err:
+                    logger.warning("Could not query tg_accounts for session_string: %s", db_err)
+
+            # 2. Seamless fallback: migrate legacy local session file if present
+            if not session_str:
+                local_session_file = DATA_DIR / "leadradar_user.session"
+                if local_session_file.exists():
+                    try:
+                        temp_client = TelegramClient(
+                            (DATA_DIR / "leadradar_user").as_posix(),
+                            settings.telegram_api_id,
+                            settings.telegram_api_hash,
+                        )
+                        session_str = StringSession.save(temp_client.session)
+                        if session_str:
+                            logger.info("Migrated legacy leadradar_user.session to StringSession (%d chars)", len(session_str))
+                    except Exception as exc:
+                        logger.warning("Could not convert local leadradar_user.session: %s", exc)
+
+            session_arg = StringSession(session_str) if session_str else StringSession("")
             self.client = TelegramClient(
-                session_path,
+                session_arg,
                 settings.telegram_api_id,
                 settings.telegram_api_hash,
                 connection_retries=10,
@@ -251,6 +291,30 @@ class TelegramClientManager:
                 self.is_connected = True
                 me = await self.client.get_me()
                 logger.info("Telegram: UserBot connected as %s (@%s)", me.first_name, getattr(me, "username", ""))
+
+                # Persist active StringSession into Supabase tg_accounts
+                saved_str = self.client.session.save()
+                if saved_str:
+                    try:
+                        async with SessionLocal() as db_session:
+                            phone = settings.telegram_phone or getattr(me, "phone", "") or "+14642193549"
+                            stmt = select(TgAccount).where(TgAccount.phone == phone)
+                            acc = (await db_session.execute(stmt)).scalars().first()
+                            if acc:
+                                acc.session_string = saved_str
+                                acc.status = "active"
+                            else:
+                                acc = TgAccount(
+                                    phone=phone,
+                                    username=getattr(me, "username", None),
+                                    session_string=saved_str,
+                                    status="active",
+                                )
+                                db_session.add(acc)
+                            await db_session.commit()
+                            logger.info("Persisted active StringSession in Supabase tg_accounts for %s", phone)
+                    except Exception as save_err:
+                        logger.warning("Could not persist session_string to Supabase: %s", save_err)
             else:
                 logger.info("Telegram: client connected but authorization code is needed.")
         except Exception as exc:
@@ -451,14 +515,29 @@ class TelegramClientManager:
 
             if token:
                 settings.telegram_bot_token = token
+                try:
+                    from app.models import AppSetting
+                    async with SessionLocal() as db_session:
+                        st = await db_session.get(AppSetting, "telegram_bot_token")
+                        if st:
+                            st.value = {"token": token, "bot_username": bot_username}
+                        else:
+                            db_session.add(AppSetting(key="telegram_bot_token", value={"token": token, "bot_username": bot_username}))
+                        await db_session.commit()
+                except Exception as db_err:
+                    logger.debug("Could not persist bot token to AppSetting: %s", db_err)
+
                 env_path = DATA_DIR.parent / ".env"
                 if env_path.exists():
-                    content = env_path.read_text(encoding="utf-8")
-                    if "TELEGRAM_BOT_TOKEN=" in content:
-                        content = re.sub(r"TELEGRAM_BOT_TOKEN=.*", f"TELEGRAM_BOT_TOKEN={token}", content)
-                    else:
-                        content += f"\nTELEGRAM_BOT_TOKEN={token}\n"
-                    env_path.write_text(content, encoding="utf-8")
+                    try:
+                        content = env_path.read_text(encoding="utf-8")
+                        if "TELEGRAM_BOT_TOKEN=" in content:
+                            content = re.sub(r"TELEGRAM_BOT_TOKEN=.*", f"TELEGRAM_BOT_TOKEN={token}", content)
+                        else:
+                            content += f"\nTELEGRAM_BOT_TOKEN={token}\n"
+                        env_path.write_text(content, encoding="utf-8")
+                    except Exception:
+                        pass
 
                 return {
                     "success": True,
