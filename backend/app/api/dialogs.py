@@ -24,11 +24,18 @@ class SendMessageRequest(BaseModel):
 
 class DialogUpdate(BaseModel):
     status: Optional[str] = None
+    ai_auto_reply_enabled: Optional[bool] = None
 
 
 @router.get("/dialogs")
-async def list_dialogs(session: AsyncSession = Depends(get_session)) -> list[dict[str, Any]]:
-    stmt = select(Dialog).order_by(Dialog.last_message_at.desc().nullslast(), Dialog.created_at.desc())
+async def list_dialogs(
+    account_id: Optional[str] = None,
+    session: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    stmt = select(Dialog)
+    if account_id:
+        stmt = stmt.where(Dialog.account_id == account_id)
+    stmt = stmt.order_by(Dialog.last_message_at.desc().nullslast(), Dialog.created_at.desc())
     res = await session.execute(stmt)
     dialogs = res.scalars().all()
 
@@ -50,11 +57,13 @@ async def list_dialogs(session: AsyncSession = Depends(get_session)) -> list[dic
             "id": d.id,
             "account_id": d.account_id,
             "account_phone": acc.phone if acc else None,
+            "account_username": acc.username if acc else None,
             "peer_id": d.peer_id,
             "peer_username": d.peer_username,
             "peer_name": d.peer_name or d.peer_username or d.peer_id,
             "lead_id": d.lead_id,
             "status": d.status,
+            "ai_auto_reply_enabled": getattr(d, "ai_auto_reply_enabled", True),
             "unread_count": d.unread_count,
             "last_message_at": d.last_message_at.isoformat() if d.last_message_at else None,
             "last_message_preview": last_msg.text[:80] + "..." if last_msg and len(last_msg.text) > 80 else (last_msg.text if last_msg else "Нет сообщений"),
@@ -74,11 +83,13 @@ async def get_dialog(dialog_id: str, session: AsyncSession = Depends(get_session
         "id": dialog.id,
         "account_id": dialog.account_id,
         "account_phone": acc.phone if acc else None,
+        "account_username": acc.username if acc else None,
         "peer_id": dialog.peer_id,
         "peer_username": dialog.peer_username,
         "peer_name": dialog.peer_name,
         "lead_id": dialog.lead_id,
         "status": dialog.status,
+        "ai_auto_reply_enabled": getattr(dialog, "ai_auto_reply_enabled", True),
         "unread_count": dialog.unread_count,
         "last_message_at": dialog.last_message_at.isoformat() if dialog.last_message_at else None,
     }
@@ -184,10 +195,29 @@ async def update_dialog(
 
     if payload.status:
         dialog.status = payload.status
-        dialog.updated_at = utcnow()
-        await session.commit()
+    if payload.ai_auto_reply_enabled is not None:
+        dialog.ai_auto_reply_enabled = payload.ai_auto_reply_enabled
+    dialog.updated_at = utcnow()
+    await session.commit()
 
-    return {"id": dialog.id, "status": dialog.status}
+    return {
+        "id": dialog.id,
+        "status": dialog.status,
+        "ai_auto_reply_enabled": dialog.ai_auto_reply_enabled,
+    }
+
+
+@router.post("/dialogs/{dialog_id}/sync")
+async def sync_dialog_messages(
+    dialog_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    dialog = await session.get(Dialog, dialog_id)
+    if not dialog:
+        raise HTTPException(status_code=404, detail="Диалог не найден")
+
+    synced = await account_pool.sync_dialog_history(session, dialog, limit=25)
+    return {"status": "ok", "dialog_id": dialog.id, "synced_count": len(synced)}
 
 
 @router.post("/dialogs/{dialog_id}/ai-reply")

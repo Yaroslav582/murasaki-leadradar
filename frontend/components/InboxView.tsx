@@ -50,6 +50,38 @@ const STATUS_BADGES: Record<
   },
 };
 
+function Switch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => {
+        triggerHaptic("medium");
+        onChange(!checked);
+      }}
+      className={`relative h-4 w-7 shrink-0 rounded-full border transition ${
+        checked
+          ? "border-brand-500/60 bg-brand-500 shadow-[0_0_8px_rgba(139,92,246,0.35)]"
+          : "border-white/10 bg-[#242731]"
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 rounded-full bg-white shadow transition-all ${
+          checked ? "left-[14px]" : "left-0.5"
+        }`}
+        style={{ height: 10, width: 10 }}
+      />
+    </button>
+  );
+}
+
 export default function InboxView({
   showToast,
 }: {
@@ -62,6 +94,7 @@ export default function InboxView({
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -92,6 +125,40 @@ export default function InboxView({
       showToast(e instanceof Error ? e.message : "Ошибка загрузки сообщений", "error");
     } finally {
       setMessagesLoading(false);
+    }
+  };
+
+  const handleToggleAiAutoReply = async (val: boolean) => {
+    if (!activeDialog) return;
+    try {
+      await api.updateDialog(activeDialog.id, { ai_auto_reply_enabled: val });
+      setActiveDialog((prev) => (prev ? { ...prev, ai_auto_reply_enabled: val } : prev));
+      setDialogs((prev) =>
+        prev.map((d) => (d.id === activeDialog.id ? { ...d, ai_auto_reply_enabled: val } : d))
+      );
+      showToast(
+        val
+          ? "AI-автоответчик включен для этого диалога"
+          : "AI-автоответчик отключен (ручной ответ)",
+        "info"
+      );
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Ошибка обновления", "error");
+    }
+  };
+
+  const handleSyncHistory = async () => {
+    if (!activeDialog || syncing) return;
+    setSyncing(true);
+    triggerHaptic("light");
+    try {
+      const res = await api.syncDialog(activeDialog.id);
+      showToast(`Синхронизировано сообщений: ${res.synced_count}`, "success");
+      void loadMessages(activeDialog.id);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Ошибка синхронизации", "error");
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -320,13 +387,34 @@ export default function InboxView({
                       )}
                     </div>
                     <p className="text-[10px] text-[#6B7280] truncate font-mono tabular-nums">
-                      Telegram · {activeDialog.status}
+                      {activeDialog.account_phone ? `От лица: ${activeDialog.account_phone}` : "Telegram пул"} · {activeDialog.status}
                     </p>
                   </div>
                 </div>
 
-                {/* Status Switcher & AI Button */}
+                {/* Status Switcher & AI Button & AI Auto-Reply Switch */}
                 <div className="flex items-center gap-2">
+                  {/* AI Auto-Reply Toggle Switch */}
+                  <label className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#242731] px-2 py-1 cursor-pointer">
+                    <Switch
+                      checked={activeDialog.ai_auto_reply_enabled ?? true}
+                      onChange={handleToggleAiAutoReply}
+                    />
+                    <span className="text-[11px] font-medium text-[#F3F4F6] hidden sm:inline">
+                      AI-автоответчик
+                    </span>
+                  </label>
+
+                  {/* Sync messages button */}
+                  <button
+                    onClick={handleSyncHistory}
+                    disabled={syncing}
+                    className="btn-ghost !h-7.5 !w-7.5 !p-0 text-xs text-[#9CA3AF] hover:text-[#F3F4F6]"
+                    title="Синхронизировать историю с Telegram"
+                  >
+                    <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+                  </button>
+
                   <button
                     onClick={handleAiAutoReply}
                     disabled={aiGenerating}
@@ -360,6 +448,14 @@ export default function InboxView({
                   <div className="flex h-full flex-col items-center justify-center text-center p-6 text-[#6B7280] space-y-2">
                     <MessageSquare size={28} className="text-[#6B7280]" />
                     <p className="text-xs">В этом диалоге ещё нет сообщений.</p>
+                    <button
+                      onClick={handleSyncHistory}
+                      disabled={syncing}
+                      className="btn-ghost !px-3 !py-1 text-xs text-[#9CA3AF]"
+                    >
+                      <RefreshCw size={12} className={syncing ? "animate-spin" : ""} />
+                      Загрузить историю из Telegram
+                    </button>
                   </div>
                 ) : (
                   messages.map((m) => {
@@ -405,28 +501,46 @@ export default function InboxView({
               </div>
 
               {/* Chat Input Footer */}
-              <div className="p-3 border-t border-white/[0.07] bg-[#1A1C23] flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Напишите ответ клиенту..."
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      void handleSendMessage();
-                    }
-                  }}
-                  className="input !h-9 text-xs"
-                />
+              <div className="p-3 border-t border-white/[0.07] bg-[#1A1C23] flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-[10px] text-[#6B7280]">
+                  <span>
+                    Отправка от лица:{" "}
+                    <span className="font-mono text-[#C4B5FD] font-semibold">
+                      {activeDialog.account_phone || "Telegram аккаунт"}
+                    </span>
+                  </span>
+                  <span className="sm:hidden flex items-center gap-1">
+                    <Switch
+                      checked={activeDialog.ai_auto_reply_enabled ?? true}
+                      onChange={handleToggleAiAutoReply}
+                    />
+                    <span>AI-ответ</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder={`Напишите ответ от лица ${activeDialog.account_phone || "аккаунта"}...`}
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void handleSendMessage();
+                      }
+                    }}
+                    className="input !h-9 text-xs flex-1"
+                  />
 
-                <button
-                  onClick={handleSendMessage}
-                  disabled={sending || !inputText.trim()}
-                  className="btn-primary !h-9 !w-9 !p-0 shrink-0"
-                >
-                  {sending ? <Spinner size={14} /> : <Send size={14} />}
-                </button>
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={sending || !inputText.trim()}
+                    className="btn-primary !h-9 !w-9 !p-0 shrink-0"
+                    title="Отправить сообщение"
+                  >
+                    {sending ? <Spinner size={14} /> : <Send size={14} />}
+                  </button>
+                </div>
               </div>
             </>
           ) : (

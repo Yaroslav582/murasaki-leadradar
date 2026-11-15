@@ -253,6 +253,7 @@ class Dialog(Base):
         ForeignKey("leads.id", ondelete="SET NULL")
     )
     status: Mapped[str] = mapped_column(String(24), default="new", index=True)  # new | ai_handling | manual | deal
+    ai_auto_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     unread_count: Mapped[int] = mapped_column(Integer, default=0)
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

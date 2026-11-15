@@ -96,6 +96,17 @@ async def init_db() -> None:
                         if col_name not in existing_acc_cols:
                             cursor.execute(f"ALTER TABLE tg_accounts ADD COLUMN {col_name} {col_def}")
 
+                # dialogs (if existing)
+                cursor.execute("PRAGMA table_info(dialogs)")
+                existing_dlg_cols = {row[1] for row in cursor.fetchall()}
+                if existing_dlg_cols:
+                    new_dlg_cols = [
+                        ("ai_auto_reply_enabled", "BOOLEAN DEFAULT 1"),
+                    ]
+                    for col_name, col_def in new_dlg_cols:
+                        if col_name not in existing_dlg_cols:
+                            cursor.execute(f"ALTER TABLE dialogs ADD COLUMN {col_name} {col_def}")
+
             await conn.run_sync(_migrate_columns)
 
 

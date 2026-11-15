@@ -85,6 +85,179 @@ class AccountPool:
         self._active_clients[account.id] = client
         return client
 
+    def _attach_message_handler(self, client: Any, account: TgAccount) -> None:
+        """Attaches @client.on(events.NewMessage) to capture incoming/outgoing PMs in DB."""
+        from telethon import events
+
+        if getattr(client, "_leadradar_handler_attached", False):
+            return
+        client._leadradar_handler_attached = True
+
+        acc_id = account.id
+
+        @client.on(events.NewMessage)
+        async def _new_message_handler(event):
+            try:
+                # 1. Filter: private 1-on-1 chats only (ignore channels, supergroups, groups)
+                if not event.is_private:
+                    return
+
+                # 2. Filter out Telegram system services & bots
+                chat_id = event.chat_id
+                if chat_id in (777000, 4244):
+                    return
+
+                sender = await event.get_sender()
+                peer_username = getattr(sender, "username", None) or ""
+                if peer_username.lower() in ("spambot", "telegram"):
+                    return
+
+                # 3. Determine direction and peer
+                is_out = bool(event.out)
+                direction = "out" if is_out else "in"
+                peer_id = str(event.chat_id if is_out else (event.sender_id or event.chat_id))
+                first_name = getattr(sender, "first_name", "") or ""
+                last_name = getattr(sender, "last_name", "") or ""
+                peer_name = f"{first_name} {last_name}".strip() or peer_username or peer_id
+                raw_text = event.raw_text or getattr(event.message, "message", "") or ""
+                if not raw_text.strip():
+                    return
+
+                # 4. Save/update Dialog and Message
+                from app.db import SessionLocal
+                from app.models import Dialog, Message, utcnow
+                from app.services.inbox_service import inbox_service
+
+                dialog_id = None
+                auto_reply_enabled = False
+
+                async with SessionLocal() as db_session:
+                    stmt = select(Dialog).where(
+                        Dialog.account_id == acc_id,
+                        Dialog.peer_id == peer_id,
+                    )
+                    res = await db_session.execute(stmt)
+                    dialog = res.scalar_one_or_none()
+
+                    if not dialog:
+                        dialog = Dialog(
+                            account_id=acc_id,
+                            peer_id=peer_id,
+                            peer_username=peer_username or None,
+                            peer_name=peer_name,
+                            status="new",
+                            unread_count=1 if not is_out else 0,
+                            last_message_at=utcnow(),
+                            ai_auto_reply_enabled=True,
+                        )
+                        db_session.add(dialog)
+                        await db_session.flush()
+                    else:
+                        dialog.last_message_at = utcnow()
+                        if peer_username:
+                            dialog.peer_username = peer_username
+                        if peer_name and not dialog.peer_name:
+                            dialog.peer_name = peer_name
+                        if not is_out:
+                            dialog.unread_count += 1
+
+                    # Save message if not already saved
+                    msg_id = getattr(event, "id", None)
+                    msg_stmt = select(Message).where(
+                        Message.dialog_id == dialog.id,
+                        Message.tg_message_id == msg_id,
+                    )
+                    m_res = await db_session.execute(msg_stmt)
+                    if not m_res.scalar_one_or_none():
+                        new_msg = Message(
+                            dialog_id=dialog.id,
+                            account_id=acc_id,
+                            direction=direction,
+                            text=raw_text,
+                            tg_message_id=msg_id,
+                            is_ai_generated=False,
+                            created_at=utcnow(),
+                        )
+                        db_session.add(new_msg)
+
+                    await db_session.commit()
+                    dialog_id = dialog.id
+                    auto_reply_enabled = dialog.ai_auto_reply_enabled
+
+                # 5. Trigger AI auto-reply if enabled and message is incoming
+                if not is_out and auto_reply_enabled and dialog_id:
+                    asyncio.create_task(inbox_service.handle_incoming_auto_reply(dialog_id, raw_text))
+
+            except Exception as e:
+                logger.error("Error in NewMessage handler for account %s: %s", acc_id, e)
+
+    async def register_client_from_account(
+        self, account: TgAccount, session: Optional[AsyncSession] = None
+    ) -> Any:
+        """Immediately connects and attaches event listener to a newly added account."""
+        proxy = None
+        if account.proxy_id and session:
+            proxy = await session.get(Proxy, account.proxy_id)
+
+        try:
+            client = await self.get_client_for_account(account, proxy)
+            await client.connect()
+            if await client.is_user_authorized():
+                self._attach_message_handler(client, account)
+                logger.info("Registered and attached NewMessage handler for account %s", account.phone)
+            return client
+        except Exception as e:
+            logger.warning("Failed to register live client for account %s: %s", account.phone, e)
+            return None
+
+    async def load_all_from_db(self) -> int:
+        """Loads all active/warming sessions from database on server startup,
+
+        connects Telethon clients, and attaches NewMessage event handlers.
+        """
+        from app.db import SessionLocal
+
+        loaded_count = 0
+        async with SessionLocal() as session:
+            stmt = select(TgAccount).where(
+                TgAccount.session_string.isnot(None),
+                TgAccount.status.in_(["active", "warming"]),
+            )
+            res = await session.execute(stmt)
+            accounts = res.scalars().all()
+
+            logger.info("Found %d saved accounts in DB to load on startup", len(accounts))
+
+            for acc in accounts:
+                try:
+                    proxy = None
+                    if acc.proxy_id:
+                        proxy = await session.get(Proxy, acc.proxy_id)
+                    client = await self.get_client_for_account(acc, proxy)
+                    await client.connect()
+                    if await client.is_user_authorized():
+                        self._attach_message_handler(client, acc)
+                        loaded_count += 1
+                        logger.info("Telethon client active & listening: %s (id: %s)", acc.phone, acc.id)
+                    else:
+                        acc.status = "banned"
+                        await session.commit()
+                        logger.warning("Account %s is not authorized (marked as banned)", acc.phone)
+                except Exception as e:
+                    logger.warning("Could not auto-connect account %s on startup: %s", acc.phone, e)
+
+        return loaded_count
+
+    async def disconnect_all(self) -> None:
+        """Disconnects all cached Telethon clients gracefully on server shutdown."""
+        for client in list(self._active_clients.values()):
+            try:
+                if client.is_connected():
+                    await client.disconnect()
+            except Exception:
+                pass
+        self._active_clients.clear()
+
     async def get_available_account(
         self, session: AsyncSession, user_id: Optional[str] = None
     ) -> Optional[TgAccount]:
@@ -323,6 +496,7 @@ class AccountPool:
                 session.add(new_acc)
                 await session.commit()
                 await session.refresh(new_acc)
+                await self.register_client_from_account(new_acc, session)
 
             _PENDING_LOGINS.pop(phone, None)
             return {
@@ -415,9 +589,64 @@ class AccountPool:
                     )
                     session.add(new_acc)
                     await session.commit()
-                    imported.append({"phone": phone, "status": "imported"})
+                    await session.refresh(new_acc)
+                    await self.register_client_from_account(new_acc, session)
+                    imported.append({"phone": phone, "status": "imported", "id": new_acc.id})
 
         return imported
+
+    async def sync_dialog_history(
+        self, session: AsyncSession, dialog: Any, limit: int = 25
+    ) -> list[dict[str, Any]]:
+        """Pulls recent message history from Telegram for a dialog."""
+        from app.models import Dialog, Message, TgAccount, utcnow
+
+        acc = await session.get(TgAccount, dialog.account_id)
+        if not acc or not acc.session_string:
+            return []
+
+        try:
+            client = await self.get_client_for_account(acc)
+            await client.connect()
+            if not await client.is_user_authorized():
+                return []
+
+            peer_val = dialog.peer_username or (int(dialog.peer_id) if str(dialog.peer_id).isdigit() else dialog.peer_id)
+            entity = await client.get_entity(peer_val)
+            tg_msgs = await client.get_messages(entity, limit=limit)
+
+            synced = []
+            for tm in reversed(tg_msgs):
+                text_content = tm.text or getattr(tm, "message", "") or ""
+                if not text_content.strip():
+                    continue
+                is_out = bool(tm.out)
+                direction = "out" if is_out else "in"
+                # Check if exists
+                stmt = select(Message).where(Message.dialog_id == dialog.id, Message.tg_message_id == tm.id)
+                res = await session.execute(stmt)
+                existing = res.scalar_one_or_none()
+                if not existing:
+                    msg = Message(
+                        dialog_id=dialog.id,
+                        account_id=acc.id,
+                        direction=direction,
+                        text=text_content,
+                        tg_message_id=tm.id,
+                        is_ai_generated=False,
+                        created_at=tm.date or utcnow(),
+                    )
+                    session.add(msg)
+                    synced.append(msg)
+
+            if synced:
+                dialog.last_message_at = synced[-1].created_at
+                await session.commit()
+
+            return [{"id": m.id, "text": m.text, "direction": m.direction} for m in synced]
+        except Exception as e:
+            logger.warning("History sync failed for dialog %s: %s", dialog.id, e)
+            return []
 
 
 account_pool = AccountPool()

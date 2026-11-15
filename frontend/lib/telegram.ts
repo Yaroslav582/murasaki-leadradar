@@ -73,6 +73,56 @@ export function getTelegramWebApp(): TelegramWebApp | null {
   return null;
 }
 
+export function getCurrentTelegramUserId(): string | null {
+  const tg = getTelegramWebApp();
+  if (tg?.initDataUnsafe?.user?.id) {
+    const idStr = String(tg.initDataUnsafe.user.id);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("murasaki_telegram_user_id", idStr);
+      } catch {}
+    }
+    return idStr;
+  }
+  if (typeof window !== "undefined") {
+    try {
+      return localStorage.getItem("murasaki_telegram_user_id");
+    } catch {}
+  }
+  return null;
+}
+
+export async function waitForTelegramUser(timeoutMs = 1500): Promise<TelegramUser | null> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const tg = getTelegramWebApp();
+    if (tg?.initDataUnsafe?.user?.id) {
+      const user = tg.initDataUnsafe.user;
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("murasaki_telegram_user_id", String(user.id));
+        } catch {}
+      }
+      return user;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  }
+
+  // Fallback from localStorage
+  if (typeof window !== "undefined") {
+    try {
+      const savedId = localStorage.getItem("murasaki_telegram_user_id");
+      if (savedId) {
+        return {
+          id: Number(savedId) || 0,
+          first_name: "Telegram User",
+        };
+      }
+    } catch {}
+  }
+  return null;
+}
+
 export function isTelegramWebApp(): boolean {
   const tg = getTelegramWebApp();
   return Boolean(tg && (tg.platform === "ios" || tg.platform === "android" || tg.platform === "tdesktop" || tg.initData));

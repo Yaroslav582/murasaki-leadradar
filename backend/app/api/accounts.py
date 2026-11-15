@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,10 +11,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_session
 from app.models import Proxy, TgAccount, utcnow
 from app.services.account_pool import account_pool
+from app.services.billing import get_or_create_user
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Accounts & Proxies"])
+
+
+async def resolve_owner_user_id(request: Request, session: AsyncSession) -> Optional[str]:
+    """Resolves owner user ID from X-Telegram-User-Id, X-User-Id header or query parameter."""
+    tg_user_id = (
+        request.headers.get("x-telegram-user-id")
+        or request.headers.get("x-user-id")
+        or request.query_params.get("user_id")
+    )
+    if tg_user_id and tg_user_id.strip():
+        clean_id = tg_user_id.strip()
+        try:
+            user = await get_or_create_user(session, telegram_id=int(clean_id) if clean_id.isdigit() else None)
+            return str(user.telegram_id or user.id)
+        except Exception as e:
+            logger.warning("Error resolving user from header %s: %s", clean_id, e)
+            return clean_id
+    return None
 
 
 # Pydantic Schemas
@@ -59,8 +78,17 @@ class VerifyCodeRequest(BaseModel):
 
 # == TG Accounts Endpoints ==
 @router.get("/accounts")
-async def list_accounts(session: AsyncSession = Depends(get_session)) -> list[dict[str, Any]]:
+async def list_accounts(
+    request: Request,
+    user_id: Optional[str] = None,
+    session: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    owner_id = await resolve_owner_user_id(request, session) or user_id
     stmt = select(TgAccount).order_by(TgAccount.created_at.desc())
+    if owner_id:
+        stmt = stmt.where(
+            (TgAccount.user_id == owner_id) | (TgAccount.user_id.is_(None))
+        )
     res = await session.execute(stmt)
     accounts = res.scalars().all()
 
@@ -69,6 +97,7 @@ async def list_accounts(session: AsyncSession = Depends(get_session)) -> list[di
         proxy = await session.get(Proxy, acc.proxy_id) if acc.proxy_id else None
         result.append({
             "id": acc.id,
+            "user_id": acc.user_id,
             "phone": acc.phone,
             "username": acc.username,
             "device_model": acc.device_model,
@@ -89,9 +118,13 @@ async def list_accounts(session: AsyncSession = Depends(get_session)) -> list[di
 
 @router.post("/accounts")
 async def create_account(
-    payload: AccountCreate, session: AsyncSession = Depends(get_session)
+    payload: AccountCreate,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
+    owner_id = await resolve_owner_user_id(request, session)
     acc = TgAccount(
+        user_id=owner_id,
         phone=payload.phone.strip(),
         session_string=payload.session_string.strip() if payload.session_string else None,
         device_model=payload.device_model,
@@ -105,7 +138,11 @@ async def create_account(
     session.add(acc)
     await session.commit()
     await session.refresh(acc)
-    return {"id": acc.id, "phone": acc.phone, "status": acc.status}
+
+    if acc.session_string:
+        await account_pool.register_client_from_account(acc, session)
+
+    return {"id": acc.id, "phone": acc.phone, "status": acc.status, "user_id": acc.user_id}
 
 
 @router.get("/accounts/{account_id}")
@@ -198,14 +235,18 @@ async def send_auth_code(
 
 @router.post("/accounts/auth/verify")
 async def verify_auth_code(
-    payload: VerifyCodeRequest, session: AsyncSession = Depends(get_session)
+    payload: VerifyCodeRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     try:
+        owner_id = await resolve_owner_user_id(request, session)
         res = await account_pool.verify_code(
             phone=payload.phone.strip(),
             code=payload.code.strip(),
             password=payload.password,
             session=session,
+            user_id=owner_id,
         )
         return res
     except Exception as e:
@@ -215,6 +256,7 @@ async def verify_auth_code(
 
 @router.post("/accounts/import-archive")
 async def import_accounts_archive(
+    request: Request,
     file: UploadFile = File(...),
     proxy_id: Optional[str] = None,
     session: AsyncSession = Depends(get_session),
@@ -224,8 +266,9 @@ async def import_accounts_archive(
         raise HTTPException(status_code=400, detail="Пустой файл")
 
     try:
+        owner_id = await resolve_owner_user_id(request, session)
         imported = await account_pool.import_from_zip(
-            zip_bytes=content, proxy_id=proxy_id, session=session
+            zip_bytes=content, proxy_id=proxy_id, session=session, user_id=owner_id
         )
         return {"status": "ok", "imported_count": len(imported), "accounts": imported}
     except Exception as e:

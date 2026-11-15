@@ -225,83 +225,10 @@ async def seed_accounts_and_dialogs_data() -> dict[str, int]:
         await session.flush()
         counts["accounts"] += 2
 
-        # Seed Dialogs & Messages
-        from datetime import timedelta
-        now = utcnow()
-
-        # Dialog 1: Deal
-        d1 = Dialog(
-            account_id=acc1.id,
-            peer_id="594812301",
-            peer_username="artem_barber",
-            peer_name="Артём (Барбершоп 'OldBoy')",
-            status="deal",
-            unread_count=0,
-            last_message_at=now - timedelta(minutes=14),
-        )
-        session.add(d1)
-        await session.flush()
-
-        m1 = Message(
-            dialog_id=d1.id,
-            account_id=acc1.id,
-            direction="out",
-            text="Здравствуйте, Артём! Обратили внимание на ваш барбершоп в Москве. Собрали для вас интерактивное демо нового сайта с онлайн-записью: https://murasaki-portfolio.vercel.app/",
-            is_ai_generated=True,
-            created_at=now - timedelta(hours=2),
-        )
-        m2 = Message(
-            dialog_id=d1.id,
-            account_id=acc1.id,
-            direction="in",
-            text="Добрый день! Посмотрел демо, выглядит очень круто. Сколько будет стоить внедрить такое под наш филиал и возможен ли созвон сегодня в 17:00?",
-            is_ai_generated=False,
-            created_at=now - timedelta(minutes=35),
-        )
-        m3 = Message(
-            dialog_id=d1.id,
-            account_id=acc1.id,
-            direction="out",
-            text="Отлично! Да, созвон в 17:00 идеально подойдёт. Стоимость базовой интеграции около 35 000 ₽. Ссылку на Google Meet пришлю за 15 минут до созвона.",
-            is_ai_generated=True,
-            created_at=now - timedelta(minutes=14),
-        )
-        session.add_all([m1, m2, m3])
-
-        # Dialog 2: AI Handling
-        d2 = Dialog(
-            account_id=acc1.id,
-            peer_id="481920311",
-            peer_username="elena_yoga",
-            peer_name="Елена Смирнова (Йога-студия)",
-            status="ai_handling",
-            unread_count=1,
-            last_message_at=now - timedelta(minutes=4),
-        )
-        session.add(d2)
-        await session.flush()
-
-        m2_1 = Message(
-            dialog_id=d2.id,
-            account_id=acc1.id,
-            direction="out",
-            text="Елена, здравствуйте! Заметили, что у вашей студии йоги много отзывов на картах, но нет удобного сайта с расписанием тренировок. Мы сделали готовый концепт, показать?",
-            is_ai_generated=True,
-            created_at=now - timedelta(hours=3),
-        )
-        m2_2 = Message(
-            dialog_id=d2.id,
-            account_id=acc1.id,
-            direction="in",
-            text="Здравствуйте! Да, пришлите пожалуйста ссылку, как раз думаем об обновлении сайта.",
-            is_ai_generated=False,
-            created_at=now - timedelta(minutes=4),
-        )
-        session.add_all([m2_1, m2_2])
-        counts["dialogs"] += 2
-
+        # Do not seed mock dialogs or mock messages
+        # Dialogs and messages are synchronized in real-time with connected Telethon sessions
         await session.commit()
-        logger.info("Seeded accounts, proxy, dialogs: %s", counts)
+        logger.info("Seeded accounts, proxy: %s", counts)
 
     return counts
 

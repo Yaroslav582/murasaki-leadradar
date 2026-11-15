@@ -173,5 +173,24 @@ class InboxService:
             "is_deal": is_deal,
         }
 
+    async def handle_incoming_auto_reply(self, dialog_id: str, client_text: str) -> None:
+        """Processes incoming client message and triggers AI reply if enabled for this chat."""
+        async with SessionLocal() as session:
+            dialog = await session.get(Dialog, dialog_id)
+            if not dialog:
+                return
+            if not dialog.ai_auto_reply_enabled:
+                logger.info("Auto-reply skipped for dialog %s: disabled by user", dialog_id)
+                return
+
+            # Small human delay before responding (1.5 - 3.5s)
+            await asyncio.sleep(2.0)
+
+            try:
+                await self.generate_ai_reply(session, dialog_id)
+                logger.info("Sent automated AI reply to dialog %s", dialog_id)
+            except Exception as e:
+                logger.error("Failed auto AI reply for dialog %s: %s", dialog_id, e)
+
 
 inbox_service = InboxService()

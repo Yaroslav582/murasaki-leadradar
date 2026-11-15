@@ -14,6 +14,7 @@ from app.config import settings
 from app.db import get_session, init_db
 from app.models import DemoSite
 from app.seed import seed_accounts_and_dialogs_data, seed_demo_data, seed_telegram_data
+from app.services.account_pool import account_pool
 from app.services.bot_runner import bot_runner
 from app.services.jobs import fail_stale_jobs
 from app.services.keep_alive import keep_alive_service
@@ -47,6 +48,14 @@ async def lifespan(app: FastAPI):
                 logger.info("Accounts and dialogs demo data seeded: %s", acc_seeded)
         except Exception:
             logger.exception("Failed to seed demo data")
+
+    # Load all saved Telethon accounts from DB and start listening for PM events
+    try:
+        loaded_accounts = await account_pool.load_all_from_db()
+        logger.info("Account pool ready: %d Telethon sessions loaded and listening for messages", loaded_accounts)
+    except Exception:
+        logger.exception("Failed to load saved accounts from DB on startup")
+
     # Initialize Telegram & Bot runner in background
     init_task = asyncio.create_task(telegram_manager.initialize())
     bot_runner.start()
@@ -58,6 +67,7 @@ async def lifespan(app: FastAPI):
         keep_alive_service.stop()
         warmup_worker.stop()
         bot_runner.stop()
+        await account_pool.disconnect_all()
         if getattr(telegram_manager, "_background_task", None) and not telegram_manager._background_task.done():
             telegram_manager._background_task.cancel()
         if not init_task.done():

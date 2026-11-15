@@ -28,6 +28,7 @@ import type {
   TelegramStatus,
   TgAccount,
 } from "./types";
+import { getCurrentTelegramUserId, getTelegramWebApp } from "./telegram";
 
 export const API_URL =
   typeof window !== "undefined"
@@ -35,12 +36,24 @@ export const API_URL =
     : (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const userId = getCurrentTelegramUserId();
+  const tg = getTelegramWebApp();
+  const authHeaders: Record<string, string> = {};
+  if (userId) {
+    authHeaders["X-Telegram-User-Id"] = userId;
+    authHeaders["X-User-Id"] = userId;
+  }
+  if (tg?.initData) {
+    authHeaders["X-Telegram-Init-Data"] = tg.initData;
+  }
+
   const response = await fetch(`${API_URL}${path}`, {
     cache: "no-store",
     ...init,
     headers: {
       Accept: "application/json",
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...authHeaders,
       ...(init?.headers ?? {}),
     },
   });
@@ -348,8 +361,11 @@ export const api = {
   },
 
   // Accounts
-  listAccounts() { return request<TgAccount[]>("/api/accounts"); },
-  addAccount(payload: { phone: string; session_string?: string; proxy_id?: string }) {
+  listAccounts(userId?: string) {
+    const q = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+    return request<TgAccount[]>(`/api/accounts${q}`);
+  },
+  addAccount(payload: { phone: string; session_string?: string; proxy_id?: string; user_id?: string }) {
     return request<TgAccount>("/api/accounts", { method: "POST", body: JSON.stringify(payload) });
   },
   updateAccount(id: string, payload: Partial<Pick<TgAccount, "auto_warmup" | "warmup_preset" | "proxy_id">>) {
@@ -375,13 +391,23 @@ export const api = {
   getReferralInfo() { return request<ReferralInfo>("/api/billing/referral"); },
 
   // Dialogs (Inbox)
-  listDialogs() { return request<Dialog[]>("/api/dialogs"); },
+  listDialogs(accountId?: string) {
+    const q = accountId ? `?account_id=${encodeURIComponent(accountId)}` : "";
+    return request<Dialog[]>(`/api/dialogs${q}`);
+  },
+  getDialog(dialogId: string) { return request<Dialog>(`/api/dialogs/${dialogId}`); },
   getDialogMessages(dialogId: string) { return request<ChatMessage[]>(`/api/dialogs/${dialogId}/messages`); },
   sendMessage(dialogId: string, text: string) {
     return request<ChatMessage>(`/api/dialogs/${dialogId}/messages`, { method: "POST", body: JSON.stringify({ text }) });
   },
   updateDialogStatus(dialogId: string, status: string) {
     return request<Dialog>(`/api/dialogs/${dialogId}`, { method: "PATCH", body: JSON.stringify({ status }) });
+  },
+  updateDialog(dialogId: string, payload: { status?: string; ai_auto_reply_enabled?: boolean }) {
+    return request<Dialog>(`/api/dialogs/${dialogId}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+  syncDialog(dialogId: string) {
+    return request<{ status: string; dialog_id: string; synced_count: number }>(`/api/dialogs/${dialogId}/sync`, { method: "POST" });
   },
   triggerAiReply(dialogId: string) {
     return request<{ message_id: string; text: string; status: string; is_deal: boolean }>(`/api/dialogs/${dialogId}/ai-reply`, {

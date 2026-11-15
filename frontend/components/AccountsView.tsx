@@ -23,7 +23,7 @@ import {
   Zap,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { triggerHaptic } from "@/lib/telegram";
+import { triggerHaptic, waitForTelegramUser } from "@/lib/telegram";
 import type { AccountStatus, Proxy, TgAccount } from "@/lib/types";
 import { Spinner } from "./ui";
 
@@ -139,7 +139,9 @@ export default function AccountsView({
   const loadData = async () => {
     setLoading(true);
     try {
-      const [accs, prxs] = await Promise.all([api.listAccounts(), api.listProxies()]);
+      const user = await waitForTelegramUser();
+      const userIdStr = user ? String(user.id) : undefined;
+      const [accs, prxs] = await Promise.all([api.listAccounts(userIdStr), api.listProxies()]);
       setAccounts(accs);
       setProxies(prxs);
     } catch (e) {

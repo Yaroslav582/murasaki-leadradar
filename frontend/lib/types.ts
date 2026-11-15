@@ -268,6 +268,7 @@ export type AccountStatus = "active" | "warming" | "spamblock" | "floodwait" | "
 
 export interface TgAccount {
   id: string;
+  user_id?: string;
   phone: string;
   username: string | null;
   status: AccountStatus;
@@ -298,11 +299,14 @@ export type DialogStatus = "new" | "ai_handling" | "manual" | "deal";
 export interface Dialog {
   id: string;
   account_id: string;
+  account_phone?: string | null;
+  account_username?: string | null;
   peer_id: string;
   peer_username: string | null;
   peer_name: string | null;
   lead_id: string | null;
   status: DialogStatus;
+  ai_auto_reply_enabled?: boolean;
   unread_count: number;
   last_message_at: string | null;
   last_message_preview?: string;
