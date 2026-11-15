@@ -45,7 +45,7 @@ def _normalize_url(url: str) -> str:
     return url
 
 
-DATABASE_URL = _normalize_url(settings.database_url)
+DATABASE_URL = _normalize_url(settings.get_database_url())
 _is_sqlite = DATABASE_URL.startswith("sqlite")
 
 connect_args: dict = {}
@@ -53,10 +53,11 @@ if _is_sqlite:
     connect_args = {"check_same_thread": False}
 else:
     # Supabase Transaction Pooler (port 6543) / asyncpg
-    # statement_cache_size=0 is strictly required to avoid prepared statement errors with PgBouncer
+    # statement_cache_size=0 and ssl='require' are strictly required
     if "asyncpg" in DATABASE_URL:
         connect_args = {
             "statement_cache_size": 0,
+            "ssl": "require",
         }
     elif "psycopg" in DATABASE_URL:
         connect_args = {
@@ -82,11 +83,33 @@ async def init_db() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     from app import models  # noqa: F401  (register mappings)
 
+    # 1. Hard check for Supabase PostgreSQL connection (no silent failure)
+    if not _is_sqlite:
+        try:
+            async with engine.connect() as test_conn:
+                from sqlalchemy import text
+                res = await test_conn.execute(text("SELECT 1"))
+                res.scalar()
+            print("\n=======================================================")
+            print("✅ Connected to Supabase PostgreSQL")
+            print(f"Target: {engine.url.host}:{engine.url.port}/{engine.url.database}")
+            print("=======================================================\n")
+            logger.info("✅ Connected to Supabase PostgreSQL: %s:%s/%s", engine.url.host, engine.url.port, engine.url.database)
+        except Exception as exc:
+            print("\n=======================================================")
+            print("❌ CRITICAL: Failed to connect to Supabase PostgreSQL!")
+            print(f"Target: {engine.url.host}:{engine.url.port}/{engine.url.database}")
+            print(f"Error: {exc}")
+            print("Check DATABASE_URL credentials, port (6543 for pooler), and password.")
+            print("=======================================================\n")
+            logger.critical("❌ Failed to connect to Supabase PostgreSQL: %s", exc)
+            raise RuntimeError(f"Failed to connect to Supabase PostgreSQL: {exc}") from exc
+
     async with engine.begin() as conn:
-        # 1. Create all missing tables in Supabase / SQLite
+        # 2. Create all missing tables in Supabase / SQLite
         await conn.run_sync(Base.metadata.create_all)
 
-        # 2. Schema migrations & compatibility views
+        # 3. Schema migrations & compatibility views
         if not _is_sqlite:
             # PostgreSQL / Supabase
             def _migrate_postgres(sync_conn):
@@ -97,10 +120,13 @@ async def init_db() -> None:
                     "ALTER TABLE users ADD COLUMN IF NOT EXISTS referrer_id VARCHAR(36);",
                     "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(32);",
                     # tg_accounts
+                    "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS user_id BIGINT;",
                     "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS session_string TEXT;",
                     "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS warmup_preset VARCHAR(24) DEFAULT 'optimal';",
                     "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS auto_warmup BOOLEAN DEFAULT FALSE;",
                     "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS daily_actions_reset_at TIMESTAMPTZ;",
+                    # proxies
+                    "ALTER TABLE proxies ADD COLUMN IF NOT EXISTS user_id BIGINT;",
                     # dialogs
                     "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS ai_auto_reply_enabled BOOLEAN DEFAULT TRUE;",
                     # telegram_orders

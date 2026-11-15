@@ -201,7 +201,7 @@ class Proxy(Base):
     __tablename__ = "proxies"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    user_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    user_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     protocol: Mapped[str] = mapped_column(String(10), default="socks5")  # socks5 | http
     host: Mapped[str] = mapped_column(String(255))
     port: Mapped[int] = mapped_column(Integer)
@@ -216,7 +216,7 @@ class TgAccount(Base):
     __tablename__ = "tg_accounts"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    user_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    user_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     phone: Mapped[str] = mapped_column(String(32), index=True)
     username: Mapped[str | None] = mapped_column(String(120))
     session_string: Mapped[str | None] = mapped_column(Text)  # Telethon StringSession

@@ -20,7 +20,13 @@ class Settings(BaseSettings):
     app_name: str = "LeadRadar"
     debug: bool = False
 
-    database_url: str = f"sqlite+aiosqlite:///{(DATA_DIR / 'parser.db').as_posix()}"
+    database_url: str | None = None
+    supabase_url: str | None = None
+    supabase_key: str | None = None
+    supabase_service_role_key: str | None = None
+    supabase_anon_key: str | None = None
+    supabase_db_password: str | None = None
+    supabase_database_url: str | None = None
     redis_url: str = "redis://localhost:6379/0"
     use_celery: bool = False
     seed_on_start: bool = True
@@ -125,6 +131,42 @@ class Settings(BaseSettings):
     @property
     def user_agent_list(self) -> list[str]:
         return [agent.strip() for agent in self.user_agents.split("|") if agent.strip()]
+
+    def get_database_url(self) -> str:
+        import os
+
+        # 1. Direct DATABASE_URL or SUPABASE_DATABASE_URL
+        raw = (
+            self.database_url
+            or self.supabase_database_url
+            or os.getenv("DATABASE_URL")
+            or os.getenv("SUPABASE_DATABASE_URL")
+        )
+        if raw and str(raw).strip():
+            return str(raw).strip()
+
+        # 2. Derive from SUPABASE_URL + password if provided
+        s_url = self.supabase_url or os.getenv("SUPABASE_URL")
+        s_pwd = (
+            self.supabase_db_password
+            or os.getenv("SUPABASE_DB_PASSWORD")
+            or os.getenv("SUPABASE_PASSWORD")
+        )
+        if s_url and s_pwd:
+            # Extract ref, e.g. https://xyz.supabase.co -> xyz
+            ref = s_url.replace("https://", "").replace("http://", "").split(".")[0].strip()
+            return f"postgresql+asyncpg://postgres.{ref}:{s_pwd.strip()}@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require"
+
+        # 3. In production on Render, error if DATABASE_URL is missing
+        is_prod = bool(os.getenv("RENDER") or os.getenv("ENVIRONMENT") == "production")
+        if is_prod:
+            raise RuntimeError(
+                "CRITICAL: DATABASE_URL is not configured in production! "
+                "Please configure your Supabase PostgreSQL pooler URL (port 6543) in Render Environment Variables."
+            )
+
+        # 4. Local development fallback
+        return f"sqlite+aiosqlite:///{(DATA_DIR / 'parser.db').as_posix()}"
 
 
 @lru_cache

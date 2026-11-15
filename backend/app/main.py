@@ -13,7 +13,7 @@ from app.api import api_router
 from app.config import settings
 from app.db import get_session, init_db
 from app.models import DemoSite
-from app.seed import seed_accounts_and_dialogs_data, seed_demo_data, seed_telegram_data
+from app.seed import seed_demo_data, seed_telegram_data
 from app.services.account_pool import account_pool
 from app.services.bot_runner import bot_runner
 from app.services.jobs import fail_stale_jobs
@@ -64,9 +64,6 @@ async def lifespan(app: FastAPI):
             tg_seeded = await seed_telegram_data()
             if tg_seeded.get("chats") or tg_seeded.get("orders"):
                 logger.info("Telegram demo data seeded: %s", tg_seeded)
-            acc_seeded = await seed_accounts_and_dialogs_data()
-            if acc_seeded.get("accounts"):
-                logger.info("Accounts and dialogs demo data seeded: %s", acc_seeded)
         except Exception:
             logger.exception("Failed to seed demo data")
 

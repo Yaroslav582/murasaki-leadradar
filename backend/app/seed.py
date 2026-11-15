@@ -172,67 +172,6 @@ async def seed_telegram_data() -> dict[str, int]:
     return seeded_counts
 
 
-async def seed_accounts_and_dialogs_data() -> dict[str, int]:
-    counts = {"accounts": 0, "proxies": 0, "dialogs": 0}
-    async with SessionLocal() as session:
-        # Check if accounts exist
-        existing_acc = await session.scalar(select(func.count(TgAccount.id))) or 0
-        if existing_acc:
-            return counts
-
-        # Seed Proxy
-        proxy = Proxy(
-            protocol="socks5",
-            host="185.220.101.5",
-            port=1080,
-            username="murasaki_proxy",
-            password="secret_password",
-            is_alive=True,
-            last_check=utcnow(),
-        )
-        session.add(proxy)
-        await session.flush()
-        counts["proxies"] += 1
-
-        # Seed 2 Demo Accounts
-        acc1 = TgAccount(
-            phone="+79991234567",
-            username="murasaki_radar_main",
-            device_model="Samsung Galaxy S22 Ultra",
-            system_version="Android 13, One UI 5.1",
-            app_version="Telegram Android 9.6.5",
-            proxy_id=proxy.id,
-            status="active",
-            warmup_level=85,
-            warmup_preset="optimal",
-            auto_warmup=True,
-            daily_actions_count=4,
-        )
-        acc2 = TgAccount(
-            phone="+79189876543",
-            username="lead_hunter_pro",
-            device_model="Google Pixel 7 Pro",
-            system_version="Android 14, UpsideDownCake",
-            app_version="Telegram Android 10.1.2",
-            proxy_id=proxy.id,
-            status="warming",
-            warmup_level=45,
-            warmup_preset="light",
-            auto_warmup=True,
-            daily_actions_count=2,
-        )
-        session.add_all([acc1, acc2])
-        await session.flush()
-        counts["accounts"] += 2
-
-        # Do not seed mock dialogs or mock messages
-        # Dialogs and messages are synchronized in real-time with connected Telethon sessions
-        await session.commit()
-        logger.info("Seeded accounts, proxy: %s", counts)
-
-    return counts
-
-
 async def _main() -> None:
     await init_db()
     count = await seed_demo_data()

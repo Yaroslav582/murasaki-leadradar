@@ -97,6 +97,8 @@ async def import_sqlite_data_to_postgres(sqlite_path: Path | str) -> dict[str, i
         if "proxies" in existing_tables:
             rows = cursor.execute("SELECT * FROM proxies").fetchall()
             for r in rows:
+                if r["host"] == "185.220.101.5":
+                    continue  # skip mock proxy
                 p_id = r["id"]
                 if not (await session.get(Proxy, p_id)):
                     session.add(
@@ -120,6 +122,8 @@ async def import_sqlite_data_to_postgres(sqlite_path: Path | str) -> dict[str, i
         if "tg_accounts" in existing_tables:
             rows = cursor.execute("SELECT * FROM tg_accounts").fetchall()
             for r in rows:
+                if r["phone"] in ("+79991234567", "+79189876543"):
+                    continue  # skip mock accounts
                 acc_id = r["id"]
                 if not (await session.get(TgAccount, acc_id)):
                     session.add(

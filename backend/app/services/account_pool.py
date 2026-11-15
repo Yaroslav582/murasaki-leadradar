@@ -457,7 +457,7 @@ class AccountPool:
         code: str,
         password: Optional[str] = None,
         session: Optional[AsyncSession] = None,
-        user_id: Optional[str] = None,
+        user_id: Optional[Any] = None,
     ) -> dict[str, Any]:
         """Verifies received code and optional 2FA password, persists TgAccount with StringSession."""
         from telethon.errors import SessionPasswordNeededError
@@ -468,6 +468,13 @@ class AccountPool:
 
         client = pending["client"]
         phone_code_hash = pending["phone_code_hash"]
+
+        int_user_id: Optional[int] = None
+        if user_id is not None:
+            try:
+                int_user_id = int(user_id)
+            except (ValueError, TypeError):
+                pass
 
         try:
             try:
@@ -480,30 +487,54 @@ class AccountPool:
             me = await client.get_me()
             session_str = client.session.save()
 
+            new_acc_id: Optional[str] = None
             if session:
-                new_acc = TgAccount(
-                    user_id=user_id,
-                    phone=phone,
-                    username=me.username,
-                    session_string=session_str,
-                    device_model=pending["device_model"],
-                    system_version=pending["system_version"],
-                    app_version=pending["app_version"],
-                    proxy_id=pending["proxy_id"],
-                    status="active",
-                    warmup_level=50,
-                )
-                session.add(new_acc)
+                phone_clean = phone.strip()
+                existing_acc = (
+                    await session.execute(select(TgAccount).where(TgAccount.phone == phone_clean))
+                ).scalars().first()
+
+                if existing_acc:
+                    new_acc = existing_acc
+                    if int_user_id is not None:
+                        new_acc.user_id = int_user_id
+                    new_acc.username = getattr(me, "username", None) or new_acc.username
+                    new_acc.session_string = session_str
+                    new_acc.status = "active"
+                    new_acc.device_model = pending.get("device_model") or new_acc.device_model
+                    new_acc.system_version = pending.get("system_version") or new_acc.system_version
+                    new_acc.app_version = pending.get("app_version") or new_acc.app_version
+                    if pending.get("proxy_id"):
+                        new_acc.proxy_id = pending["proxy_id"]
+                    new_acc.updated_at = utcnow()
+                else:
+                    new_acc = TgAccount(
+                        user_id=int_user_id,
+                        phone=phone_clean,
+                        username=getattr(me, "username", None),
+                        session_string=session_str,
+                        device_model=pending.get("device_model", "Samsung Galaxy S21"),
+                        system_version=pending.get("system_version", "SDK 30"),
+                        app_version=pending.get("app_version", "8.4.1"),
+                        proxy_id=pending.get("proxy_id"),
+                        status="active",
+                        warmup_level=50,
+                    )
+                    session.add(new_acc)
+
                 await session.commit()
                 await session.refresh(new_acc)
+                new_acc_id = new_acc.id
                 await self.register_client_from_account(new_acc, session)
 
             _PENDING_LOGINS.pop(phone, None)
             return {
                 "status": "success",
+                "id": new_acc_id,
+                "user_id": int_user_id,
                 "phone": phone,
-                "username": me.username,
-                "first_name": me.first_name,
+                "username": getattr(me, "username", None),
+                "first_name": getattr(me, "first_name", ""),
             }
         except Exception as e:
             logger.error("Verification failed for %s: %s", phone, e)
@@ -583,22 +614,54 @@ class AccountPool:
                         session_str = f"sqlite_file:{base}"
 
                 if session and session_str:
-                    new_acc = TgAccount(
-                        user_id=user_id,
-                        phone=phone,
-                        session_string=session_str,
-                        device_model=device_model,
-                        system_version=system_version,
-                        app_version=app_version,
-                        proxy_id=proxy_id,
-                        status="active",
-                        warmup_level=60,
-                    )
-                    session.add(new_acc)
+                    int_user_id: Optional[int] = None
+                    if user_id is not None:
+                        try:
+                            int_user_id = int(user_id)
+                        except (ValueError, TypeError):
+                            pass
+
+                    clean_phone = phone.strip()
+                    existing_acc = (
+                        await session.execute(
+                            select(TgAccount).where(
+                                (TgAccount.phone == clean_phone)
+                                | (TgAccount.phone == ("+" + clean_phone.lstrip("+")))
+                                | (TgAccount.phone == clean_phone.lstrip("+"))
+                            )
+                        )
+                    ).scalars().first()
+
+                    if existing_acc:
+                        new_acc = existing_acc
+                        if int_user_id is not None:
+                            new_acc.user_id = int_user_id
+                        new_acc.session_string = session_str
+                        new_acc.device_model = device_model
+                        new_acc.system_version = system_version
+                        new_acc.app_version = app_version
+                        if proxy_id:
+                            new_acc.proxy_id = proxy_id
+                        new_acc.status = "active"
+                        new_acc.updated_at = utcnow()
+                    else:
+                        new_acc = TgAccount(
+                            user_id=int_user_id,
+                            phone=clean_phone,
+                            session_string=session_str,
+                            device_model=device_model,
+                            system_version=system_version,
+                            app_version=app_version,
+                            proxy_id=proxy_id,
+                            status="active",
+                            warmup_level=60,
+                        )
+                        session.add(new_acc)
+
                     await session.commit()
                     await session.refresh(new_acc)
                     await self.register_client_from_account(new_acc, session)
-                    imported.append({"phone": phone, "status": "imported", "id": new_acc.id})
+                    imported.append({"phone": new_acc.phone, "status": "imported", "id": new_acc.id, "user_id": new_acc.user_id})
 
         return imported
 

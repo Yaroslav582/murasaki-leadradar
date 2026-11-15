@@ -18,27 +18,68 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Accounts & Proxies"])
 
 
-async def resolve_owner_user_id(request: Request, session: AsyncSession) -> Optional[str]:
-    """Resolves owner user ID from X-Telegram-User-Id, X-User-Id header or query parameter."""
+def parse_int_user_id(val: Any) -> Optional[int]:
+    """Safely extracts integer Telegram user ID from string or int."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return None
+
+
+async def resolve_owner_user_id(request: Request, session: AsyncSession) -> Optional[int]:
+    """Resolves owner Telegram user ID as BigInteger / int from headers or query parameters."""
     tg_user_id = (
         request.headers.get("x-telegram-user-id")
         or request.headers.get("x-user-id")
         or request.query_params.get("user_id")
     )
-    if tg_user_id and tg_user_id.strip():
-        clean_id = tg_user_id.strip()
+    parsed = parse_int_user_id(tg_user_id)
+    if parsed is not None:
         try:
-            user = await get_or_create_user(session, telegram_id=int(clean_id) if clean_id.isdigit() else None)
-            return str(user.telegram_id or user.id)
+            user = await get_or_create_user(session, telegram_id=parsed)
+            return user.telegram_id or parsed
         except Exception as e:
-            logger.warning("Error resolving user from header %s: %s", clean_id, e)
-            return clean_id
+            logger.warning("Error resolving user from ID %s: %s", parsed, e)
+            return parsed
     return None
+
+
+async def find_account(session: AsyncSession, account_id: str) -> Optional[TgAccount]:
+    """Finds account by UUID primary key or by phone number (preventing 'Not Found' errors)."""
+    if not account_id:
+        return None
+    clean_target = str(account_id).strip()
+
+    # 1. Try by primary key UUID
+    try:
+        acc = await session.get(TgAccount, clean_target)
+        if acc:
+            return acc
+    except Exception:
+        pass
+
+    # 2. Try by phone variants (+7..., 7..., etc.)
+    clean_digits = "".join(ch for ch in clean_target if ch.isdigit() or ch == "+")
+    stmt = select(TgAccount).where(
+        (TgAccount.id == clean_target)
+        | (TgAccount.phone == clean_target)
+        | (TgAccount.phone == clean_digits)
+        | (TgAccount.phone == ("+" + clean_digits.lstrip("+")))
+        | (TgAccount.phone == clean_digits.lstrip("+"))
+    )
+    res = await session.execute(stmt)
+    return res.scalars().first()
 
 
 # Pydantic Schemas
 class AccountCreate(BaseModel):
     phone: str
+    user_id: Optional[int] = None
     session_string: Optional[str] = None
     device_model: str = "Samsung Galaxy S21"
     system_version: str = "SDK 30"
@@ -83,9 +124,12 @@ async def list_accounts(
     user_id: Optional[str] = None,
     session: AsyncSession = Depends(get_session),
 ) -> list[dict[str, Any]]:
-    owner_id = await resolve_owner_user_id(request, session) or user_id
+    owner_id = await resolve_owner_user_id(request, session)
+    if owner_id is None and user_id:
+        owner_id = parse_int_user_id(user_id)
+
     stmt = select(TgAccount).order_by(TgAccount.created_at.desc())
-    if owner_id:
+    if owner_id is not None:
         stmt = stmt.where(
             (TgAccount.user_id == owner_id) | (TgAccount.user_id.is_(None))
         )
@@ -122,32 +166,60 @@ async def create_account(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    owner_id = await resolve_owner_user_id(request, session)
-    acc = TgAccount(
-        user_id=owner_id,
-        phone=payload.phone.strip(),
-        session_string=payload.session_string.strip() if payload.session_string else None,
-        device_model=payload.device_model,
-        system_version=payload.system_version,
-        app_version=payload.app_version,
-        proxy_id=payload.proxy_id,
-        warmup_preset=payload.warmup_preset,
-        auto_warmup=payload.auto_warmup,
-        status="active" if payload.session_string else "warming",
+    owner_id = await resolve_owner_user_id(request, session) or payload.user_id
+    clean_phone = payload.phone.strip()
+
+    stmt = select(TgAccount).where(
+        (TgAccount.phone == clean_phone)
+        | (TgAccount.phone == ("+" + clean_phone.lstrip("+")))
+        | (TgAccount.phone == clean_phone.lstrip("+"))
     )
-    session.add(acc)
+    res = await session.execute(stmt)
+    acc = res.scalars().first()
+
+    if acc:
+        if owner_id is not None:
+            acc.user_id = owner_id
+        if payload.session_string:
+            acc.session_string = payload.session_string.strip()
+            acc.status = "active"
+        if payload.device_model:
+            acc.device_model = payload.device_model
+        if payload.proxy_id:
+            acc.proxy_id = payload.proxy_id
+        acc.warmup_preset = payload.warmup_preset
+        acc.auto_warmup = payload.auto_warmup
+        acc.updated_at = utcnow()
+    else:
+        acc = TgAccount(
+            user_id=owner_id,
+            phone=clean_phone,
+            session_string=payload.session_string.strip() if payload.session_string else None,
+            device_model=payload.device_model,
+            system_version=payload.system_version,
+            app_version=payload.app_version,
+            proxy_id=payload.proxy_id,
+            warmup_preset=payload.warmup_preset,
+            auto_warmup=payload.auto_warmup,
+            status="active" if payload.session_string else "warming",
+        )
+        session.add(acc)
+
     await session.commit()
     await session.refresh(acc)
 
     if acc.session_string:
-        await account_pool.register_client_from_account(acc, session)
+        try:
+            await account_pool.register_client_from_account(acc, session)
+        except Exception as e:
+            logger.warning("Failed to register client in pool: %s", e)
 
     return {"id": acc.id, "phone": acc.phone, "status": acc.status, "user_id": acc.user_id}
 
 
 @router.get("/accounts/{account_id}")
 async def get_account(account_id: str, session: AsyncSession = Depends(get_session)) -> dict[str, Any]:
-    acc = await session.get(TgAccount, account_id)
+    acc = await find_account(session, account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Аккаунт не найден")
     return {
@@ -168,7 +240,7 @@ async def get_account(account_id: str, session: AsyncSession = Depends(get_sessi
 async def update_account(
     account_id: str, payload: AccountUpdate, session: AsyncSession = Depends(get_session)
 ) -> dict[str, Any]:
-    acc = await session.get(TgAccount, account_id)
+    acc = await find_account(session, account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Аккаунт не найден")
 
@@ -195,21 +267,29 @@ async def update_account(
 
 @router.delete("/accounts/{account_id}")
 async def delete_account(account_id: str, session: AsyncSession = Depends(get_session)) -> dict[str, Any]:
-    acc = await session.get(TgAccount, account_id)
+    acc = await find_account(session, account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Аккаунт не найден")
+    real_id = acc.id
     await session.delete(acc)
     await session.commit()
-    return {"status": "deleted", "id": account_id}
+    return {"status": "deleted", "id": real_id}
 
 
 @router.post("/accounts/{account_id}/check")
 async def check_account_health(
     account_id: str, session: AsyncSession = Depends(get_session)
 ) -> dict[str, Any]:
-    acc = await session.get(TgAccount, account_id)
+    acc = await find_account(session, account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Аккаунт не найден")
+
+    if not acc.session_string:
+        return {
+            "status": acc.status or "warming",
+            "info": "Сессия Telethon еще не подключена (требуется вход по коду)",
+            "user": acc.username or acc.phone,
+        }
 
     res = await account_pool.check_account_health(session, acc)
     return res
