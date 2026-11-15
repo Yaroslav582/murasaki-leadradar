@@ -157,15 +157,15 @@ class Settings(BaseSettings):
             ref = s_url.replace("https://", "").replace("http://", "").split(".")[0].strip()
             return f"postgresql+asyncpg://postgres.{ref}:{s_pwd.strip()}@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require"
 
-        # 3. In production on Render, error if DATABASE_URL is missing
+        # 3. Check production
         is_prod = bool(os.getenv("RENDER") or os.getenv("ENVIRONMENT") == "production")
         if is_prod:
-            raise RuntimeError(
-                "CRITICAL: DATABASE_URL is not configured in production! "
-                "Please configure your Supabase PostgreSQL pooler URL (port 6543) in Render Environment Variables."
+            import logging
+            logging.getLogger("app.config").warning(
+                "DATABASE_URL not set in Render Environment. Using SQLite fallback until Supabase URL is added."
             )
 
-        # 4. Local development fallback
+        # 4. Fallback database
         return f"sqlite+aiosqlite:///{(DATA_DIR / 'parser.db').as_posix()}"
 
 
