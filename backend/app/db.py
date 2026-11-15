@@ -20,13 +20,37 @@ def _normalize_url(url: str) -> str:
     if (url.startswith('"') and url.endswith('"')) or (url.startswith("'") and url.endswith("'")):
         url = url[1:-1].strip()
 
-    # Normalize PostgreSQL prefixes for asyncpg
+    # 1. Safely URL-encode '?' in the password portion if present
+    import re
+    match = re.match(r"^(.*?://)([^:]+):(.*)@([^@]+)$", url)
+    if match:
+        prefix, user, password, rest = match.groups()
+        if "?" in password:
+            password = password.replace("?", "%3F")
+            url = f"{prefix}{user}:{password}@{rest}"
+
+    # 2. Normalize PostgreSQL prefixes for asyncpg
     if url.startswith("postgres://"):
         url = "postgresql+asyncpg://" + url[11:]
     elif url.startswith("postgresql://") and "+asyncpg" not in url and "+psycopg" not in url:
         url = "postgresql+asyncpg://" + url[13:]
 
-    # Remove unsupported asyncpg parameters (e.g. pgbouncer=true from Prisma/Supabase snippets)
+    # 3. If direct connection to Supabase (port 5432) is provided, convert to pooler (port 6543)
+    # Direct connection requires IPv6 which is not supported on Render/Vercel free tiers
+    if "db." in url and ".supabase.co:5432" in url and "pooler.supabase.com" not in url:
+        pooler_match = re.search(r"@db\.([a-z0-9]+)\.supabase\.co:5432", url)
+        if pooler_match:
+            project_ref = pooler_match.group(1)
+            # Ensure username is prefixed with postgres.<ref>
+            url = re.sub(
+                r"://([^:]+):",
+                lambda m: f"://postgres.{project_ref}:" if not m.group(1).startswith("postgres.") else f"://{m.group(1)}:",
+                url,
+            )
+            # Switch to EU-West-1 pooler on port 6543
+            url = url.replace(f"@db.{project_ref}.supabase.co:5432", "@aws-0-eu-west-1.pooler.supabase.com:6543")
+
+    # 4. Remove unsupported asyncpg parameters (e.g. pgbouncer=true from Prisma/Supabase snippets)
     if "asyncpg" in url and "?" in url:
         parts = urlsplit(url)
         query_params = parse_qs(parts.query)
