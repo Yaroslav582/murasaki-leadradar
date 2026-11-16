@@ -531,7 +531,7 @@ class TelegramClientManager:
             except Exception:
                 entity = await client.get_entity(clean)
 
-            await client.send_message(entity, text, parse_mode="md")
+            await client.send_message(entity, text, parse_mode="md", link_preview=False)
             logger.info("Successfully sent direct message to %s", recipient)
             return BroadcastResult(True, None)
         except Exception as exc:
@@ -539,8 +539,8 @@ class TelegramClientManager:
             logger.error("Failed to send direct message to %s: %s", recipient, exc)
             return BroadcastResult(False, err_msg)
 
-    async def broadcast_promo(self, chat_id: str, text: str) -> BroadcastResult:
-        """Post a promo message to a chat using active Telethon client."""
+    async def broadcast_promo(self, chat_id: str, text: str, image_path: str | None = None) -> BroadcastResult:
+        """Post a promo message to a chat using active Telethon client with portfolio screenshot."""
         client = await self.get_active_client()
         if not client:
             err = "Telegram UserBot не авторизован: подключите Telegram-аккаунт во вкладке Прогрев"
@@ -554,7 +554,35 @@ class TelegramClientManager:
             except Exception:
                 entity = await client.get_entity(clean)
 
-            await client.send_message(entity, text, parse_mode="md")
+            # Resolve portfolio screenshot image (first page of portfolio)
+            from pathlib import Path
+            img_file = None
+            if image_path and Path(image_path).is_file():
+                img_file = Path(image_path)
+            else:
+                static_dir = Path(__file__).resolve().parent.parent / "static"
+                default_candidates = [
+                    static_dir / "portfolio_hero.png",
+                    DATA_DIR / "portfolio_hero.png",
+                    DATA_DIR / "portfolio_screen.jpg",
+                ]
+                for cand in default_candidates:
+                    if cand.is_file():
+                        img_file = cand
+                        break
+
+            # Send as photo with caption if image is available, else send text without link preview
+            if img_file:
+                logger.info("Sending promo with portfolio screenshot (%s) to %s", img_file.name, chat_id)
+                await client.send_file(
+                    entity,
+                    file=img_file.as_posix(),
+                    caption=text,
+                    parse_mode="md",
+                )
+            else:
+                await client.send_message(entity, text, parse_mode="md", link_preview=False)
+
             logger.info("Successfully published promo post to %s", chat_id)
             return BroadcastResult(True, None)
         except Exception as exc:

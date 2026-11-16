@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -572,3 +572,66 @@ async def update_settings(payload: TelegramSettingsUpdate) -> dict:
         settings.telegram_stop_words = payload.stop_words
 
     return {"status": "ok", "message": "Настройки Telegram обновлены"}
+
+
+@router.get("/portfolio-screenshot")
+async def get_portfolio_screenshot():
+    """Serves the current portfolio screenshot image."""
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    static_file = Path(__file__).resolve().parent.parent / "static" / "portfolio_hero.png"
+    if static_file.is_file():
+        return FileResponse(static_file.as_posix(), media_type="image/png")
+    data_file = DATA_DIR / "portfolio_hero.png"
+    if data_file.is_file():
+        return FileResponse(data_file.as_posix(), media_type="image/png")
+    raise HTTPException(status_code=404, detail="Скриншот портфолио пока не создан")
+
+
+@router.post("/portfolio-screenshot/refresh")
+async def refresh_portfolio_screenshot() -> dict:
+    """Takes a fresh high-res screenshot of the first page of the portfolio."""
+    import urllib.request
+    import json
+    from pathlib import Path
+
+    target = getattr(settings, "telegram_portfolio_url", "https://murasaki-portfolio.vercel.app/") or "https://murasaki-portfolio.vercel.app/"
+    try:
+        api_url = f"https://api.microlink.io/?url={target}&screenshot=true"
+        req = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read())
+            img_url = data.get("data", {}).get("screenshot", {}).get("url")
+
+        if not img_url:
+            raise ValueError("Не удалось получить снимок через сервис рендеринга")
+
+        img_req = urllib.request.Request(img_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(img_req, timeout=20) as img_resp:
+            content = img_resp.read()
+
+        static_dir = Path(__file__).resolve().parent.parent / "static"
+        for folder in [static_dir, DATA_DIR]:
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "portfolio_hero.png").write_bytes(content)
+
+        return {"status": "ok", "message": "Скриншот первой страницы портфолио успешно обновлен!"}
+    except Exception as exc:
+        logger.error("Failed refreshing portfolio screenshot: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Ошибка создания скриншота: {exc}")
+
+
+@router.post("/portfolio-screenshot/upload")
+async def upload_portfolio_screenshot(file: UploadFile = File(...)) -> dict:
+    """Allows uploading a custom image/screenshot for Telegram promo posts."""
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+
+    from pathlib import Path
+    static_dir = Path(__file__).resolve().parent.parent / "static"
+    for folder in [static_dir, DATA_DIR]:
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "portfolio_hero.png").write_bytes(content)
+
+    return {"status": "ok", "message": "Новое изображение для постов успешно сохранено!"}

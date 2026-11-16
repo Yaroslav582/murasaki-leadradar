@@ -11,6 +11,7 @@ import {
   Edit3,
   ExternalLink,
   Eye,
+  Image as ImageIcon,
   MessageCircle,
   MessageSquare,
   Moon,
@@ -73,6 +74,8 @@ export default function TelegramRadarView({
   const [broadcasting, setBroadcasting] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [nowTs, setNowTs] = useState(Date.now());
+  const [refreshingScreenshot, setRefreshingScreenshot] = useState(false);
+  const [screenshotVersion, setScreenshotVersion] = useState(Date.now());
 
   // Settings
   const [portfolioInput, setPortfolioInput] = useState("https://murasaki-portfolio.vercel.app/");
@@ -226,6 +229,20 @@ export default function TelegramRadarView({
       loadData();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Ошибка публикации", "error");
+    }
+  };
+
+  const handleRefreshScreenshot = async () => {
+    triggerHaptic("medium");
+    setRefreshingScreenshot(true);
+    try {
+      const res = await api.refreshPortfolioScreenshot();
+      setScreenshotVersion(Date.now());
+      showToast(res.message || "Скриншот первой страницы портфолио обновлен!", "success");
+    } catch (err) {
+      showToast("Ошибка обновления скриншота", "error");
+    } finally {
+      setRefreshingScreenshot(false);
     }
   };
 
@@ -955,6 +972,38 @@ export default function TelegramRadarView({
       {/* Tab: Promo Broadcasts Feed */}
       {tab === "promo" && (
         <div className="space-y-4">
+          {/* Portfolio Screenshot Hero Card */}
+          <div className="rounded-2xl border border-white/10 bg-[#161616] p-4 text-xs text-slate-300">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-2.5">
+              <div className="flex items-center gap-2">
+                <ImageIcon size={16} className="text-brand-400" />
+                <span className="font-semibold text-white">Скриншот первой страницы портфолио</span>
+                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-400 font-medium">✓ Фото-пост (без плашек)</span>
+              </div>
+              <button
+                onClick={handleRefreshScreenshot}
+                disabled={refreshingScreenshot}
+                className="btn-secondary text-[11px] py-1 px-2.5 flex items-center gap-1.5"
+              >
+                <RefreshCw size={12} className={refreshingScreenshot ? "animate-spin" : ""} />
+                {refreshingScreenshot ? "Снимок делается..." : "Обновить скриншот с сайта"}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 mb-3 leading-relaxed">
+              Все посты в Telegram отправляются как фото первого экрана вашего сайта (2560x1600 Retina) с текстом в подписи. Больше никаких уродливых ссылочных плашек Telegram.
+            </p>
+            <div className="relative aspect-[16/9] w-full max-w-md overflow-hidden rounded-xl border border-white/10 bg-black/40 shadow-inner">
+              <img
+                src={`/api/telegram/portfolio-screenshot?v=${screenshotVersion}`}
+                alt="Первая страница портфолио"
+                className="w-full h-full object-cover object-top"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "https://iad.microlink.io/ZGGmB0GX1dEwZHyDj_RBkCg2cF2BiYd5XVbC6kYrCWm67gTCECtgf55jXrSp4nC_9kEAXPN1xV_zsBGtTT20Bg.png";
+                }}
+              />
+            </div>
+          </div>
+
           <div className="rounded-2xl border border-white/10 bg-[#161616] p-4 text-xs text-slate-400 leading-relaxed">
             <span className="font-semibold text-white">Автопостинг и ротация визиток:</span> в каждом канале действует свой таймер (кулдаун), а для каждого канала можно задать индивидуальный текст или доверить уникальную генерацию нейросети.
           </div>

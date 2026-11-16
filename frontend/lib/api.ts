@@ -294,6 +294,25 @@ export const api = {
     });
   },
 
+  refreshPortfolioScreenshot() {
+    return request<{ status: string; message: string }>("/api/telegram/portfolio-screenshot/refresh", {
+      method: "POST",
+    });
+  },
+
+  async uploadPortfolioScreenshot(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_URL}/api/telegram/portfolio-screenshot/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      throw new Error(`Ошибка загрузки: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
   // Growth, Neuro-commenting, Chat Scraper & Stories
   getCommentTargets() {
     return request<CommentTarget[]>("/api/growth/comment-targets");
