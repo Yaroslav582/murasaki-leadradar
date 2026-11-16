@@ -83,8 +83,11 @@ else:
     from sqlalchemy.pool import NullPool
     pool_kwargs["poolclass"] = NullPool
     if "asyncpg" in DATABASE_URL:
+        from uuid import uuid4
         connect_args = {
             "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
             "ssl": "require",
         }
     elif "psycopg" in DATABASE_URL:
