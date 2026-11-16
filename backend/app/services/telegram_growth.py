@@ -245,6 +245,7 @@ class GrowthManager:
                     discussion.chat_id,
                     comment_text,
                     reply_to=discussion.id,
+                    link_preview=False,
                 )
                 success = True
                 logger.info("Successfully posted comment to %s (post %s)", channel_id, post_id)
@@ -428,9 +429,32 @@ async def publish_blog_post(
     if client:
         try:
             entity = await client.get_entity(channel_id)
-            msg = await client.send_message(entity, text, parse_mode="md")
+            from pathlib import Path
+            from app.config import DATA_DIR
+            img_file = None
+            for cand in [
+                Path(__file__).resolve().parent.parent / "static" / "portfolio_hero.png",
+                DATA_DIR / "portfolio_hero.png",
+            ]:
+                if cand.is_file():
+                    img_file = cand
+                    break
+
+            if img_file and len(text) <= 1020:
+                msg = await client.send_file(
+                    entity,
+                    file=img_file.as_posix(),
+                    caption=text,
+                    parse_mode="md",
+                )
+            elif img_file:
+                await client.send_file(entity, file=img_file.as_posix())
+                msg = await client.send_message(entity, text, parse_mode="md", link_preview=False)
+            else:
+                msg = await client.send_message(entity, text, parse_mode="md", link_preview=False)
+
             success = True
-            logger.info("Successfully published blog post to %s, msg_id: %s", channel_id, msg.id)
+            logger.info("Successfully published blog post to %s, msg_id: %s", channel_id, getattr(msg, "id", None))
         except Exception as exc:
             logger.error("Failed to publish blog post to %s: %s", channel_id, exc)
 
