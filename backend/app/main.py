@@ -135,6 +135,28 @@ async def public_demo(demo_id: str, session: AsyncSession = Depends(get_session)
     )
 
 
+@app.get("/api/debug-db")
+async def debug_db():
+    import traceback
+    from app.db import DATABASE_URL, SessionLocal
+    from sqlalchemy import text, select, func
+    from app.models import Lead
+    info = {
+        "database_url_host": DATABASE_URL.split("@")[-1] if "@" in DATABASE_URL else DATABASE_URL[:25],
+        "is_sqlite": DATABASE_URL.startswith("sqlite"),
+    }
+    try:
+        async with SessionLocal() as s:
+            r = await s.execute(text("SELECT 1"))
+            info["select_1"] = r.scalar()
+            r2 = await s.scalar(select(func.count(Lead.id)))
+            info["leads_count"] = r2
+    except Exception as exc:
+        info["error"] = str(exc)
+        info["traceback"] = traceback.format_exc()
+    return info
+
+
 @app.get("/")
 async def root() -> dict:
     return {
