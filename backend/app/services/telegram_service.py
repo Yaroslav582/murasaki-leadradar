@@ -189,12 +189,13 @@ async def generate_ai_promo(portfolio_url: str | None = None) -> str:
         "Укажи, что делаешь современные продающие сайты, лендинги и Telegram Mini Apps под ключ, берешь 1-2 проекта.\n"
         f"Обязательно включи ссылку на портфолио: {url}.\n"
         "Укажи контакт для связи: @loves_kyni.\n"
-        "Без клише и официоза, доброжелательный профессиональный тон."
+        "ВАЖНО: Текст прикрепляется к фото (скриншоту первой страницы портфолио), поэтому длина текста строго ДО 800 символов.\n"
+        "Структурируй лаконично, с понятными буллетами. Без клише и официоза, доброжелательный профессиональный тон."
     )
-    user_prompt = f"Ссылка на портфолио: {url}. Напиши уникальный текст визитки:"
+    user_prompt = f"Ссылка на портфолио: {url}. Напиши уникальный текст визитки (до 800 символов):"
 
     try:
-        res = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="fast", max_tokens=300)
+        res = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="fast", max_tokens=350)
         if res and len(res.strip()) > 40:
             return res.strip()
     except Exception as exc:
@@ -574,12 +575,22 @@ class TelegramClientManager:
             # Send as photo with caption if image is available, else send text without link preview
             if img_file:
                 logger.info("Sending promo with portfolio screenshot (%s) to %s", img_file.name, chat_id)
-                await client.send_file(
-                    entity,
-                    file=img_file.as_posix(),
-                    caption=text,
-                    parse_mode="md",
-                )
+                if len(text) <= 1020:
+                    try:
+                        await client.send_file(
+                            entity,
+                            file=img_file.as_posix(),
+                            caption=text,
+                            parse_mode="md",
+                        )
+                    except Exception as caption_err:
+                        logger.warning("Caption send failed on %s (%s), sending photo and message separately", chat_id, caption_err)
+                        await client.send_file(entity, file=img_file.as_posix())
+                        await client.send_message(entity, text, parse_mode="md", link_preview=False)
+                else:
+                    logger.info("Text length (%d) > 1020, sending photo then text separately with link_preview=False", len(text))
+                    await client.send_file(entity, file=img_file.as_posix())
+                    await client.send_message(entity, text, parse_mode="md", link_preview=False)
             else:
                 await client.send_message(entity, text, parse_mode="md", link_preview=False)
 
