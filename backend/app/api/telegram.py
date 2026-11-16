@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.config import DATA_DIR, settings
 from app.db import get_session
 from app.models import TelegramBroadcast, TelegramChatTarget, TelegramOrder, utcnow
 from app.services.billing import check_and_spend, get_or_create_user
