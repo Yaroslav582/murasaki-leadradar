@@ -204,6 +204,22 @@ async def generate_ai_promo(portfolio_url: str | None = None) -> str:
     return template.format(portfolio=url)
 
 
+class BroadcastResult:
+    """Result object that behaves as a boolean and unpacks into (success, error)."""
+    def __init__(self, success: bool, error: str | None = None) -> None:
+        self.success = success
+        self.error = error
+
+    def __bool__(self) -> bool:
+        return self.success
+
+    def __iter__(self):
+        return iter((self.success, self.error))
+
+    def __repr__(self) -> str:
+        return f"BroadcastResult(success={self.success}, error={self.error})"
+
+
 class TelegramClientManager:
     """Manages Telegram MTProto UserBot and Bot connections.
 
@@ -227,6 +243,56 @@ class TelegramClientManager:
     @property
     def has_credentials(self) -> bool:
         return bool(settings.telegram_api_id and settings.telegram_api_hash)
+
+    async def get_active_client(self) -> Any:
+        """Returns an active, authorized Telethon client from telegram_manager or account_pool."""
+        if self.client and self.is_connected:
+            try:
+                if self.client.is_connected() and await self.client.is_user_authorized():
+                    return self.client
+            except Exception:
+                pass
+
+        # 1. Check account_pool for connected active clients
+        try:
+            from app.services.account_pool import account_pool
+            for acc_id, client in list(account_pool._active_clients.items()):
+                if client and client.is_connected():
+                    try:
+                        if await client.is_user_authorized():
+                            self.client = client
+                            self.is_connected = True
+                            return client
+                    except Exception:
+                        pass
+        except Exception as exc:
+            logger.debug("Could not inspect account_pool: %s", exc)
+
+        # 2. Query Supabase tg_accounts for active session
+        try:
+            from app.db import SessionLocal
+            from app.models import TgAccount
+            from app.services.account_pool import account_pool
+
+            async with SessionLocal() as db_session:
+                stmt = select(TgAccount).where(
+                    TgAccount.session_string.isnot(None),
+                    TgAccount.status.in_(["active", "warming"]),
+                ).order_by(TgAccount.updated_at.desc())
+                acc = (await db_session.execute(stmt)).scalars().first()
+                if acc and acc.session_string:
+                    client = await account_pool.get_client_for_account(acc)
+                    await client.connect()
+                    if await client.is_user_authorized():
+                        account_pool._attach_message_handler(client, acc)
+                        self.client = client
+                        self.is_connected = True
+                        logger.info("Attached active Telethon client for UserBot from account %s (@%s)", acc.phone, acc.username)
+                        return client
+        except Exception as exc:
+            logger.warning("Could not instantiate client from tg_accounts: %s", exc)
+
+        return None
 
     async def initialize(self) -> None:
         if not self.has_credentials:
@@ -450,29 +516,51 @@ class TelegramClientManager:
             if targets:
                 await session.commit()
 
-    async def send_direct_message(self, recipient: str, text: str) -> bool:
-        """Send a message to a user or chat."""
-        if self.is_connected and self.client:
-            try:
-                await self.client.send_message(recipient, text, parse_mode="md")
-                return True
-            except Exception as exc:
-                logger.error("Failed to send TG message to %s: %s", recipient, exc)
-                return False
-        logger.info("[Dry Run / Offline] Would send TG message to %s:\n%s", recipient, text)
-        return True
+    async def send_direct_message(self, recipient: str, text: str) -> BroadcastResult:
+        """Send a message to a user or chat using active Telethon client."""
+        client = await self.get_active_client()
+        if not client:
+            err = "Telegram UserBot не авторизован: подключите Telegram-аккаунт во вкладке Прогрев"
+            logger.warning(err)
+            return BroadcastResult(False, err)
 
-    async def broadcast_promo(self, chat_id: str, text: str) -> bool:
-        """Post a promo message to a chat."""
-        if self.is_connected and self.client:
+        try:
+            clean = recipient.lstrip("@").strip()
             try:
-                await self.client.send_message(chat_id, text, parse_mode="md")
-                return True
-            except Exception as exc:
-                logger.error("Failed to broadcast promo to %s: %s", chat_id, exc)
-                return False
-        logger.info("[Dry Run / Offline] Would broadcast promo to %s:\n%s", chat_id, text)
-        return True
+                entity = await client.get_entity(recipient)
+            except Exception:
+                entity = await client.get_entity(clean)
+
+            await client.send_message(entity, text, parse_mode="md")
+            logger.info("Successfully sent direct message to %s", recipient)
+            return BroadcastResult(True, None)
+        except Exception as exc:
+            err_msg = str(exc)
+            logger.error("Failed to send direct message to %s: %s", recipient, exc)
+            return BroadcastResult(False, err_msg)
+
+    async def broadcast_promo(self, chat_id: str, text: str) -> BroadcastResult:
+        """Post a promo message to a chat using active Telethon client."""
+        client = await self.get_active_client()
+        if not client:
+            err = "Telegram UserBot не авторизован: подключите Telegram-аккаунт во вкладке Прогрев"
+            logger.warning(err)
+            return BroadcastResult(False, err)
+
+        try:
+            clean = chat_id.lstrip("@").strip()
+            try:
+                entity = await client.get_entity(chat_id)
+            except Exception:
+                entity = await client.get_entity(clean)
+
+            await client.send_message(entity, text, parse_mode="md")
+            logger.info("Successfully published promo post to %s", chat_id)
+            return BroadcastResult(True, None)
+        except Exception as exc:
+            err_msg = str(exc)
+            logger.error("Failed to broadcast promo to %s: %s", chat_id, exc)
+            return BroadcastResult(False, err_msg)
 
     async def create_bot_via_botfather(self) -> dict:
         """Automate creating a Telegram Bot via @BotFather using the active user session."""

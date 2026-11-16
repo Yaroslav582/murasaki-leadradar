@@ -376,7 +376,7 @@ async def trigger_broadcast(session: AsyncSession = Depends(get_session)) -> Tel
     else:
         message_text = await generate_ai_promo(portfolio)
 
-    success = await telegram_manager.broadcast_promo(chat_id, message_text)
+    success, error_msg = await telegram_manager.broadcast_promo(chat_id, message_text)
 
     broadcast = TelegramBroadcast(
         chat_id=chat_id,
@@ -384,10 +384,11 @@ async def trigger_broadcast(session: AsyncSession = Depends(get_session)) -> Tel
         message_text=message_text,
         portfolio_url=portfolio,
         status="sent" if success else "failed",
+        error=error_msg,
     )
     session.add(broadcast)
 
-    if target:
+    if success and target:
         target.last_post_at = utcnow()
         cd = target.cooldown_minutes or 120
         target.next_post_at = utcnow() + timedelta(minutes=cd)
@@ -395,6 +396,13 @@ async def trigger_broadcast(session: AsyncSession = Depends(get_session)) -> Tel
 
     await session.commit()
     await session.refresh(broadcast)
+
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Не удалось опубликовать пост в Telegram: {error_msg or 'неизвестная ошибка'}",
+        )
+
     return TelegramBroadcastOut.model_validate(broadcast)
 
 
@@ -478,7 +486,11 @@ async def post_now_to_chat(
     session: AsyncSession = Depends(get_session),
 ) -> TelegramBroadcastOut:
     """Instantly post to a specific channel."""
-    target = await session.scalar(select(TelegramChatTarget).where(TelegramChatTarget.id == chat_id))
+    target = await session.scalar(
+        select(TelegramChatTarget).where(
+            (TelegramChatTarget.id == chat_id) | (TelegramChatTarget.chat_id == chat_id)
+        )
+    )
     if not target:
         raise HTTPException(status_code=404, detail="Канал не найден")
 
@@ -488,12 +500,7 @@ async def post_now_to_chat(
     else:
         message_text = await generate_ai_promo(portfolio)
 
-    success = await telegram_manager.broadcast_promo(target.chat_id, message_text)
-
-    target.last_post_at = utcnow()
-    cd = target.cooldown_minutes or 120
-    target.next_post_at = utcnow() + timedelta(minutes=cd)
-    session.add(target)
+    success, error_msg = await telegram_manager.broadcast_promo(target.chat_id, message_text)
 
     broadcast = TelegramBroadcast(
         chat_id=target.chat_id,
@@ -501,10 +508,25 @@ async def post_now_to_chat(
         message_text=message_text,
         portfolio_url=portfolio,
         status="sent" if success else "failed",
+        error=error_msg,
     )
     session.add(broadcast)
+
+    if success:
+        target.last_post_at = utcnow()
+        cd = target.cooldown_minutes or 120
+        target.next_post_at = utcnow() + timedelta(minutes=cd)
+        session.add(target)
+
     await session.commit()
     await session.refresh(broadcast)
+
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Не удалось опубликовать пост в Telegram: {error_msg or 'неизвестная ошибка'}",
+        )
+
     return TelegramBroadcastOut.model_validate(broadcast)
 
 

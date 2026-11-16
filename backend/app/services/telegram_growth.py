@@ -128,8 +128,8 @@ class GrowthManager:
         chat_identifier = chat_identifier.strip()
         results: list[dict[str, Any]] = []
 
-        client = telegram_manager.client
-        if client and telegram_manager.is_connected:
+        client = await telegram_manager.get_active_client()
+        if client:
             try:
                 entity = await client.get_entity(chat_identifier)
                 async for user in client.iter_participants(entity, limit=limit):
@@ -235,8 +235,8 @@ class GrowthManager:
         )
 
         success = False
-        client = telegram_manager.client
-        if client and telegram_manager.is_connected and post_id > 0:
+        client = await telegram_manager.get_active_client()
+        if client and post_id > 0:
             try:
                 # Get discussion message linked to the post
                 entity = await client.get_entity(channel_id)
@@ -285,8 +285,8 @@ class GrowthManager:
 
     async def view_user_story(self, user_id_or_username: int | str) -> bool:
         """View stories of a single target user so you appear in their viewers list."""
-        client = telegram_manager.client
-        if client and telegram_manager.is_connected:
+        client = await telegram_manager.get_active_client()
+        if client:
             try:
                 from telethon.tl.functions.stories import GetPeerStoriesRequest, ReadStoriesRequest
 
@@ -424,8 +424,8 @@ async def publish_blog_post(
     title, text = await generate_ai_blog_post(topic_hint)
     success = False
 
-    client = telegram_manager.client
-    if client and telegram_manager.is_connected:
+    client = await telegram_manager.get_active_client()
+    if client:
         try:
             entity = await client.get_entity(channel_id)
             msg = await client.send_message(entity, text, parse_mode="md")

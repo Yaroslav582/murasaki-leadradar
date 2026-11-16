@@ -189,7 +189,8 @@ class Settings(BaseSettings):
         if s_url and s_pwd:
             # Extract ref, e.g. https://xyz.supabase.co -> xyz
             ref = s_url.replace("https://", "").replace("http://", "").split(".")[0].strip()
-            return f"postgresql+asyncpg://postgres.{ref}:{s_pwd.strip()}@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require"
+            region = os.getenv("SUPABASE_REGION", "eu-west-1")
+            return f"postgresql+asyncpg://postgres.{ref}:{s_pwd.strip()}@aws-0-{region}.pooler.supabase.com:6543/postgres?sslmode=require"
 
         # 3. Check production
         is_prod = bool(os.getenv("RENDER") or os.getenv("ENVIRONMENT") == "production")

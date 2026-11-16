@@ -73,11 +73,15 @@ DATABASE_URL = _normalize_url(settings.get_database_url())
 _is_sqlite = DATABASE_URL.startswith("sqlite")
 
 connect_args: dict = {}
+pool_kwargs: dict = {}
+
 if _is_sqlite:
     connect_args = {"check_same_thread": False}
 else:
     # Supabase Transaction Pooler (port 6543) / asyncpg
-    # statement_cache_size=0 and ssl='require' are strictly required
+    # statement_cache_size=0, ssl='require' and NullPool are strictly required
+    from sqlalchemy.pool import NullPool
+    pool_kwargs["poolclass"] = NullPool
     if "asyncpg" in DATABASE_URL:
         connect_args = {
             "statement_cache_size": 0,
@@ -91,9 +95,8 @@ else:
 engine = create_async_engine(
     DATABASE_URL,
     echo=settings.debug,
-    pool_pre_ping=not _is_sqlite,
-    pool_recycle=300 if not _is_sqlite else -1,
     connect_args=connect_args,
+    **pool_kwargs,
 )
 
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
