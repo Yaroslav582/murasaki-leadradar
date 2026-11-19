@@ -25,11 +25,16 @@ def lead_to_dict(lead: Lead) -> dict:
         "opening_hours": lead.opening_hours or [],
         "latitude": lead.latitude,
         "longitude": lead.longitude,
+        "photos": list(getattr(lead, "photos", []) or []),
+        "logo_url": getattr(lead, "logo_url", None),
     }
 
 
 def public_demo_url(demo_id: str) -> str:
-    return f"{settings.public_base_url.rstrip('/')}/demo/{demo_id}"
+    base = settings.public_base_url.strip().rstrip("/")
+    if not base.startswith(("http://", "https://")):
+        base = f"https://{base}"
+    return f"{base}/demo/{demo_id}"
 
 
 def demo_out(demo: DemoSite) -> DemoOut:
@@ -39,6 +44,25 @@ def demo_out(demo: DemoSite) -> DemoOut:
 
 
 async def create_demo(session: AsyncSession, lead: Lead) -> DemoSite:
+    # Auto-fetch TG photos if missing and TG channel exists
+    if (not lead.photos or not lead.logo_url) and lead.social_links:
+        tg_url = lead.social_links.get("telegram")
+        if tg_url:
+            try:
+                from app.services.telegram_channel_scraper import scrape_telegram_channel
+                tg_data = await scrape_telegram_channel(tg_url)
+                if tg_data.get("avatar_url") and not lead.logo_url:
+                    lead.logo_url = tg_data["avatar_url"]
+                if tg_data.get("photos"):
+                    cur_photos = list(lead.photos or [])
+                    for p in tg_data["photos"]:
+                        if p not in cur_photos:
+                            cur_photos.append(p)
+                    lead.photos = cur_photos[:10]
+                session.add(lead)
+            except Exception:
+                pass
+
     data = lead_to_dict(lead)
     html, _engine = await generate_landing_html(data)
     demo = DemoSite(

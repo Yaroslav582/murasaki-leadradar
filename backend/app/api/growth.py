@@ -277,36 +277,110 @@ class BlogGenerateIn(BaseModel):
 
 
 @router.get("/blog/status")
-async def get_blog_status() -> dict[str, Any]:
+async def get_blog_status(session: AsyncSession = Depends(get_session)) -> dict[str, Any]:
     from app.config import settings
+    from app.models import AppSetting
+
+    # Load from Supabase app_settings
+    st = await session.get(AppSetting, "channel_blog_settings")
+    db_val = st.value if (st and st.value) else {}
+
+    enabled = db_val.get("enabled", getattr(settings, "channel_blog_enabled", True))
+    channel_id = db_val.get("channel_id", getattr(settings, "channel_blog_chat_id", "@Murasaki_website"))
+    interval_hours = db_val.get("interval_hours", getattr(settings, "channel_blog_interval_hours", 24))
+    last_post_at = db_val.get("last_post_at", getattr(settings, "channel_blog_last_post_at", None))
+    next_post_at = db_val.get("next_post_at", getattr(settings, "channel_blog_next_post_at", None))
+
+    # Keep settings synchronized
+    settings.channel_blog_enabled = enabled
+    settings.channel_blog_chat_id = channel_id
+    settings.channel_blog_interval_hours = interval_hours
+    settings.channel_blog_last_post_at = last_post_at
+    settings.channel_blog_next_post_at = next_post_at
 
     return {
-        "enabled": getattr(settings, "channel_blog_enabled", True),
-        "channel_id": getattr(settings, "channel_blog_chat_id", "@Murasaki_website"),
-        "interval_hours": getattr(settings, "channel_blog_interval_hours", 24),
-        "last_post_at": getattr(settings, "channel_blog_last_post_at", None),
-        "next_post_at": getattr(settings, "channel_blog_next_post_at", None),
+        "enabled": enabled,
+        "channel_id": channel_id,
+        "interval_hours": interval_hours,
+        "last_post_at": last_post_at,
+        "next_post_at": next_post_at,
         "topics": BLOG_TOPICS,
     }
 
 
 @router.post("/blog/settings")
-async def update_blog_settings(payload: BlogSettingsIn) -> dict[str, Any]:
+async def update_blog_settings(payload: BlogSettingsIn, session: AsyncSession = Depends(get_session)) -> dict[str, Any]:
+    from datetime import datetime, timedelta
     from app.config import settings
+    from app.models import AppSetting, utcnow
+
+    st = await session.get(AppSetting, "channel_blog_settings")
+    cur_val = dict(st.value) if (st and st.value) else {}
+
+    enabled = cur_val.get("enabled", getattr(settings, "channel_blog_enabled", True))
+    channel_id = cur_val.get("channel_id", getattr(settings, "channel_blog_chat_id", "@Murasaki_website"))
+    interval_hours = cur_val.get("interval_hours", getattr(settings, "channel_blog_interval_hours", 24))
+    last_post_at = cur_val.get("last_post_at", getattr(settings, "channel_blog_last_post_at", None))
+    next_post_at = cur_val.get("next_post_at", getattr(settings, "channel_blog_next_post_at", None))
 
     if payload.enabled is not None:
-        settings.channel_blog_enabled = payload.enabled
+        enabled = payload.enabled
     if payload.channel_id is not None and payload.channel_id.strip():
         cid = payload.channel_id.strip()
-        settings.channel_blog_chat_id = cid if cid.startswith("@") or cid.startswith("-100") else f"@{cid}"
+        channel_id = cid if cid.startswith("@") or cid.startswith("-100") else f"@{cid}"
+
+    interval_changed = False
     if payload.interval_hours is not None:
-        settings.channel_blog_interval_hours = max(1, min(168, payload.interval_hours))
+        new_interval = max(1, min(168, payload.interval_hours))
+        if new_interval != interval_hours:
+            interval_changed = True
+        interval_hours = new_interval
+
+    now = utcnow()
+    # Recalculate next_post_at if interval changed or if next_post_at is missing or in past
+    if interval_changed or next_post_at is None:
+        if last_post_at:
+            try:
+                last_dt = datetime.fromisoformat(last_post_at)
+                computed_next = last_dt + timedelta(hours=interval_hours)
+                if computed_next <= now:
+                    computed_next = now + timedelta(hours=interval_hours)
+                next_post_at = computed_next.isoformat()
+            except Exception:
+                next_post_at = (now + timedelta(hours=interval_hours)).isoformat()
+        else:
+            next_post_at = (now + timedelta(hours=interval_hours)).isoformat()
+
+    updated_val = {
+        "enabled": enabled,
+        "channel_id": channel_id,
+        "interval_hours": interval_hours,
+        "last_post_at": last_post_at,
+        "next_post_at": next_post_at,
+    }
+
+    # Save to Supabase AppSetting table
+    if st:
+        st.value = updated_val
+    else:
+        st = AppSetting(key="channel_blog_settings", value=updated_val)
+        session.add(st)
+    await session.commit()
+
+    # Sync in-memory settings
+    settings.channel_blog_enabled = enabled
+    settings.channel_blog_chat_id = channel_id
+    settings.channel_blog_interval_hours = interval_hours
+    settings.channel_blog_last_post_at = last_post_at
+    settings.channel_blog_next_post_at = next_post_at
 
     return {
         "status": "ok",
-        "enabled": settings.channel_blog_enabled,
-        "channel_id": settings.channel_blog_chat_id,
-        "interval_hours": settings.channel_blog_interval_hours,
+        "enabled": enabled,
+        "channel_id": channel_id,
+        "interval_hours": interval_hours,
+        "last_post_at": last_post_at,
+        "next_post_at": next_post_at,
     }
 
 

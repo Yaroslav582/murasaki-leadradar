@@ -73,6 +73,20 @@ class InboxService:
         if not dialog:
             raise ValueError("Диалог не найден")
 
+        # Guard: Abort if auto-reply is disabled or dialog is in manual/deal mode
+        if not dialog.ai_auto_reply_enabled or dialog.status in ("deal", "manual"):
+            logger.info("generate_ai_reply aborted for dialog %s: disabled or manual/deal", dialog_id)
+            return {"message_id": None, "text": "", "status": dialog.status, "is_deal": False}
+
+        # Guard: Never reply to bots
+        peer_u = (dialog.peer_username or "").lower()
+        peer_n = (dialog.peer_name or "").lower()
+        if peer_u.endswith("bot") or "bot" in peer_n or peer_u in ("spambot", "telegram"):
+            logger.info("generate_ai_reply aborted for dialog %s: peer is a bot", dialog_id)
+            dialog.ai_auto_reply_enabled = False
+            await session.commit()
+            return {"message_id": None, "text": "", "status": dialog.status, "is_deal": False}
+
         # Fetch lead details if available
         lead_name = "бизнес"
         lead_site_status = "нет сайта"
@@ -92,6 +106,30 @@ class InboxService:
         res = await session.execute(msg_stmt)
         messages = list(reversed(res.scalars().all()))
 
+        # Circuit breaker: count consecutive outbound AI messages
+        consecutive_ai = 0
+        for m in reversed(messages):
+            if m.direction == "out" and m.is_ai_generated:
+                consecutive_ai += 1
+            else:
+                break
+
+        if consecutive_ai >= 2:
+            logger.warning(
+                "Circuit breaker: dialog %s already sent %d consecutive AI messages without manual reply. Switching to manual.",
+                dialog_id,
+                consecutive_ai,
+            )
+            dialog.ai_auto_reply_enabled = False
+            dialog.status = "manual"
+            await session.commit()
+            return {
+                "message_id": None,
+                "text": "",
+                "status": "manual",
+                "is_deal": False,
+            }
+
         history_lines = []
         for m in messages:
             prefix = "Менеджер" if m.direction == "out" else "Клиент"
@@ -99,12 +137,14 @@ class InboxService:
 
         history_text = "\n".join(history_lines) if history_lines else "Диалог только начат."
 
-        portfolio_url = settings.telegram_portfolio_url or "https://murasaki-portfolio.vercel.app/"
+        portfolio_url = settings.telegram_portfolio_url or ""
+        portfolio_ref = f"Портфолио: {portfolio_url}. " if portfolio_url else ""
 
         system_prompt = (
-            "Ты — профессиональный менеджер по продажам веб-студии Murasaki. "
+            "Ты — профессиональный менеджер по продажам веб-студии. "
             "Твоя задача — вежливо, уверенно и кратко квалифицировать клиента, "
-            f"предложить посмотреть примеры работ по ссылке {portfolio_url} и договориться о созвоне или демонстрации. "
+            f"{portfolio_ref}"
+            "и договориться о созвоне или демонстрации. "
             "Отвечай естественным языком, без канцеляризмов, максимум 2-3 коротких предложения."
         )
 
@@ -117,10 +157,10 @@ class InboxService:
         try:
             ai_text = await ask_ai(user_prompt, system_prompt=system_prompt, task_type="smart", max_tokens=500, temperature=0.7)
             if not ai_text or len(ai_text.strip()) < 5:
-                ai_text = f"Здравствуйте! С удовольствием покажем вам кейсы и обсудим разработку: {portfolio_url}. Когда вам удобно созвониться на 5 минут?"
+                ai_text = "Здравствуйте! Ознакомились с вашей задачей. Подскажите, когда вам удобно обсудить детали проекта?"
         except Exception as e:
             logger.info("AI reply fallback to template: %s", e)
-            ai_text = f"Здравствуйте! Подготовили для вас решение. Ознакомьтесь с нашими работами: {portfolio_url}. Будем рады обсудить детали!"
+            ai_text = "Здравствуйте! С удовольствием поможем вам с реализацией проекта. Подскажите, когда вам удобно обсудить детали?"
 
         ai_text = ai_text.strip()
 
@@ -160,7 +200,7 @@ class InboxService:
                 if await client.is_user_authorized():
                     peer_val = dialog.peer_username or int(dialog.peer_id) if dialog.peer_id.isdigit() else dialog.peer_id
                     entity = await client.get_entity(peer_val)
-                    sent = await client.send_message(entity, ai_text)
+                    sent = await client.send_message(entity, ai_text, parse_mode="md", link_preview=False)
                     new_msg.tg_message_id = getattr(sent, "id", None)
                     await session.commit()
         except Exception as send_err:
@@ -180,11 +220,27 @@ class InboxService:
             if not dialog:
                 return
             if not dialog.ai_auto_reply_enabled:
-                logger.info("Auto-reply skipped for dialog %s: disabled by user", dialog_id)
+                logger.info("Auto-reply skipped for dialog %s: disabled", dialog_id)
+                return
+            if dialog.status in ("deal", "manual"):
+                logger.info("Auto-reply skipped for dialog %s: status is %s", dialog_id, dialog.status)
+                return
+            if not dialog.lead_id:
+                logger.info("Auto-reply skipped for dialog %s: not a registered outreach lead", dialog_id)
+                dialog.ai_auto_reply_enabled = False
+                await session.commit()
                 return
 
-            # Small human delay before responding (1.5 - 3.5s)
-            await asyncio.sleep(2.0)
+            peer_u = (dialog.peer_username or "").lower()
+            peer_n = (dialog.peer_name or "").lower()
+            if peer_u.endswith("bot") or "bot" in peer_n or peer_u in ("spambot", "telegram"):
+                logger.info("Auto-reply skipped for dialog %s: peer is a bot", dialog_id)
+                dialog.ai_auto_reply_enabled = False
+                await session.commit()
+                return
+
+            # Human delay before responding (2.0 - 4.0s)
+            await asyncio.sleep(2.5)
 
             try:
                 await self.generate_ai_reply(session, dialog_id)

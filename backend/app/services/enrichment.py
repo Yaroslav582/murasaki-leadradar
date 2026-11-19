@@ -154,6 +154,24 @@ async def enrich_lead(
         lead.emails = list(dict.fromkeys(list(lead.emails or []) + contacts["emails"]))[:5]
     if not lead.phone and contacts["phone"]:
         lead.phone = contacts["phone"]
+
+    # Enrich photos and logo from public Telegram channel if available
+    tg_url = (lead.social_links or {}).get("telegram")
+    if tg_url:
+        try:
+            from app.services.telegram_channel_scraper import scrape_telegram_channel
+            tg_data = await scrape_telegram_channel(tg_url)
+            if tg_data.get("avatar_url") and not lead.logo_url:
+                lead.logo_url = tg_data["avatar_url"]
+            if tg_data.get("photos"):
+                current_photos = list(lead.photos or [])
+                for ph in tg_data["photos"]:
+                    if ph not in current_photos:
+                        current_photos.append(ph)
+                lead.photos = current_photos[:10]
+        except Exception:
+            pass
+
     lead.enriched_at = datetime.now(timezone.utc)
     session.add(lead)
     return True

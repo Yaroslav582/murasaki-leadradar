@@ -423,11 +423,26 @@ class TelegramClientManager:
 
     async def _process_channel_blog(self) -> None:
         """Check if it is time to publish an expert blog post to the user's channel."""
-        if not getattr(settings, "channel_blog_enabled", True):
-            return
+        from app.models import AppSetting
+        from app.db import SessionLocal
 
         now = utcnow()
-        next_str = getattr(settings, "channel_blog_next_post_at", None)
+        cfg: dict[str, Any] = {}
+        try:
+            async with SessionLocal() as db_session:
+                st = await db_session.get(AppSetting, "channel_blog_settings")
+                if st and st.value:
+                    cfg = dict(st.value)
+        except Exception as db_err:
+            logger.debug("Failed reading channel_blog_settings from DB: %s", db_err)
+
+        enabled = cfg.get("enabled", getattr(settings, "channel_blog_enabled", True))
+        if not enabled:
+            return
+
+        interval_hours = int(cfg.get("interval_hours", getattr(settings, "channel_blog_interval_hours", 24)) or 24)
+        next_str = cfg.get("next_post_at") or getattr(settings, "channel_blog_next_post_at", None)
+
         if next_str:
             try:
                 next_dt = datetime.fromisoformat(next_str)
@@ -436,11 +451,11 @@ class TelegramClientManager:
             except Exception:
                 pass
 
-        channel_id = getattr(settings, "channel_blog_chat_id", "@Murasaki_website") or "@Murasaki_website"
+        channel_id = cfg.get("channel_id") or getattr(settings, "channel_blog_chat_id", "@Murasaki_website") or "@Murasaki_website"
         try:
             from app.services.telegram_growth import publish_blog_post
-            logger.info("Auto-blogger: publishing scheduled blog post to %s", channel_id)
-            await publish_blog_post(channel_id=channel_id)
+            logger.info("Auto-blogger: publishing scheduled blog post to %s (interval=%dh)", channel_id, interval_hours)
+            await publish_blog_post(channel_id=channel_id, interval_hours=interval_hours)
         except Exception as exc:
             logger.warning("Auto-blogger failed to publish post: %s", exc)
 

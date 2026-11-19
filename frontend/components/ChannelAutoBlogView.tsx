@@ -91,14 +91,34 @@ export default function ChannelAutoBlogView({
               ...prev,
               interval_hours: res.interval_hours,
               channel_id: res.channel_id,
+              next_post_at: res.next_post_at || prev.next_post_at,
+              last_post_at: res.last_post_at || prev.last_post_at,
             }
           : null
       );
-      showToast("Настройки автоблогера обновлены", "success");
+      showToast(`Интервал автоблогера обновлен: каждые ${res.interval_hours} ч`, "success");
     } catch (err) {
       showToast("Ошибка сохранения", "error");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const formatNextPostTimer = () => {
+    if (!status?.enabled) return "На паузе";
+    if (!status?.next_post_at) return `По расписанию (раз в ${status?.interval_hours || intervalHours} ч)`;
+    try {
+      const nextTime = new Date(status.next_post_at).getTime();
+      const diffMs = nextTime - Date.now();
+      if (diffMs <= 0) return "Очередь публикации (скоро)";
+      const hours = Math.floor(diffMs / (1000 * 60 * 60));
+      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      if (hours > 0) {
+        return `Через ${hours} ч ${minutes} мин (${status.interval_hours || intervalHours} ч интервал)`;
+      }
+      return `Через ${minutes} мин`;
+    } catch {
+      return `По расписанию (через ${status?.interval_hours || intervalHours} ч)`;
     }
   };
 
@@ -168,7 +188,7 @@ export default function ChannelAutoBlogView({
             }`}
           >
             {status?.enabled ? <Check size={14} /> : <Play size={14} />}
-            {status?.enabled ? "Автоблогер включен (24 ч)" : "Включить автопостинг"}
+            {status?.enabled ? `Автоблогер включен (${status?.interval_hours || intervalHours} ч)` : "Включить автопостинг"}
           </button>
         </div>
       </div>
@@ -236,7 +256,7 @@ export default function ChannelAutoBlogView({
                 Следующий пост:
               </span>
               <span className="font-semibold text-emerald-400">
-                {status?.enabled ? "По расписанию (через 24ч)" : "На паузе"}
+                {formatNextPostTimer()}
               </span>
             </div>
           </div>

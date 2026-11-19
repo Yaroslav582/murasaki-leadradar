@@ -153,13 +153,13 @@ export default function AccountsView({
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [tab]);
 
   const handleToggleAutoWarmup = async (account: TgAccount, value: boolean) => {
     try {
-      await api.updateAccount(account.id, { auto_warmup: value });
+      await api.updateAccount(account.id, { auto_warmup: value, auto_warmup_enabled: value });
       setAccounts((prev) =>
-        prev.map((a) => (a.id === account.id ? { ...a, auto_warmup: value } : a))
+        prev.map((a) => (a.id === account.id ? { ...a, auto_warmup: value, auto_warmup_enabled: value } : a))
       );
       showToast(
         value
@@ -383,6 +383,16 @@ export default function AccountsView({
             </button>
           </div>
 
+          <button
+            onClick={() => void loadData()}
+            disabled={loading}
+            className="icon-btn"
+            title="Обновить данные"
+            aria-label="Обновить данные"
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          </button>
+
           {tab === "accounts" ? (
             <button
               onClick={() => {
@@ -536,7 +546,7 @@ export default function AccountsView({
                   <div className="pt-2.5 border-t border-white/[0.06] flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <Switch
-                        checked={acc.auto_warmup}
+                        checked={Boolean(acc.auto_warmup || acc.auto_warmup_enabled)}
                         onChange={(val) => handleToggleAutoWarmup(acc, val)}
                       />
                       <span className="text-[11px] font-medium text-[#9CA3AF]">

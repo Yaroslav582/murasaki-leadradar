@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -41,6 +41,8 @@ class Lead(Base):
     status: Mapped[str] = mapped_column(String(24), default="new", index=True)
     notes: Mapped[str | None] = mapped_column(Text)
     demo_id: Mapped[str | None] = mapped_column(String(36))
+    photos: Mapped[list] = mapped_column(JSON, default=list)
+    logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -253,7 +255,7 @@ class Dialog(Base):
         ForeignKey("leads.id", ondelete="SET NULL")
     )
     status: Mapped[str] = mapped_column(String(24), default="new", index=True)  # new | ai_handling | manual | deal
-    ai_auto_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    ai_auto_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     unread_count: Mapped[int] = mapped_column(Integer, default=0)
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -310,5 +312,47 @@ class SystemLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )
+
+
+class WorkerAccount(Base):
+    """Technical parser/joiner accounts pool with anti-flood & warmup tracking."""
+    __tablename__ = "worker_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    phone: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    session_string: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    warmup_stage: Mapped[int] = mapped_column(Integer, default=1)  # 1, 2, 3
+    joins_today: Mapped[int] = mapped_column(Integer, default=0)
+    total_chats: Mapped[int] = mapped_column(Integer, default=0)
+    flood_wait_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_reset_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class JoinQueue(Base):
+    """Queue of target channels/chats awaiting safe stealth join."""
+    __tablename__ = "join_queue"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    username_or_link: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    tgstat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    members_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending, joined, failed, skipped
+    assigned_worker_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("worker_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    error_log: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 
 

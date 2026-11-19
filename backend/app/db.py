@@ -145,6 +145,9 @@ async def init_db() -> None:
                 def _migrate_postgres(sync_conn):
                     from sqlalchemy import text
                     statements = [
+                        # leads
+                        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS photos JSON DEFAULT '[]'::json;",
+                        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500);",
                         # users
                         "ALTER TABLE users ADD COLUMN IF NOT EXISTS credits_balance INTEGER DEFAULT 50;",
                         "ALTER TABLE users ADD COLUMN IF NOT EXISTS referrer_id VARCHAR(36);",
@@ -158,7 +161,7 @@ async def init_db() -> None:
                         # proxies
                         "ALTER TABLE proxies ADD COLUMN IF NOT EXISTS user_id BIGINT;",
                         # dialogs
-                        "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS ai_auto_reply_enabled BOOLEAN DEFAULT TRUE;",
+                        "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS ai_auto_reply_enabled BOOLEAN DEFAULT FALSE;",
                         # telegram_orders
                         "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source VARCHAR(32) DEFAULT 'telegram';",
                         "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source_url VARCHAR(500);",
@@ -183,6 +186,20 @@ async def init_db() -> None:
                 def _migrate_columns(sync_conn):
                     import sqlite3
                     cursor = sync_conn.connection.cursor()
+
+                    # leads
+                    cursor.execute("PRAGMA table_info(leads)")
+                    existing_lead_cols = {row[1] for row in cursor.fetchall()}
+                    if "photos" not in existing_lead_cols:
+                        try:
+                            cursor.execute("ALTER TABLE leads ADD COLUMN photos JSON DEFAULT '[]'")
+                        except Exception:
+                            pass
+                    if "logo_url" not in existing_lead_cols:
+                        try:
+                            cursor.execute("ALTER TABLE leads ADD COLUMN logo_url VARCHAR(500)")
+                        except Exception:
+                            pass
 
                     # telegram_chat_targets
                     cursor.execute("PRAGMA table_info(telegram_chat_targets)")
@@ -240,7 +257,7 @@ async def init_db() -> None:
                     existing_dlg_cols = {row[1] for row in cursor.fetchall()}
                     if existing_dlg_cols:
                         new_dlg_cols = [
-                            ("ai_auto_reply_enabled", "BOOLEAN DEFAULT 1"),
+                            ("ai_auto_reply_enabled", "BOOLEAN DEFAULT 0"),
                         ]
                         for col_name, col_def in new_dlg_cols:
                             if col_name not in existing_dlg_cols:

@@ -420,6 +420,7 @@ async def generate_ai_blog_post(
 async def publish_blog_post(
     channel_id: str = "@Murasaki_website",
     topic_hint: str | None = None,
+    interval_hours: int | None = None,
 ) -> dict[str, Any]:
     """Generate and immediately publish an AI blog post to the user's channel."""
     title, text = await generate_ai_blog_post(topic_hint)
@@ -459,9 +460,37 @@ async def publish_blog_post(
             logger.error("Failed to publish blog post to %s: %s", channel_id, exc)
 
     now = utcnow()
+    try:
+        from app.db import SessionLocal
+        from app.models import AppSetting
+        async with SessionLocal() as db_session:
+            st = await db_session.get(AppSetting, "channel_blog_settings")
+            cfg = dict(st.value) if (st and st.value) else {}
+            if interval_hours is None:
+                interval_hours = int(cfg.get("interval_hours", getattr(settings, "channel_blog_interval_hours", 24)) or 24)
+
+            next_post_at = (now + timedelta(hours=interval_hours)).isoformat()
+            cfg["last_post_at"] = now.isoformat()
+            cfg["next_post_at"] = next_post_at
+            cfg["interval_hours"] = interval_hours
+            cfg["channel_id"] = channel_id
+            if "enabled" not in cfg:
+                cfg["enabled"] = getattr(settings, "channel_blog_enabled", True)
+
+            if st:
+                st.value = cfg
+            else:
+                db_session.add(AppSetting(key="channel_blog_settings", value=cfg))
+            await db_session.commit()
+    except Exception as db_err:
+        logger.debug("Failed updating channel_blog_settings in DB after publish: %s", db_err)
+        if interval_hours is None:
+            interval_hours = getattr(settings, "channel_blog_interval_hours", 24) or 24
+        next_post_at = (now + timedelta(hours=interval_hours)).isoformat()
+
     settings.channel_blog_last_post_at = now.isoformat()
-    interval_hours = getattr(settings, "channel_blog_interval_hours", 24) or 24
-    settings.channel_blog_next_post_at = (now + timedelta(hours=interval_hours)).isoformat()
+    settings.channel_blog_interval_hours = interval_hours
+    settings.channel_blog_next_post_at = next_post_at
 
     return {
         "success": success,
@@ -469,7 +498,8 @@ async def publish_blog_post(
         "text": text,
         "channel_id": channel_id,
         "published_at": now.isoformat(),
-        "next_post_at": settings.channel_blog_next_post_at,
+        "next_post_at": next_post_at,
+        "interval_hours": interval_hours,
     }
 
 

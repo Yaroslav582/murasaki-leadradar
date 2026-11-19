@@ -46,6 +46,32 @@ class WarmupWorker:
         self._task = asyncio.create_task(self._main_loop())
         logger.info("WarmupWorker started")
 
+    async def initialize_from_db(self) -> int:
+        """Loads and activates all accounts configured for auto-warmup from Supabase."""
+        async with SessionLocal() as session:
+            stmt = select(TgAccount).where(
+                TgAccount.auto_warmup == True,
+                TgAccount.status.in_(["active", "warming"]),
+            )
+            res = await session.execute(stmt)
+            accounts = res.scalars().all()
+            initialized_count = 0
+            for account in accounts:
+                try:
+                    client = await account_pool.get_client_for_account(account)
+                    if client:
+                        initialized_count += 1
+                        logger.info(
+                            "Auto-warmup worker active for account %s (%s, preset=%s)",
+                            account.phone,
+                            account.id,
+                            account.warmup_preset,
+                        )
+                except Exception as e:
+                    logger.warning("Could not pre-initialize warmup client for %s: %s", account.phone, e)
+            logger.info("WarmupWorker initialized: %d accounts active with auto_warmup=True from Supabase", len(accounts))
+            return len(accounts)
+
     def stop(self) -> None:
         """Stops background warmup worker loop."""
         self._running = False
@@ -84,7 +110,16 @@ class WarmupWorker:
                     continue
 
                 # Check billing for daily warmup: 2 credits per account per day
-                if account.user_id and self._last_billing_day.get(account.id) != today_str:
+                already_billed_today = False
+                if account.daily_actions_reset_at:
+                    try:
+                        already_billed_today = (account.daily_actions_reset_at.strftime("%Y-%m-%d") == today_str)
+                    except Exception:
+                        pass
+                if not already_billed_today and self._last_billing_day.get(account.id) == today_str:
+                    already_billed_today = True
+
+                if account.user_id and not already_billed_today:
                     try:
                         await check_and_spend(
                             session=session,
@@ -94,12 +129,19 @@ class WarmupWorker:
                             description=f"Автопрогрев аккаунта {account.phone} (1 день)",
                         )
                         self._last_billing_day[account.id] = today_str
-                    except Exception as bill_err:
-                        logger.warning("Warmup billing skipped or failed for %s: %s", account.phone, bill_err)
-                        # If out of credits, turn off auto_warmup
-                        account.auto_warmup = False
+                        account.daily_actions_reset_at = now
                         await session.commit()
-                        continue
+                    except Exception as bill_err:
+                        err_msg = str(bill_err).lower()
+                        # Only pause auto_warmup if balance is explicitly insufficient
+                        if "недостаточно кредитов" in err_msg or "insufficient" in err_msg:
+                            logger.warning("Auto-warmup paused for %s due to insufficient credits: %s", account.phone, bill_err)
+                            account.auto_warmup = False
+                            await session.commit()
+                            continue
+                        else:
+                            # Transient database, network or auth issue: do NOT reset user's auto_warmup flag!
+                            logger.warning("Warmup billing transient note for %s: %s", account.phone, bill_err)
 
                 # Determine session interval by preset
                 preset = account.warmup_preset or "optimal"

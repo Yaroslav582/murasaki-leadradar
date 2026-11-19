@@ -29,6 +29,9 @@ export interface Lead {
   status_label: string;
   notes: string | null;
   demo_id: string | null;
+  demo_url?: string | null;
+  photos?: string[];
+  logo_url?: string | null;
   enriched_at: string | null;
   created_at: string;
   updated_at: string;
@@ -283,6 +286,7 @@ export interface TgAccount {
   warmup_level: number;
   warmup_preset: string;
   auto_warmup: boolean;
+  auto_warmup_enabled?: boolean;
   proxy_id: string | null;
   daily_actions_count: number;
   device_model?: string;

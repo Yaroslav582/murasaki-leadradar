@@ -83,6 +83,11 @@ export default function TelegramRadarView({
   const [workingHoursStart, setWorkingHoursStart] = useState("09:00");
   const [workingHoursEnd, setWorkingHoursEnd] = useState("23:00");
   const [workingHoursEnabled, setWorkingHoursEnabled] = useState(true);
+  const [autoPostingEnabled, setAutoPostingEnabled] = useState(true);
+  const [broadcastInterval, setBroadcastInterval] = useState(120);
+  const [keywordsInput, setKeywordsInput] = useState("");
+  const [stopWordsInput, setStopWordsInput] = useState("");
+  const [settingsTab, setSettingsTab] = useState<"radar" | "autopost">("radar");
   const [savingSettings, setSavingSettings] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -128,6 +133,10 @@ export default function TelegramRadarView({
       setWorkingHoursStart(st.working_hours_start || "09:00");
       setWorkingHoursEnd(st.working_hours_end || "23:00");
       setWorkingHoursEnabled(st.working_hours_enabled ?? true);
+      setAutoPostingEnabled(st.auto_posting_enabled ?? true);
+      setBroadcastInterval(st.broadcast_interval_minutes || 120);
+      setKeywordsInput(Array.isArray(st.keywords) ? st.keywords.join(", ") : "");
+      setStopWordsInput(Array.isArray(st.stop_words) ? st.stop_words.join(", ") : "");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Не удалось загрузить данные Telegram", "error");
     } finally {
@@ -307,15 +316,19 @@ export default function TelegramRadarView({
     try {
       await api.updateTelegramSettings({
         portfolio_url: portfolioInput.trim(),
+        auto_posting_enabled: autoPostingEnabled,
         working_hours_enabled: workingHoursEnabled,
         working_hours_start: workingHoursStart.trim(),
         working_hours_end: workingHoursEnd.trim(),
         telegram_auto_response_delay_min: Math.max(1, delayInput - 2) * 60,
         telegram_auto_response_delay_max: Math.max(2, delayInput + 2) * 60,
+        telegram_broadcast_interval_minutes: broadcastInterval,
+        keywords: keywordsInput.trim(),
+        stop_words: stopWordsInput.trim(),
       });
-      showToast("Настройки Telegram сохранены", "success");
+      showToast("Настройки успешно сохранены в Supabase", "success");
       setShowSettings(false);
-      loadData();
+      await loadData();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Ошибка сохранения", "error");
     } finally {
@@ -441,7 +454,15 @@ export default function TelegramRadarView({
               Симулировать заказ
             </button>
 
-            <button onClick={() => setShowSettings(!showSettings)} className="btn-ghost">
+            <button
+              onClick={() => {
+                triggerHaptic("light");
+                setSettingsTab(tab === "promo" ? "autopost" : "radar");
+                setShowSettings((prev) => !prev);
+              }}
+              className="btn-ghost"
+              title="Настройки модулей"
+            >
               <Settings size={14} />
               Настройки
             </button>
@@ -515,71 +536,252 @@ export default function TelegramRadarView({
 
       {/* Settings Panel (collapsible) */}
       {showSettings && (
-        <div className="rounded-2xl border border-brand-500/30 bg-[#181818] p-5 shadow-2xl">
-          <div className="flex items-center justify-between border-b border-white/10 pb-3">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <Settings size={15} className="text-brand-400" /> Настройки автоматизации Telegram
-            </h3>
-            <button onClick={() => setShowSettings(false)} className="text-xs text-slate-400 hover:text-white">
-              Закрыть
-            </button>
+        <div className="rounded-2xl border border-brand-500/30 bg-[#181818] p-5 shadow-2xl space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-white/10 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/10 text-brand-400 border border-brand-500/20">
+                <Settings size={16} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  {settingsTab === "radar" ? "Настройки: ТГ Радар заказов" : "Настройки: Автопосев визиток"}
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Сохраняются в Supabase и синхронизируются с воркерами на сервере
+                </p>
+              </div>
+            </div>
+
+            {/* Sub-tabs between Radar and Autopost */}
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border border-white/[0.06] bg-[#242731] p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic("light");
+                    setSettingsTab("radar");
+                  }}
+                  className={`px-3 py-1 rounded text-xs font-semibold transition ${
+                    settingsTab === "radar"
+                      ? "bg-brand-500 text-white shadow-sm"
+                      : "text-[#9CA3AF] hover:text-[#F3F4F6]"
+                  }`}
+                >
+                  Радар заказов
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic("light");
+                    setSettingsTab("autopost");
+                  }}
+                  className={`px-3 py-1 rounded text-xs font-semibold transition ${
+                    settingsTab === "autopost"
+                      ? "bg-brand-500 text-white shadow-sm"
+                      : "text-[#9CA3AF] hover:text-[#F3F4F6]"
+                  }`}
+                >
+                  Автопосев
+                </button>
+              </div>
+
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-xs text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/5 transition"
+              >
+                ✕ Закрыть
+              </button>
+            </div>
           </div>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-xs font-semibold text-slate-300">Ссылка на ваше портфолио / сайт</label>
-              <input
-                value={portfolioInput}
-                onChange={(e) => setPortfolioInput(e.target.value)}
-                placeholder="https://murasaki-portfolio.vercel.app/"
-                className="input"
-              />
-              <p className="text-[11px] text-slate-500">
-                Используется во всех шаблонах визиток, откликов и автопостов.
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Задержка перед откликом (минут)</label>
-              <input
-                type="number"
-                min={2}
-                max={60}
-                value={delayInput}
-                onChange={(e) => setDelayInput(Number(e.target.value))}
-                className="input"
-              />
-              <p className="text-[11px] text-slate-500">Защищает от детекта бота заказчиком и алгоритмами TG.</p>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Часы ловли заказов (МСК)</label>
-              <div className="flex items-center gap-2">
+          {settingsTab === "radar" ? (
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300">Ссылка на портфолио / сайт для откликов</label>
                 <input
-                  type="text"
-                  value={workingHoursStart}
-                  onChange={(e) => setWorkingHoursStart(e.target.value)}
-                  placeholder="09:00"
-                  className="input w-24 text-center"
+                  value={portfolioInput}
+                  onChange={(e) => setPortfolioInput(e.target.value)}
+                  placeholder="https://murasaki-portfolio.vercel.app/"
+                  className="input"
                 />
-                <span className="text-slate-400">—</span>
+                <p className="text-[11px] text-slate-500">
+                  Подставляется в AI-отклики заказчикам на Kwork, FL.ru и в Telegram.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">Задержка перед автооткликом (минут)</label>
                 <input
-                  type="text"
-                  value={workingHoursEnd}
-                  onChange={(e) => setWorkingHoursEnd(e.target.value)}
-                  placeholder="23:00"
-                  className="input w-24 text-center"
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={delayInput}
+                  onChange={(e) => setDelayInput(Number(e.target.value))}
+                  className="input"
+                />
+                <p className="text-[11px] text-slate-500">Имитирует человека и защищает от спам-фильтров Telegram.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300">Часы ловли заказов (МСК)</label>
+                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={workingHoursEnabled}
+                      onChange={(e) => setWorkingHoursEnabled(e.target.checked)}
+                      className="rounded border-white/10"
+                    />
+                    <span>Активны</span>
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={workingHoursStart}
+                    onChange={(e) => setWorkingHoursStart(e.target.value)}
+                    placeholder="09:00"
+                    className="input w-24 text-center font-mono"
+                  />
+                  <span className="text-slate-400">—</span>
+                  <input
+                    type="text"
+                    value={workingHoursEnd}
+                    onChange={(e) => setWorkingHoursEnd(e.target.value)}
+                    placeholder="23:00"
+                    className="input w-24 text-center font-mono"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500">Ночью автоотклики не отправляются, чтобы не беспокоить клиентов.</p>
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300">Ключевые слова для ловли заказов (через запятую)</label>
+                <input
+                  value={keywordsInput}
+                  onChange={(e) => setKeywordsInput(e.target.value)}
+                  placeholder="сайт, лендинг, разработка, мини апп, mini app, webapp, bot, бот, figma"
+                  className="input"
+                />
+                <p className="text-[11px] text-slate-500">Заказы, содержащие эти слова, попадают на радар и получают AI-отклик.</p>
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300">Стоп-слова / минус-слова (через запятую)</label>
+                <input
+                  value={stopWordsInput}
+                  onChange={(e) => setStopWordsInput(e.target.value)}
+                  placeholder="вакансия, fulltime, офис, 1с, bitrix, seo, контекст, стажер"
+                  className="input"
+                />
+                <p className="text-[11px] text-slate-500">Сообщения с этими словами автоматически отсеиваются и не засоряют радар.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-xl border border-white/10 bg-[#242731] p-4 sm:col-span-2 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-white">Автопостинг промо-визиток в каналы</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Автоматическая публикация Retina-скриншота портфолио с уникальным AI-текстом по таймеру
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic("medium");
+                    setAutoPostingEnabled(!autoPostingEnabled);
+                  }}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                    autoPostingEnabled
+                      ? "bg-emerald-500 text-white shadow-emerald-500/20 shadow-md"
+                      : "bg-white/10 text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {autoPostingEnabled ? "✓ Включен" : "✕ На паузе"}
+                </button>
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300">Периодичность автопосева:</label>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  {[
+                    { label: "30 мин", val: 30 },
+                    { label: "1 час", val: 60 },
+                    { label: "2 часа", val: 120 },
+                    { label: "6 часов", val: 360 },
+                    { label: "12 часов", val: 720 },
+                    { label: "24 часа", val: 1440 },
+                  ].map((item) => (
+                    <button
+                      key={item.val}
+                      type="button"
+                      onClick={() => setBroadcastInterval(item.val)}
+                      className={`rounded-xl p-2 text-center text-xs font-semibold transition ${
+                        broadcastInterval === item.val
+                          ? "border border-brand-500 bg-brand-500/20 text-brand-300 shadow-sm"
+                          : "border border-white/10 bg-[#242731] text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Минимальный интервал между публикациями промо-визиток по добавленным каналам.
+                </p>
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-300">Ссылка на портфолио в визитках</label>
+                <input
+                  value={portfolioInput}
+                  onChange={(e) => setPortfolioInput(e.target.value)}
+                  placeholder="https://murasaki-portfolio.vercel.app/"
+                  className="input"
                 />
               </div>
-              <p className="text-[11px] text-slate-500">Вне этих часов отклики не отправляются ночью.</p>
-            </div>
-          </div>
 
-          <div className="mt-4 flex justify-end gap-2 border-t border-white/10 pt-3">
-            <button onClick={handleSaveSettings} disabled={savingSettings} className="btn-primary text-xs">
-              {savingSettings ? <Spinner size={13} /> : <Check size={13} />}
-              Сохранить настройки
-            </button>
+              <div className="rounded-xl border border-white/5 bg-[#242731] p-3.5 sm:col-span-2 flex items-center justify-between text-xs">
+                <span className="text-slate-300">
+                  Управление чатами и каналами для посева ({chats.filter((c) => c.kind === "promo" || c.kind === "both").length} подключено)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSettings(false);
+                    setTab("chats");
+                  }}
+                  className="text-xs text-brand-300 hover:underline font-semibold"
+                >
+                  Открыть вкладку «Каналы» →
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3">
+            <span className="text-[11px] text-slate-400">
+              {settingsTab === "radar" ? "Настройки ТГ-Радара" : "Настройки Автопосева"}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSettings(false)}
+                className="btn-ghost text-xs"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSettings}
+                disabled={savingSettings}
+                className="btn-primary text-xs"
+              >
+                {savingSettings ? <Spinner size={13} /> : <Check size={13} />}
+                Сохранить настройки
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -614,7 +816,7 @@ export default function TelegramRadarView({
             }`}
           >
             <BookOpen size={13} className={tab === "blog" ? "text-white" : "text-amber-400"} />
-            Автоблогер (24 ч)
+            Автоблогер
           </button>
 
           <button
@@ -694,10 +896,24 @@ export default function TelegramRadarView({
         </div>
 
         {tab === "promo" && (
-          <button onClick={handleBroadcast} disabled={broadcasting} className="btn-primary text-xs">
-            {broadcasting ? <Spinner size={13} /> : <Send size={13} />}
-            Сгенерировать и отправить вариант
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                triggerHaptic("light");
+                setSettingsTab("autopost");
+                setShowSettings(true);
+              }}
+              className="btn-ghost text-xs flex items-center gap-1.5"
+              title="Настройки параметров и периодичности автопосева"
+            >
+              <Settings size={13} />
+              <span>Настройки</span>
+            </button>
+            <button onClick={handleBroadcast} disabled={broadcasting} className="btn-primary text-xs">
+              {broadcasting ? <Spinner size={13} /> : <Send size={13} />}
+              Сгенерировать и отправить вариант
+            </button>
+          </div>
         )}
 
         {tab === "chats" && (
@@ -764,15 +980,30 @@ export default function TelegramRadarView({
               </button>
             </div>
 
-            <button
-              onClick={handleSyncExternal}
-              disabled={syncingExternal}
-              className="flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/20"
-              title="Спарсить свежие заказы с бирж Kwork и FL.ru"
-            >
-              {syncingExternal ? <Spinner size={12} /> : <Sparkles size={12} />}
-              Собрать с Kwork & FL ⚡️
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  triggerHaptic("light");
+                  setSettingsTab("radar");
+                  setShowSettings(true);
+                }}
+                className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#242731] px-3 py-1.5 text-xs font-semibold text-[#9CA3AF] transition hover:text-[#F3F4F6] hover:border-white/20"
+                title="Настройки перехвата заказов и автооткликов"
+              >
+                <Settings size={12} />
+                <span>Настройки</span>
+              </button>
+
+              <button
+                onClick={handleSyncExternal}
+                disabled={syncingExternal}
+                className="flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/20"
+                title="Спарсить свежие заказы с бирж Kwork и FL.ru"
+              >
+                {syncingExternal ? <Spinner size={12} /> : <Sparkles size={12} />}
+                Собрать с Kwork & FL ⚡️
+              </button>
+            </div>
           </div>
 
           {orders.filter((o) => {
@@ -980,14 +1211,28 @@ export default function TelegramRadarView({
                 <span className="font-semibold text-white">Скриншот первой страницы портфолио</span>
                 <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-400 font-medium">✓ Фото-пост (без плашек)</span>
               </div>
-              <button
-                onClick={handleRefreshScreenshot}
-                disabled={refreshingScreenshot}
-                className="btn-secondary text-[11px] py-1 px-2.5 flex items-center gap-1.5"
-              >
-                <RefreshCw size={12} className={refreshingScreenshot ? "animate-spin" : ""} />
-                {refreshingScreenshot ? "Снимок делается..." : "Обновить скриншот с сайта"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    triggerHaptic("light");
+                    setSettingsTab("autopost");
+                    setShowSettings(true);
+                  }}
+                  className="btn-secondary text-[11px] py-1 px-2.5 flex items-center gap-1.5"
+                  title="Настройки параметров автопосева"
+                >
+                  <Settings size={12} />
+                  <span>Настройки автопосева</span>
+                </button>
+                <button
+                  onClick={handleRefreshScreenshot}
+                  disabled={refreshingScreenshot}
+                  className="btn-secondary text-[11px] py-1 px-2.5 flex items-center gap-1.5"
+                >
+                  <RefreshCw size={12} className={refreshingScreenshot ? "animate-spin" : ""} />
+                  {refreshingScreenshot ? "Снимок делается..." : "Обновить скриншот с сайта"}
+                </button>
+              </div>
             </div>
             <p className="text-[11px] text-slate-400 mb-3 leading-relaxed">
               Все посты в Telegram отправляются как фото первого экрана вашего сайта (2560x1600 Retina) с текстом в подписи. Больше никаких уродливых ссылочных плашек Telegram.

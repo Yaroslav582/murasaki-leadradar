@@ -22,7 +22,7 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, API_URL } from "@/lib/api";
 import type { Lead, LeadStatus } from "@/lib/types";
 import {
   ALL_STATUSES,
@@ -111,8 +111,9 @@ export default function LeadDrawer({
   const score = getLeadScore(lead);
   const scoreBadge = getLeadScoreBadge(score);
   const growthPoints = getGrowthPoints(lead);
+  const fallbackDemoHost = API_URL || (typeof window !== "undefined" ? window.location.origin : "");
   const publicDemoUrl = lead.demo_id
-    ? (typeof window !== "undefined" ? `${window.location.origin}/demo/${lead.demo_id}` : `/demo/${lead.demo_id}`)
+    ? (lead.demo_url ?? `${fallbackDemoHost}/demo/${lead.demo_id}`)
     : null;
   const firstTouchOffer = getFirstTouchOffer(lead, publicDemoUrl);
   const tgUrl = getTelegramUrl(lead);

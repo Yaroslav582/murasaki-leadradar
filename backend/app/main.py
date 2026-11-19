@@ -46,8 +46,48 @@ async def lifespan(app: FastAPI):
                     settings.telegram_bot_token = bot_token_setting.value["token"]
                 if bot_token_setting.value.get("bot_username"):
                     settings.telegram_bot_username = bot_token_setting.value["bot_username"]
+
+            blog_setting = await db_session.get(AppSetting, "channel_blog_settings")
+            if blog_setting and blog_setting.value:
+                b_val = blog_setting.value
+                if "enabled" in b_val:
+                    settings.channel_blog_enabled = b_val["enabled"]
+                if "channel_id" in b_val:
+                    settings.channel_blog_chat_id = b_val["channel_id"]
+                if "interval_hours" in b_val:
+                    settings.channel_blog_interval_hours = int(b_val["interval_hours"])
+                if "last_post_at" in b_val:
+                    settings.channel_blog_last_post_at = b_val["last_post_at"]
+                if "next_post_at" in b_val:
+                    settings.channel_blog_next_post_at = b_val["next_post_at"]
+
+            tg_setting = await db_session.get(AppSetting, "telegram_settings")
+            if tg_setting and tg_setting.value:
+                tg_val = tg_setting.value
+                if "portfolio_url" in tg_val:
+                    settings.telegram_portfolio_url = tg_val["portfolio_url"]
+                if "auto_response_enabled" in tg_val:
+                    settings.telegram_auto_response_enabled = tg_val["auto_response_enabled"]
+                if "auto_posting_enabled" in tg_val:
+                    settings.telegram_auto_posting_enabled = tg_val["auto_posting_enabled"]
+                if "working_hours_enabled" in tg_val:
+                    settings.telegram_working_hours_enabled = tg_val["working_hours_enabled"]
+                if "working_hours_start" in tg_val:
+                    settings.telegram_working_hours_start = tg_val["working_hours_start"]
+                if "working_hours_end" in tg_val:
+                    settings.telegram_working_hours_end = tg_val["working_hours_end"]
+                if "telegram_auto_response_delay_min" in tg_val:
+                    settings.telegram_auto_response_delay_min = tg_val["telegram_auto_response_delay_min"]
+                if "telegram_auto_response_delay_max" in tg_val:
+                    settings.telegram_auto_response_delay_max = tg_val["telegram_auto_response_delay_max"]
+                if "telegram_broadcast_interval_minutes" in tg_val:
+                    settings.telegram_broadcast_interval_minutes = tg_val["telegram_broadcast_interval_minutes"]
+                if "keywords" in tg_val:
+                    settings.telegram_keywords = tg_val["keywords"]
+                if "stop_words" in tg_val:
+                    settings.telegram_stop_words = tg_val["stop_words"]
     except Exception as exc:
-        logger.debug("Failed preloading telegram_bot_token: %s", exc)
+        logger.debug("Failed preloading settings from Supabase app_settings: %s", exc)
 
     if not settings.use_celery:
         try:
@@ -78,6 +118,10 @@ async def lifespan(app: FastAPI):
     init_task = asyncio.create_task(telegram_manager.initialize())
     bot_runner.start()
     warmup_worker.start()
+    try:
+        await warmup_worker.initialize_from_db()
+    except Exception as w_exc:
+        logger.warning("Failed to initialize warmup worker from DB: %s", w_exc)
     keep_alive_service.start()
     try:
         yield

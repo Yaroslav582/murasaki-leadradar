@@ -63,6 +63,68 @@ def _clean_yandex_url(url: str | None) -> str | None:
         return url.split("?")[0]
 
 
+def _format_yandex_photo_url(raw: Any) -> str | None:
+    """Normalizes and expands Yandex photo URL template to high quality."""
+    if not raw:
+        return None
+    url: str | None = None
+    if isinstance(raw, str):
+        url = raw
+    elif isinstance(raw, dict):
+        url = (
+            raw.get("urlTemplate")
+            or raw.get("url")
+            or raw.get("src")
+            or raw.get("preview")
+        )
+        if url and "%s" in url:
+            url = url.replace("%s", "orig")
+        elif url and "{size}" in url:
+            url = url.replace("{size}", "orig")
+    if not url:
+        return None
+    url = url.strip()
+    if url.startswith("//"):
+        url = f"https:{url}"
+    if not url.startswith("http"):
+        return None
+    return url
+
+
+def _extract_item_photos(item: dict) -> tuple[str | None, list[str]]:
+    """Extracts logo and up to 6 gallery photos from Yandex organization item."""
+    logo_raw = (
+        item.get("logotype")
+        or item.get("logo")
+        or item.get("icon")
+        or item.get("avatar")
+    )
+    logo_url = _format_yandex_photo_url(logo_raw)
+
+    photos: list[str] = []
+    seen: set[str] = set()
+    raw_photos = (
+        item.get("photos")
+        or item.get("gallery")
+        or item.get("photo")
+        or item.get("images")
+        or []
+    )
+    if isinstance(raw_photos, dict):
+        raw_photos = raw_photos.get("items") or raw_photos.get("photos") or [raw_photos]
+
+    if isinstance(raw_photos, list):
+        for p in raw_photos:
+            p_url = _format_yandex_photo_url(p)
+            if p_url and p_url not in seen:
+                seen.add(p_url)
+                photos.append(p_url)
+            if len(photos) >= 6:
+                break
+
+    return logo_url, photos
+
+
 def _parse_rating(body: str) -> tuple[float | None, int]:
     rating_match = RATING_RE.search(body)
     reviews_match = REVIEWS_RE.search(body)
@@ -165,6 +227,8 @@ def _item_to_place(item: dict, city: str, fallback_category: str) -> PlaceResult
     cats = item.get("categories") or []
     cat_name = cats[0].get("name") if cats and isinstance(cats[0], dict) else fallback_category
 
+    logo_url, photos = _extract_item_photos(item)
+
     return PlaceResult(
         name=name,
         category=cat_name or fallback_category or "Организация",
@@ -180,6 +244,8 @@ def _item_to_place(item: dict, city: str, fallback_category: str) -> PlaceResult
         opening_hours=hours,
         source="yandex_web",
         source_id=item_id,
+        photos=photos,
+        logo_url=logo_url,
     )
 
 
@@ -192,6 +258,8 @@ def org_page_to_place(
     external_links: list[str],
     city: str,
     fallback_category: str,
+    photos: list[str] | None = None,
+    logo_url: str | None = None,
 ) -> PlaceResult | None:
     name = (name or "").strip()
     org_id_match = ORG_ID_RE.search(url)
@@ -254,6 +322,8 @@ def org_page_to_place(
         opening_hours=hours,
         source="yandex_web",
         source_id=org_id_match.group(1),
+        photos=photos or [],
+        logo_url=logo_url,
     )
 
 
@@ -540,6 +610,22 @@ class YandexMapsWebProvider(BaseProvider):
             external_links = await page.eval_on_selector_all(
                 'a[href^="http"]', "nodes => [...new Set(nodes.map(node => node.href))]"
             )
+            raw_photos = await page.eval_on_selector_all(
+                'img[src*="avatars.mds.yandex.net"], img[src*="get-altay"], .carousel__item img, img.business-photos-card__img',
+                "nodes => [...new Set(nodes.map(n => n.src).filter(Boolean))]",
+            )
+            extracted_photos: list[str] = []
+            extracted_logo: str | None = None
+            for p_raw in raw_photos:
+                fmt = _format_yandex_photo_url(p_raw)
+                if fmt and fmt not in extracted_photos:
+                    if not extracted_logo and ("logo" in fmt.lower() or "avatar" in fmt.lower() or "icon" in fmt.lower()):
+                        extracted_logo = fmt
+                    else:
+                        extracted_photos.append(fmt)
+                if len(extracted_photos) >= 6:
+                    break
+
             current_url = page.url
 
             return org_page_to_place(
@@ -550,6 +636,8 @@ class YandexMapsWebProvider(BaseProvider):
                 external_links=external_links,
                 city=city,
                 fallback_category=category,
+                photos=extracted_photos,
+                logo_url=extracted_logo,
             )
         except Exception:
             return None

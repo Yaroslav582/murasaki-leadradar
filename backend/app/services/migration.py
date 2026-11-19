@@ -212,6 +212,8 @@ async def import_sqlite_data_to_postgres(sqlite_path: Path | str) -> dict[str, i
                             status=r["status"] or "new",
                             notes=r["notes"],
                             demo_id=r["demo_id"],
+                            photos=_parse_json(r["photos"], []) if "photos" in r.keys() else [],
+                            logo_url=r["logo_url"] if "logo_url" in r.keys() else None,
                             enriched_at=_parse_dt(r["enriched_at"]),
                             created_at=_parse_dt(r["created_at"]) or datetime.now(),
                         )
@@ -335,7 +337,7 @@ async def import_sqlite_data_to_postgres(sqlite_path: Path | str) -> dict[str, i
                             peer_name=r["peer_name"],
                             lead_id=r["lead_id"],
                             status=r["status"] or "new",
-                            ai_auto_reply_enabled=bool(r["ai_auto_reply_enabled"]) if "ai_auto_reply_enabled" in r.keys() else True,
+                            ai_auto_reply_enabled=bool(r["ai_auto_reply_enabled"]) if "ai_auto_reply_enabled" in r.keys() else False,
                             unread_count=r["unread_count"] or 0,
                             last_message_at=_parse_dt(r["last_message_at"]),
                             created_at=_parse_dt(r["created_at"]) or datetime.now(),

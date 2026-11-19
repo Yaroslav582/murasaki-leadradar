@@ -135,6 +135,35 @@ class TelegramSettingsUpdate(BaseModel):
 # --- Endpoints ---
 @router.get("/status", response_model=TelegramStatusOut)
 async def get_status(session: AsyncSession = Depends(get_session)) -> TelegramStatusOut:
+    from app.models import AppSetting
+
+    # Load persistent settings from Supabase app_settings
+    st = await session.get(AppSetting, "telegram_settings")
+    if st and st.value:
+        tg_val = st.value
+        if "portfolio_url" in tg_val:
+            settings.telegram_portfolio_url = tg_val["portfolio_url"]
+        if "auto_response_enabled" in tg_val:
+            settings.telegram_auto_response_enabled = tg_val["auto_response_enabled"]
+        if "auto_posting_enabled" in tg_val:
+            settings.telegram_auto_posting_enabled = tg_val["auto_posting_enabled"]
+        if "working_hours_enabled" in tg_val:
+            settings.telegram_working_hours_enabled = tg_val["working_hours_enabled"]
+        if "working_hours_start" in tg_val:
+            settings.telegram_working_hours_start = tg_val["working_hours_start"]
+        if "working_hours_end" in tg_val:
+            settings.telegram_working_hours_end = tg_val["working_hours_end"]
+        if "telegram_auto_response_delay_min" in tg_val:
+            settings.telegram_auto_response_delay_min = tg_val["telegram_auto_response_delay_min"]
+        if "telegram_auto_response_delay_max" in tg_val:
+            settings.telegram_auto_response_delay_max = tg_val["telegram_auto_response_delay_max"]
+        if "telegram_broadcast_interval_minutes" in tg_val:
+            settings.telegram_broadcast_interval_minutes = tg_val["telegram_broadcast_interval_minutes"]
+        if "keywords" in tg_val:
+            settings.telegram_keywords = tg_val["keywords"]
+        if "stop_words" in tg_val:
+            settings.telegram_stop_words = tg_val["stop_words"]
+
     orders_count = len((await session.scalars(select(TelegramOrder.id))).all())
     broadcasts_count = len((await session.scalars(select(TelegramBroadcast.id))).all())
     chats_count = len((await session.scalars(select(TelegramChatTarget.id))).all())
@@ -306,6 +335,14 @@ async def simulate_incoming_order(session: AsyncSession = Depends(get_session)) 
     session.add(order)
     await session.commit()
     await session.refresh(order)
+
+    # Dispatch alert to owner's Telegram with inline action buttons
+    try:
+        from app.services.lead_notifier import lead_notifier
+        await lead_notifier.notify_new_order(order)
+    except Exception as n_err:
+        logger.warning("Could not dispatch simulated order notification: %s", n_err)
+
     return TelegramOrderOut.model_validate(order)
 
 
@@ -547,7 +584,9 @@ async def create_bot_endpoint() -> dict:
 
 
 @router.post("/settings")
-async def update_settings(payload: TelegramSettingsUpdate) -> dict:
+async def update_settings(payload: TelegramSettingsUpdate, session: AsyncSession = Depends(get_session)) -> dict:
+    from app.models import AppSetting
+
     if payload.portfolio_url is not None:
         settings.telegram_portfolio_url = payload.portfolio_url.strip()
     if payload.auto_response_enabled is not None:
@@ -571,7 +610,28 @@ async def update_settings(payload: TelegramSettingsUpdate) -> dict:
     if payload.stop_words is not None:
         settings.telegram_stop_words = payload.stop_words
 
-    return {"status": "ok", "message": "Настройки Telegram обновлены"}
+    # Save to Supabase app_settings table
+    val = {
+        "portfolio_url": settings.telegram_portfolio_url,
+        "auto_response_enabled": settings.telegram_auto_response_enabled,
+        "auto_posting_enabled": settings.telegram_auto_posting_enabled,
+        "working_hours_enabled": settings.telegram_working_hours_enabled,
+        "working_hours_start": settings.telegram_working_hours_start,
+        "working_hours_end": settings.telegram_working_hours_end,
+        "telegram_auto_response_delay_min": settings.telegram_auto_response_delay_min,
+        "telegram_auto_response_delay_max": settings.telegram_auto_response_delay_max,
+        "telegram_broadcast_interval_minutes": settings.telegram_broadcast_interval_minutes,
+        "keywords": settings.telegram_keywords,
+        "stop_words": settings.telegram_stop_words,
+    }
+    st = await session.get(AppSetting, "telegram_settings")
+    if st:
+        st.value = val
+    else:
+        session.add(AppSetting(key="telegram_settings", value=val))
+    await session.commit()
+
+    return {"status": "ok", "message": "Настройки Telegram сохранены в Supabase"}
 
 
 @router.get("/portfolio-screenshot")

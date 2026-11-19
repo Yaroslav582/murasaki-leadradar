@@ -180,6 +180,7 @@ async def sync_external_freelance_orders(session: AsyncSession) -> int:
         all_external.extend(fl_items)
 
     new_count = 0
+    created_orders: list[TelegramOrder] = []
     now = utcnow()
 
     for item in all_external:
@@ -218,10 +219,17 @@ async def sync_external_freelance_orders(session: AsyncSession) -> int:
             status="pending",
         )
         session.add(order)
+        created_orders.append(order)
         new_count += 1
 
     if new_count > 0:
         await session.commit()
         logger.info("Successfully synced %s new freelance orders (Kwork & FL.ru)", new_count)
+        try:
+            from app.services.lead_notifier import lead_notifier
+            for ord_item in created_orders:
+                await lead_notifier.notify_new_order(ord_item)
+        except Exception as n_err:
+            logger.warning("Could not dispatch lead notification: %s", n_err)
 
     return new_count

@@ -1,24 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import re
 from string import Template
+from typing import Any
 from urllib.parse import quote
 
 from app.config import settings
 from app.services.ai_router import ask_ai
-
-ACCENTS = {
-    "Бьюти": "rose",
-    "Рестораны": "amber",
-    "Автосервисы": "cyan",
-    "Медицина": "emerald",
-    "Фитнес": "lime",
-    "Отели": "sky",
-    "Услуги": "violet",
-    "Магазины": "fuchsia",
-}
 
 CITY_PREPOSITIONAL = {
     "Москва": "Москве",
@@ -115,6 +106,7 @@ BUSINESS_NOUNS = {
     "Отели": "отель",
     "Услуги": "компания",
     "Магазины": "магазин",
+    "Юристы": "юридическая компания",
 }
 
 BUSINESS_PLURAL_GENITIVE = {
@@ -126,365 +118,375 @@ BUSINESS_PLURAL_GENITIVE = {
     "Отели": "отелей и гостиниц",
     "Услуги": "компаний сферы услуг",
     "Магазины": "магазинов",
+    "Юристы": "юридических и консалтинговых компаний",
 }
 
-PROFILES: dict[str, dict] = {
+# ── High-Quality Niche Fallback Images (Unsplash curated) ─────────────────────
+NICHE_FALLBACK_IMAGES: dict[str, dict[str, Any]] = {
     "Бьюти": {
-        "tagline": "Красота, к которой хочется возвращаться",
-        "subtitle": "Онлайн-запись за 30 секунд — без звонков и ожидания",
-        "services": [
-            ("Маникюр + гель-лак", "от 2 500 ₽", "Стойкое покрытие до 4 недель, дизайн в подарок"),
-            ("Педикюр", "от 3 200 ₽", "Аппаратная обработка, уход и покрытие"),
-            ("Брови и ресницы", "от 1 900 ₽", "Коррекция, окрашивание, ламинирование"),
-            ("Стрижка и укладка", "от 2 800 ₽", "Под ваш тип лица и образ жизни"),
-        ],
-        "benefits": [
-            ("Запись 24/7", "Выберите удобное время онлайн — мы подтвердим за пару минут"),
-            ("Опытные мастера", "Средний стаж команды — более 5 лет"),
-            ("Стерильность", "Инструменты проходят трёхэтапную обработку"),
-            ("Комфорт", "Кофе, музыка и никакой спешки"),
-        ],
-        "reviews": [
-            ("Анна К.", "Делала маникюр — держится уже месяц, идеально. Записалась онлайн за минуту!"),
-            ("Мария С.", "Лучшие брови в городе. Мастер услышала все пожелания, результат превзошёл ожидания."),
-            ("Екатерина В.", "Уютно, чисто, приятные цены. Теперь только сюда."),
-        ],
-    },
-    "Рестораны": {
-        "tagline": "Вкус, который хочется повторить",
-        "subtitle": "Забронируйте столик онлайн — без звонков и ожидания на линии",
-        "services": [
-            ("Бизнес-ланч", "590 ₽", "Салат, суп, горячее и напиток каждый будний день"),
-            ("Завтраки весь день", "от 450 ₽", "Сырники, омлеты, каши и свежая выпечка"),
-            ("Паста и ризотто", "от 690 ₽", "Готовим из свежих продуктов на ваших глазах"),
-            ("Десерты", "от 390 ₽", "Собственная кондитерская и сезонные новинки"),
-        ],
-        "benefits": [
-            ("Бронь онлайн", "Выберите дату и время — столик будет ждать"),
-            ("Свежие продукты", "Поставки от локальных фермеров каждое утро"),
-            ("Для всей семьи", "Детское меню и игровая зона"),
-            ("Быстрая подача", "Среднее время ожидания горячего — 12 минут"),
-        ],
-        "reviews": [
-            ("Дмитрий П.", "Бизнес-ланч — огонь. Порции большие, всё свежее, персонал внимательный."),
-            ("Ольга Р.", "Отмечали день рождения, помогли с организацией. Гости в восторге!"),
-            ("Иван Т.", "Лучшая паста в городе. Теперь бронирую столик только онлайн."),
+        "hero": "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=80",
+        "gallery": [
+            "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1607779097040-26e80aa78e66?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1516975080664-ed2fc6a32937?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1527799820374-dcf8d9d4a388?auto=format&fit=crop&w=800&q=80",
         ],
     },
     "Автосервисы": {
-        "tagline": "Ремонт без сюрпризов в счёте",
-        "subtitle": "Запишитесь онлайн — назовём точную стоимость до начала работ",
-        "services": [
-            ("Компьютерная диагностика", "от 1 500 ₽", "Полная проверка всех систем автомобиля"),
-            ("Замена масла", "от 2 900 ₽", "Работа + оригинальные расходники"),
-            ("Шиномонтаж", "от 2 500 ₽", "Балансировка и сезонное хранение шин"),
-            ("Кузовной ремонт", "по запросу", "Покраска и восстановление геометрии"),
+        "hero": "https://images.unsplash.com/photo-1486006920555-c77dce18193b?auto=format&fit=crop&w=1200&q=80",
+        "gallery": [
+            "https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1517524008697-84bbe3c3fd98?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1625047509168-a7026f36de04?auto=format&fit=crop&w=800&q=80",
         ],
-        "benefits": [
-            ("Гарантия", "До 24 месяцев на все виды работ"),
-            ("Честная смета", "Согласуем каждую позицию до ремонта"),
-            ("Оригинальные запчасти", "Или качественные аналоги — на ваш выбор"),
-            ("Работаем 7 дней", "Без выходных с 8:00 до 21:00"),
-        ],
-        "reviews": [
-            ("Сергей М.", "Сделали диагностику за час, назвали точную цену. Никаких сюрпризов."),
-            ("Алексей К.", "Записался онлайн, приехал — машину уже ждали. Всё быстро и качественно."),
-            ("Роман Д.", "Доверяю им обе машины в семье. Ни разу не подвели."),
+    },
+    "Рестораны": {
+        "hero": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
+        "gallery": [
+            "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=800&q=80",
         ],
     },
     "Медицина": {
-        "tagline": "Забота о здоровье без очередей",
-        "subtitle": "Запишитесь к врачу онлайн — свободное время видно сразу",
-        "services": [
-            ("Консультация врача", "от 2 500 ₽", "Первичный приём и план лечения"),
-            ("Гигиена полости рта", "от 4 900 ₽", "Ультразвуковая чистка и полировка"),
-            ("Лечение кариеса", "от 6 500 ₽", "Без боли, с современной анестезией"),
-            ("Имплантация", "от 35 000 ₽", "Импланты с пожизненной гарантией"),
+        "hero": "https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1200&q=80",
+        "gallery": [
+            "https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1666214280557-f1b5022eb634?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=800&q=80",
         ],
-        "benefits": [
-            ("Лицензированная клиника", "Все врачи с профильным образованием"),
-            ("Онлайн-запись", "Выбирайте врача и время сами"),
-            ("Без боли", "Современная анестезия и седация"),
-            ("Напоминания", "Пришлём сообщение о приёме заранее"),
-        ],
-        "reviews": [
-            ("Наталья И.", "Боялась стоматологов, но здесь всё прошло спокойно и без боли. Спасибо!"),
-            ("Павел Г.", "Записался онлайн за 2 минуты, приняли точно по времени."),
-            ("Юлия А.", "Внимательный персонал, чисто, современное оборудование."),
+    },
+    "Юристы": {
+        "hero": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80",
+        "gallery": [
+            "https://images.unsplash.com/photo-1450133064473-71024230f91b?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=800&q=80",
         ],
     },
     "Фитнес": {
-        "tagline": "Тело, в котором вам комфортно",
-        "subtitle": "Первая тренировка бесплатно — запишитесь онлайн за минуту",
-        "services": [
-            ("Персональная тренировка", "от 2 500 ₽", "Программа под ваши цели и уровень"),
-            ("Групповые занятия", "от 900 ₽", "Йога, стретчинг, HIIT и силовые"),
-            ("Абонемент на месяц", "от 4 900 ₽", "Неограниченное количество посещений"),
-            ("Онлайн-тренировки", "от 1 200 ₽", "Тренируйтесь из дома с тренером"),
-        ],
-        "benefits": [
-            ("Пробная тренировка", "Бесплатно, чтобы познакомиться с клубом"),
-            ("Опытные тренеры", "Сертифицированные специалисты"),
-            ("Удобный график", "Занятия с 7:00 до 23:00"),
-            ("Без навязывания", "Никаких скрытых платежей"),
-        ],
-        "reviews": [
-            ("Артём В.", "За полгода минус 12 кг. Тренер составил программу и следит за техникой."),
-            ("Ксения Л.", "Хожу на йогу и стретчинг. Атмосфера супер, инструкторы внимательные."),
-            ("Максим Ш.", "Удобно, что можно записаться онлайн и не ждать звонка."),
+        "hero": "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1200&q=80",
+        "gallery": [
+            "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1540497077202-7c8a3999166f?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?auto=format&fit=crop&w=800&q=80",
         ],
     },
-    "Отели": {
-        "tagline": "Дом вдали от дома",
-        "subtitle": "Забронируйте номер онлайн — подтверждение придёт сразу",
-        "services": [
-            ("Стандарт", "от 4 900 ₽ / ночь", "Уютный номер со всеми удобствами"),
-            ("Люкс", "от 9 800 ₽ / ночь", "Просторный номер с видом на город"),
-            ("Завтрак", "включён", "Шведский стол с 7:00 до 11:00"),
-            ("Ранний заезд", "по запросу", "Заселение с 8:00 при наличии номеров"),
-        ],
-        "benefits": [
-            ("Бронь за минуту", "Онлайн-подтверждение на почту и в мессенджер"),
-            ("Центр города", "До главных достопримечательностей — пешком"),
-            ("Чистота", "Ежедневная уборка и свежее бельё"),
-            ("Поддержка 24/7", "На связи в любое время"),
-        ],
-        "reviews": [
-            ("Ирина С.", "Останавливались на выходные. Чисто, тихо, завтраки отличные."),
-            ("Виктор Н.", "Удобное расположение, приветливый персонал. Бронь подтвердили мгновенно."),
-            ("Алина Ж.", "Номер светлый, вид красивый. Обязательно вернёмся."),
+    "Default": {
+        "hero": "https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=1200&q=80",
+        "gallery": [
+            "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80",
+            "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=800&q=80",
         ],
     },
-    "Услуги": {
-        "tagline": "Делаем то, что нужно, вовремя",
-        "subtitle": "Оставьте заявку онлайн — мастер приедет в удобное время",
+}
+
+# ── 5 Design Themes with Distinct Fonts, Colors & Aesthetics ───────────────────
+THEMES: dict[str, dict[str, Any]] = {
+    # 1. Clean Light (Beauty, Medicine, Dentistry, Salons)
+    "clean_light": {
+        "name": "Clean Light",
+        "font_css": '<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">',
+        "font_heading": "'Playfair Display', 'Cormorant Garamond', Georgia, serif",
+        "font_body": "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+        "bg_page": "#FAF8F5",
+        "bg_container": "#FAF8F5",
+        "bg_card": "#FFFFFF",
+        "border_color": "#EFEAE1",
+        "text_primary": "#1C1917",
+        "text_secondary": "#57534E",
+        "text_muted": "#A8A29E",
+        "accent": "#2E5A44",  # Sage green
+        "accent_text": "#FFFFFF",
+        "accent_hover": "#244735",
+        "accent_soft": "#EBF3EE",
+        "accent_border": "#D5E5DC",
+        "badge_border": "border-[#E8E2D6]",
+        "badge_bg": "bg-[#F3EFE8]",
+        "radius": "rounded-2xl",
+        "radius_inner": "rounded-xl",
+        "shadow": "shadow-[0_4px_20px_rgba(46,90,68,0.06)]",
+        "is_dark": False,
+    },
+    # 2. Industrial Dark (Auto Services, Detailing, Construction, Repair)
+    "industrial_dark": {
+        "name": "Industrial Dark",
+        "font_css": '<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">',
+        "font_heading": "'Montserrat', sans-serif",
+        "font_body": "'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif",
+        "bg_page": "#121417",
+        "bg_container": "#121417",
+        "bg_card": "#1B1E23",
+        "border_color": "#282C34",
+        "text_primary": "#FFFFFF",
+        "text_secondary": "#9CA3AF",
+        "text_muted": "#6B7280",
+        "accent": "#FF6B00",  # High-contrast orange
+        "accent_text": "#000000",
+        "accent_hover": "#E55F00",
+        "accent_soft": "rgba(255, 107, 0, 0.12)",
+        "accent_border": "rgba(255, 107, 0, 0.35)",
+        "badge_border": "border-[#282C34]",
+        "badge_bg": "bg-[#1E2228]",
+        "radius": "rounded-xl",
+        "radius_inner": "rounded-lg",
+        "shadow": "shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
+        "is_dark": True,
+    },
+    # 3. Warm Craft (Cafes, Bakeries, Coffee, Food Delivery, Restaurants)
+    "warm_craft": {
+        "name": "Warm Craft",
+        "font_css": '<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">',
+        "font_heading": "'Lora', Georgia, serif",
+        "font_body": "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+        "bg_page": "#F9F6F0",
+        "bg_container": "#F9F6F0",
+        "bg_card": "#FFFFFF",
+        "border_color": "#EADBCE",
+        "text_primary": "#281D17",
+        "text_secondary": "#63534B",
+        "text_muted": "#9C8A81",
+        "accent": "#C85A32",  # Warm terracotta
+        "accent_text": "#FFFFFF",
+        "accent_hover": "#B34E29",
+        "accent_soft": "#FAEEE9",
+        "accent_border": "#F0D5C9",
+        "badge_border": "border-[#EADBCE]",
+        "badge_bg": "bg-[#F2ECE4]",
+        "radius": "rounded-2xl",
+        "radius_inner": "rounded-xl",
+        "shadow": "shadow-[0_6px_22px_rgba(200,90,50,0.07)]",
+        "is_dark": False,
+    },
+    # 4. Strict Corporate (Legal, Finance, B2B, Electronics Repair)
+    "strict_corporate": {
+        "name": "Strict Corporate",
+        "font_css": '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">',
+        "font_heading": "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+        "font_body": "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+        "bg_page": "#FFFFFF",
+        "bg_container": "#FFFFFF",
+        "bg_card": "#F8FAFC",
+        "border_color": "#E2E8F0",
+        "text_primary": "#0F172A",
+        "text_secondary": "#475569",
+        "text_muted": "#94A3B8",
+        "accent": "#1E3A8A",  # Deep navy corporate
+        "accent_text": "#FFFFFF",
+        "accent_hover": "#172554",
+        "accent_soft": "#EFF6FF",
+        "accent_border": "#BFDBFE",
+        "badge_border": "border-slate-200",
+        "badge_bg": "bg-slate-100",
+        "radius": "rounded-lg",
+        "radius_inner": "rounded-md",
+        "shadow": "shadow-sm border border-slate-200",
+        "is_dark": False,
+    },
+    # 5. Modern Minimal (Universal for other niches, Fitness, Shops, Services)
+    "modern_minimal": {
+        "name": "Modern Minimal",
+        "font_css": '<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">',
+        "font_heading": "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+        "font_body": "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+        "bg_page": "#0F172A",
+        "bg_container": "#0F172A",
+        "bg_card": "#1E293B",
+        "border_color": "#334155",
+        "text_primary": "#F8FAFC",
+        "text_secondary": "#94A3B8",
+        "text_muted": "#64748B",
+        "accent": "#6366F1",  # Vibrant indigo
+        "accent_text": "#FFFFFF",
+        "accent_hover": "#4F46E5",
+        "accent_soft": "rgba(99, 102, 241, 0.15)",
+        "accent_border": "rgba(99, 102, 241, 0.35)",
+        "badge_border": "border-[#334155]",
+        "badge_bg": "bg-[#1E293B]",
+        "radius": "rounded-2xl",
+        "radius_inner": "rounded-xl",
+        "shadow": "shadow-[0_8px_30px_rgba(0,0,0,0.35)]",
+        "is_dark": True,
+    },
+}
+
+
+def detect_theme(category: str | None) -> str:
+    """Select the best fitting theme based on business category."""
+    cat = (category or "").lower()
+    # 1. Warm Craft (Food, Cafes, Restaurants)
+    if any(k in cat for k in ("ресторан", "кафе", "кофейн", "пекарн", "доставка еды", "пицц", "суши", "бар", "кухн", "кондитер")):
+        return "warm_craft"
+    # 2. Clean Light (Beauty, Medicine, Dentistry, Clinics)
+    if any(k in cat for k in ("бьюти", "красот", "маникюр", "педикюр", "волос", "парикмахер", "косметол", "медицин", "клиник", "стоматолог", "доктор", "врач", "спа", "массаж")):
+        return "clean_light"
+    # 3. Industrial Dark (Auto Services, Detailing, Construction, Repair)
+    if any(k in cat for k in ("авто", "сервис", "шиномонтаж", "детейлинг", "ремонт авто", "кузов", "мойка", "стройк", "строитель", "монтаж")) or re.search(r"\bсто\b", cat):
+        return "industrial_dark"
+    # 4. Strict Corporate (Legal, Finance, B2B, Electronics Repair)
+    if any(k in cat for k in ("юрист", "юрид", "адвокат", "нотариус", "финанс", "бухгалтер", "аудит", "b2b", "недвижим", "консалтинг", "техник", "электроник")):
+        return "strict_corporate"
+    # 5. Modern Minimal (Universal for other niches)
+    return "modern_minimal"
+
+
+PROFILES: dict[str, dict] = {
+    "Бьюти": {
+        "tagline": "Красота и гармония, к которой хочется возвращаться",
+        "subtitle": "Онлайн-запись за 30 секунд — без звонков и ожидания подтверждения",
         "services": [
-            ("Консультация", "бесплатно", "Оценим объём работ и назовём цену"),
-            ("Выезд мастера", "от 1 500 ₽", "Приедем в удобное для вас время"),
-            ("Базовые работы", "от 2 500 ₽", "Качественно и с гарантией"),
-            ("Срочный заказ", "+30% к стоимости", "Выполним в течение 24 часов"),
+            ("Маникюр + гель-лак", "от 2 500 ₽", "Стойкое покрытие до 4 недель, дизайн в подарок"),
+            ("Педикюр Smart", "от 3 200 ₽", "Аппаратная обработка, уход и покрытие"),
+            ("Брови и ресницы", "от 1 900 ₽", "Коррекция формы, окрашивание хной, ламинирование"),
+            ("Стрижка и авторская укладка", "от 2 800 ₽", "Индивидуальный подбор под форму лица и образ"),
         ],
         "benefits": [
-            ("Фиксированная цена", "Смета до начала работ"),
-            ("Гарантия", "На все выполненные работы"),
-            ("Онлайн-заявка", "Ответим в течение 15 минут"),
-            ("Удобная оплата", "Наличные, карта, перевод"),
+            ("Запись 24/7", "Выберите удобное время онлайн за пару кликов"),
+            ("Опытные мастера", "Средний стаж специалистов команды — более 5 лет"),
+            ("Стерильность 100%", "Медицинская трёхэтапная стерилизация инструментов"),
+            ("Уютная атмосфера", "Кофе, приятная музыка и заботливый сервис"),
         ],
         "reviews": [
-            ("Олег Б.", "Приехали в день обращения, всё сделали аккуратно и по обещанной цене."),
-            ("Татьяна Е.", "Оставила заявку онлайн — перезвонили через 10 минут. Очень удобно."),
-            ("Григорий Ф.", "Работой доволен, рекомендую друзьям."),
+            ("Анна Ковалёва", "Делала маникюр — покрытие держится идеально уже месяц! Записалась прямо с телефона за минуту."),
+            ("Мария Соколова", "Лучшие мастера в городе. Внимательно выслушали пожелания, результат превзошёл ожидания."),
+            ("Екатерина Васильева", "Очень уютно, чисто и бережное отношение. Теперь хожу только сюда."),
         ],
     },
-    "Магазины": {
-        "tagline": "Вещи, которые хочется носить",
-        "subtitle": "Закажите онлайн — привезём в день обращения",
+    "Рестораны": {
+        "tagline": "Вкус и атмосфера, которые хочется повторить",
+        "subtitle": "Забронируйте столик онлайн — без звонков и долгих ожиданий ответа",
         "services": [
-            ("Новинки сезона", "от 2 900 ₽", "Свежие коллекции каждую неделю"),
-            ("Доставка по городу", "от 300 ₽", "В день заказа, бережно и вовремя"),
-            ("Примерка онлайн", "бесплатно", "Поможем с размером по видеосвязи"),
-            ("Скидки постоянным клиентам", "до 20%", "Накопительная карта в подарок"),
+            ("Бизнес-ланч от шефа", "590 ₽", "Салат, суп, горячее блюдо и напиток каждый будний день"),
+            ("Завтраки весь день", "от 450 ₽", "Сырники, свежие круассаны, омлеты и кофе свежей обжарки"),
+            ("Паста и блюда на огне", "от 690 ₽", "Готовим из фермерских продуктов на открытой кухне"),
+            ("Десерты ручной работы", "от 390 ₽", "Собственная кондитерская и сезонные авторские новинки"),
         ],
         "benefits": [
-            ("Онлайн-заказ", "Оформим за пару минут в мессенджере"),
-            ("Обмен и возврат", "14 дней без вопросов"),
-            ("Только оригинал", "Работаем с проверенными поставщиками"),
-            ("Помощь стилиста", "Подберём образ бесплатно"),
+            ("Мгновенная бронь", "Выберите дату и время — столик будет ждать к вашему визиту"),
+            ("Свежие продукты", "Поставки от локальных поставщиков каждое утро"),
+            ("Уютный интерьер", "Идеально для свиданий, семейных ужинов и деловых встреч"),
+            ("Быстрая подача", "Среднее время подачи горячих блюд — 12-15 минут"),
         ],
         "reviews": [
-            ("Дарья Н.", "Заказала онлайн, привезли на следующий день. Качество отличное."),
-            ("Елена М.", "Помогли подобрать размер по видео — всё подошло идеально."),
-            ("Александра К.", "Любимый магазин, всегда есть что-то интересное."),
+            ("Дмитрий Попов", "Бизнес-ланчи превосходные: большие порции, всё горячее и свежее. Персонал на высоте."),
+            ("Ольга Романова", "Отмечали день рождения. Помогли с рассадкой и тортом, гости остались в восторге!"),
+            ("Иван Тарасов", "Лучшая кухня в районе. Теперь бронирую столик заранее онлайн."),
+        ],
+    },
+    "Автосервисы": {
+        "tagline": "Качественный ремонт и обслуживание без скрытых доплат",
+        "subtitle": "Запишитесь на осмотр онлайн — согласуем точную смету до начала работ",
+        "services": [
+            ("Компьютерная диагностика", "от 1 500 ₽", "Полное сканирование электронных систем и датчиков"),
+            ("Техническое обслуживание", "от 2 900 ₽", "Замена моторного масла и фильтров по регламенту"),
+            ("Шиномонтаж и балансировка", "от 2 400 ₽", "Точный баланс, протяжка динамометром, мойка колес"),
+            ("Ремонт ходовой части", "по смете", "Восстановление подвески, тормозов и рулевого управления"),
+        ],
+        "benefits": [
+            ("Гарантия качества", "До 12 месяцев на все выполненные работы и установленные узлы"),
+            ("Честная смета", "Никаких неожиданных сумм: все позиции согласуются с вами"),
+            ("Запчасти в наличии", "Оригинальные детали и сертифицированные аналоги с гарантией"),
+            ("Работаем без выходных", "Принимаем автомобили с 8:00 до 21:00 ежедневно"),
+        ],
+        "reviews": [
+            ("Сергей Мельников", "Провели диагностику за 40 минут, сразу назвали итоговую сумму. Сделали строго в срок."),
+            ("Алексей Кузнецов", "Записался онлайн, приехал точно ко времени — бокс был свободен. Отличный сервис!"),
+            ("Роман Дронов", "Обслуживаю здесь уже вторую машину. Честные ребята, лишнего не навязывают."),
+        ],
+    },
+    "Медицина": {
+        "tagline": "Профессиональная забота о здоровье без очередей",
+        "subtitle": "Запишитесь на прием к специалисту онлайн — свободное время видно сразу",
+        "services": [
+            ("Первичная консультация", "от 2 500 ₽", "Осмотр врача, сбор анамнеза и составление плана лечения"),
+            ("Профессиональная гигиена", "от 4 500 ₽", "Ультразвук, Air-Flow и реминерализирующая терапия"),
+            ("Лечение кариеса", "от 5 900 ₽", "Современные световые пломбы с гарантией без боли"),
+            ("Диагностика и анализы", "от 800 ₽", "Собственная лаборатория, результаты в день сдачи"),
+        ],
+        "benefits": [
+            ("Квалификация", "Все специалисты имеют высшую категорию и стаж от 8 лет"),
+            ("Без очередей", "Прием строго по записи, напоминание в мессенджер накануне"),
+            ("Современное оборудование", "Европейские стандарты стерилизации и диагностики"),
+            ("Комфорт и забота", "Внимательное отношение к каждому пациенту и деликатный подход"),
+        ],
+        "reviews": [
+            ("Наталья Ильина", "Всегда переживала перед приемом, но здесь всё прошло максимально бережно и спокойно."),
+            ("Павел Григорьев", "Записался через сайт за минуту, приняли ровно по расписанию. Лечением доволен."),
+            ("Юлия Афанасьева", "Современная светлая клиника, чуткие доктора. Рекомендую всей семье."),
+        ],
+    },
+    "Юристы": {
+        "tagline": "Надежная правовая защита ваших интересов и бизнеса",
+        "subtitle": "Оставьте заявку онлайн — разберем вашу ситуацию на первичной консультации",
+        "services": [
+            ("Юридическая консультация", "от 3 000 ₽", "Анализ документов, оценка перспектив и рисков"),
+            ("Составление договоров", "от 5 000 ₽", "Разработка индивидуальных соглашений под ваши условия"),
+            ("Представительство в суде", "по договору", "Полное ведение дела в арбитражных судах и судах общей юрисдикции"),
+            ("Сопровождение сделок", "от 15 000 ₽", "Проверка контрагентов, чистоты объектов и налоговых последствий"),
+        ],
+        "benefits": [
+            ("Опыт и практика", "Более 10 лет успешной защиты прав клиентов и компаний"),
+            ("Прозрачный договор", "Фиксированные условия оплаты без скрытых процентов"),
+            ("Конфиденциальность", "Строгое соблюдение профессиональной тайны"),
+            ("Оперативность", "Приступаем к работе сразу после согласования задачи"),
+        ],
+        "reviews": [
+            ("Артем Воронов", "Помогли решить сложный арбитражный спор в нашу пользу. Профессионалы высшего класса."),
+            ("Елена Морозова", "Оформили сделку по недвижимости безупречно, выявили скрытые риски договора."),
+            ("Виктор Семенов", "Регулярно обращаюсь по корпоративным вопросам. Всегда четко, быстро и по делу."),
+        ],
+    },
+    "Фитнес": {
+        "tagline": "Энергия, сила и комфорт для вашего тела каждый день",
+        "subtitle": "Запишитесь на первое пробное занятие онлайн — тренер подберет программу",
+        "services": [
+            ("Пробная тренировка", "бесплатно", "Знакомство с клубом, фитнес-тестирование и инструктаж"),
+            ("Персональный тренинг", "от 2 200 ₽", "Индивидуальный план упражнений и питания под ваши цели"),
+            ("Групповые программы", "от 850 ₽", "Йога, пилатес, сайкл, функциональный тренинг и растяжка"),
+            ("Клубная карта на месяц", "от 4 500 ₽", "Безлимитный доступ в тренажерный зал и SPA-зону"),
+        ],
+        "benefits": [
+            ("Сертифицированные тренеры", "Опытные наставники с профильным спортивным образованием"),
+            ("Современный зал", "Профессиональные тренажеры премиум-класса и зоны свободных весов"),
+            ("Удобный график", "Открыты ежедневно с 7:00 до 23:00 без перерывов"),
+            ("Комфорт", "Просторные раздевалки, финская сауна и чистые полотенца"),
+        ],
+        "reviews": [
+            ("Ксения Лебедева", "Хожу на растяжку и йогу. Просторные залы, отличный свет и вдохновляющие тренеры!"),
+            ("Максим Шевченко", "За полгода сбросил 10 кг под руководством тренера. Очень мотивирующая атмосфера."),
+            ("Дарья Новикова", "Удобно записываться на тренировки со смартфона, напоминания приходят вовремя."),
         ],
     },
 }
 
 DEFAULT_PROFILE = {
-    "tagline": "Начните работать с нами онлайн",
-    "subtitle": "Оставьте заявку — ответим в течение 15 минут",
+    "tagline": "Современный сервис и надежные решения для вас",
+    "subtitle": "Оставьте заявку онлайн — свяжемся с вами в течение 10 минут",
     "services": [
-        ("Консультация", "бесплатно", "Ответим на вопросы и подберём решение"),
-        ("Основная услуга", "по запросу", "Расскажем детали и стоимость"),
-        ("Срочный заказ", "+30% к стоимости", "Выполним в течение 24 часов"),
-        ("Выезд специалиста", "от 1 500 ₽", "В удобное для вас время"),
+        ("Консультация специалиста", "бесплатно", "Ответим на вопросы, проанализируем задачу и подберем решение"),
+        ("Базовый комплекс услуг", "по запросу", "Качественное выполнение с соблюдением стандартов"),
+        ("Индивидуальный заказ", "рассчитывается", "Персональный подход под ваши требования и бюджет"),
+        ("Срочное выполнение", "+25% к смете", "Оперативное решение задачи в течение 24 часов"),
     ],
     "benefits": [
-        ("Онлайн-заявка", "Без звонков и ожидания на линии"),
-        ("Прозрачные цены", "Согласуем стоимость заранее"),
-        ("Гарантия", "Отвечаем за результат"),
-        ("Поддержка", "Остаёмся на связи после оказания услуги"),
+        ("Онлайн-заявка 24/7", "Удобно написать в мессенджер без звонков и ожидания"),
+        ("Прозрачные цены", "Согласуем точную стоимость до начала выполнения"),
+        ("Гарантия результата", "Отвечаем за качество каждого этапа работы"),
+        ("Поддержка клиентов", "Остаемся на связи и оперативно консультируем"),
     ],
     "reviews": [
-        ("Алексей П.", "Быстро ответили, помогли с выбором. Рекомендую."),
-        ("Марина С.", "Всё сделали качественно и в срок. Спасибо!"),
-        ("Игорь В.", "Удобно, что можно написать и не ждать звонка."),
+        ("Алексей Петров", "Быстро ответили на сообщение, подробно проконсультировали и сделали всё в срок. Рекомендую!"),
+        ("Марина Смирнова", "Приятно иметь дело с профессионалами. Очень удобная онлайн-запись без лишних звонков."),
+        ("Игорь Васильев", "Отличный сервис, вежливые специалисты и честные понятные цены."),
     ],
 }
-
-PAGE = Template("""<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>$business_name — $category $city_in</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com"></script>
-<style>
-  html { scroll-behavior: smooth; }
-  body {
-    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background-color: #000000;
-  }
-</style>
-</head>
-<body class="bg-[#000000] text-white antialiased">
-<div class="mx-auto min-h-screen max-w-md bg-[#000000] shadow-2xl">
-
-  <!-- A2. Hero section -->
-  <section class="px-6 pb-8 pt-10">
-    <div>
-      <span class="inline-flex items-center gap-2 rounded-full border border-[#272727] bg-[#181818] px-3 py-1 text-xs font-semibold text-white/80">
-        <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-        $category · $city
-      </span>
-
-      <!-- B5. Hero heading with gradient from #FFFFFF to #9B9B9B -->
-      <h1 class="mt-4 text-3xl font-bold tracking-tight bg-gradient-to-r from-white to-[#9B9B9B] bg-clip-text text-transparent [text-wrap:balance]">
-        $business_name
-      </h1>
-      <p class="mt-2 text-base font-semibold text-white [text-wrap:balance]">$tagline</p>
-      <p class="mt-2 text-sm leading-relaxed text-white/70 [text-wrap:pretty]">$subtitle</p>
-
-      <!-- Proof signal -->
-      <div class="mt-4 flex items-center gap-2 text-sm">
-        <span class="text-amber-400">$stars</span>
-        <span class="font-semibold text-white">$rating</span>
-        <span class="text-white/40">· $reviews_count проверенных отзывов</span>
-      </div>
-
-      <!-- Action -->
-      <div class="mt-6 space-y-3">
-        $primary_cta
-        <div class="$secondary_class">
-          $secondary_ctas
-        </div>
-        <p class="pt-1 text-center text-xs text-white/40">Ответим за 5 минут · Без звонков и ожидания</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- B11. Mandatory Tagline Reveal Section -->
-  <section class="border-y border-[#272727] bg-[#181818] px-6 py-8">
-    <p class="text-xs font-bold uppercase tracking-wider text-white/40">Главный ориентир</p>
-    <p class="mt-2 text-2xl font-bold leading-snug tracking-tight text-white [text-wrap:balance]">
-      Качество, за которым клиенты возвращаются снова
-    </p>
-    <p class="mt-2 text-sm leading-relaxed text-white/60 [text-wrap:pretty]">
-      Честный подход, прозрачный расчет стоимости до начала работы и бережное отношение к каждому посетителю.
-    </p>
-  </section>
-
-  <!-- How It Works (3 Steps) -->
-  <section class="border-b border-[#272727] px-6 py-8">
-    <h2 class="text-xl font-bold tracking-tight text-white [text-wrap:balance]">Как мы работаем</h2>
-    <div class="mt-4 grid grid-cols-3 gap-2">
-      <div class="rounded-2xl border border-[#272727] bg-[#181818] p-3 text-center">
-        <span class="text-xs font-bold text-white/40">01</span>
-        <p class="mt-1 text-xs font-semibold text-white">Заявка</p>
-        <p class="mt-1 text-[11px] text-white/50">В один клик</p>
-      </div>
-      <div class="rounded-2xl border border-[#272727] bg-[#181818] p-3 text-center">
-        <span class="text-xs font-bold text-white/40">02</span>
-        <p class="mt-1 text-xs font-semibold text-white">Детали</p>
-        <p class="mt-1 text-[11px] text-white/50">За 5 минут</p>
-      </div>
-      <div class="rounded-2xl border border-[#272727] bg-[#181818] p-3 text-center">
-        <span class="text-xs font-bold text-white/40">03</span>
-        <p class="mt-1 text-xs font-semibold text-white">Результат</p>
-        <p class="mt-1 text-[11px] text-white/50">С гарантией</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- Services & Prices -->
-  <section class="px-6 py-8">
-    <div class="flex items-end justify-between">
-      <h2 class="text-xl font-bold tracking-tight text-white">Услуги и цены</h2>
-      <span class="text-xs text-white/40">актуальный прайс</span>
-    </div>
-    <div class="mt-4 space-y-3">
-      $service_cards
-    </div>
-  </section>
-
-  <!-- Benefits -->
-  <section class="border-y border-[#272727] bg-[#181818] px-6 py-8">
-    <h2 class="text-xl font-bold tracking-tight text-white">Почему выбирают нас</h2>
-    <div class="mt-4 grid grid-cols-2 gap-3">
-      $benefit_cards
-    </div>
-  </section>
-
-  <!-- Social Proof / Reviews -->
-  <section class="px-6 py-8">
-    <h2 class="text-xl font-bold tracking-tight text-white">Отзывы клиентов</h2>
-    <div class="mt-4 space-y-3">
-      $review_cards
-    </div>
-  </section>
-
-  <!-- Risk Reversal -->
-  <section class="px-6 pb-6">
-    <div class="rounded-2xl border border-[#272727] bg-[#1F1F1F] p-4">
-      <p class="text-xs font-bold uppercase tracking-wider text-emerald-400">Гарантия прозрачности</p>
-      <p class="mt-1 text-sm font-semibold text-white">Честная смета без скрытых доплат</p>
-      <p class="mt-1 text-xs leading-relaxed text-white/60 [text-wrap:pretty]">
-        Все детали и цены согласуются до начала оказания услуг. Оплата только после выполнения и вашей проверки.
-      </p>
-    </div>
-  </section>
-
-  <!-- Contacts & Location -->
-  <section class="px-6 pb-8">
-    <div class="rounded-2xl border border-[#272727] bg-[#181818] p-5">
-      <h2 class="text-xl font-bold tracking-tight text-white">Как нас найти</h2>
-      <div class="mt-4 space-y-2 text-sm text-white/70">
-        <p class="flex items-start gap-2.5"><span>📍</span><span>$address</span></p>
-        <p class="flex items-start gap-2.5"><span>🕘</span><span>$hours</span></p>
-      </div>
-      <a href="$map_url" target="_blank" rel="noopener" class="mt-4 inline-flex h-11 w-full items-center justify-center rounded-xl border border-[#272727] bg-[#272727] text-sm font-semibold text-white transition hover:bg-[#313131]">
-        Посмотреть на карте
-      </a>
-    </div>
-  </section>
-
-  <!-- Footer -->
-  <footer class="border-t border-[#272727] px-6 py-6 text-center text-xs text-white/40">
-    <p class="font-semibold text-white/70">$business_name</p>
-    <p class="mt-1">$city · $category</p>
-    <p class="mt-2">© $year. Все права защищены.</p>
-  </footer>
-
-  <div class="h-20"></div>
-</div>
-
-<!-- Sticky Bottom Bar -->
-<div class="fixed inset-x-0 bottom-0 z-50 border-t border-[#272727] bg-[#181818]/95 backdrop-blur-xl">
-  <div class="mx-auto flex max-w-md items-center justify-between gap-3 px-4 py-3">
-    <div class="min-w-0 flex-1">
-      <p class="truncate text-sm font-semibold text-white">$business_name</p>
-      <p class="truncate text-xs text-white/45">$tagline</p>
-    </div>
-    <a href="$primary_href" target="_blank" rel="noopener" class="inline-flex h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-black transition hover:bg-neutral-200">
-      $primary_label
-    </a>
-  </div>
-</div>
-</body>
-</html>
-""")
 
 
 def _safe(value: str | None, fallback: str = "") -> str:
@@ -530,97 +532,473 @@ def _primary_href(lead: dict) -> tuple[str, str, str]:
     return f"tel:{phone}" if phone else "#contacts", "Связаться с нами", "Связаться"
 
 
+def _get_curated_photos(lead: dict, category: str) -> tuple[str, list[str]]:
+    """Returns (hero_photo, gallery_photos) combining real lead photos with high-quality fallbacks."""
+    niche_key = category if category in NICHE_FALLBACK_IMAGES else "Default"
+    fallbacks = NICHE_FALLBACK_IMAGES[niche_key]
+
+    raw_lead_photos = [p for p in (lead.get("photos") or []) if isinstance(p, str) and p.startswith("http")]
+    logo = lead.get("logo_url") if isinstance(lead.get("logo_url"), str) and lead.get("logo_url").startswith("http") else None
+
+    # Determine hero image
+    if raw_lead_photos:
+        hero = raw_lead_photos[0]
+        remaining = raw_lead_photos[1:]
+    else:
+        hero = fallbacks["hero"]
+        remaining = []
+
+    # Determine gallery images (up to 4)
+    gallery: list[str] = []
+    for p in remaining:
+        if p not in gallery and p != hero:
+            gallery.append(p)
+        if len(gallery) >= 4:
+            break
+
+    # If only 1 real photo was provided, keep lead photo in gallery as well
+    if len(raw_lead_photos) == 1 and hero not in gallery:
+        gallery.append(hero)
+
+    # If not enough real photos, fill from fallback
+    for fb in fallbacks["gallery"]:
+        if len(gallery) >= 4:
+            break
+        if fb not in gallery and fb != hero:
+            gallery.append(fb)
+
+    return hero, gallery
+
+
 def build_fallback_landing(lead: dict) -> str:
+    """Builds a rich, responsive, niche-adapted landing page with multiple hero layouts."""
     category = lead.get("category") or "Бизнес"
+    theme_key = detect_theme(category)
+    theme = THEMES[theme_key]
     profile = PROFILES.get(category, DEFAULT_PROFILE)
-    accent = ACCENTS.get(category, "violet")
+
+    business_name = _safe(lead.get("name"), "Ваш бизнес")
+    city = _safe(lead.get("city"), "вашем городе")
+    city_in = _safe(_city_in(lead.get("city")))
+    rating = f"{lead.get('rating'):.1f}" if lead.get("rating") else "4.9"
+    reviews_count = lead.get("reviews_count") or 128
+    address = _safe(lead.get("address"), "Адрес уточняется")
+    hours = "<br>".join(_safe(item) for item in (lead.get("opening_hours") or [])) or "Ежедневно 10:00–21:00"
+    map_url = f"https://yandex.ru/maps/?text={quote(lead.get('name', '') + ' ' + (lead.get('address') or ''))}"
+
+    hero_img, gallery_imgs = _get_curated_photos(lead, category)
+    niche_fallback = NICHE_FALLBACK_IMAGES.get(category, NICHE_FALLBACK_IMAGES["Default"])
+    hero_fallback = niche_fallback["hero"]
+
+    primary_href, primary_label, sticky_label = _primary_href(lead)
     socials = lead.get("social_links") or {}
     phone = lead.get("phone")
     phone_digits = _phone_digits(phone)
-    primary_href, primary_label, sticky_label = _primary_href(lead)
 
-    service_cards = "".join(
-        f"""<div class="flex items-start justify-between gap-4 rounded-2xl border border-[#272727] bg-[#181818] p-4">
-          <div>
-            <p class="text-sm font-semibold text-white">{_safe(name)}</p>
-            <p class="mt-1 text-xs leading-relaxed text-white/50">{_safe(desc)}</p>
-          </div>
-          <span class="whitespace-nowrap rounded-lg border border-[#272727] bg-[#1F1F1F] px-2.5 py-1 text-xs font-semibold text-white">{_safe(price)}</span>
-        </div>"""
-        for name, price, desc in profile["services"]
-    )
-
-    benefit_cards = "".join(
-        f"""<div class="rounded-2xl border border-[#272727] bg-[#181818] p-4">
-          <p class="text-sm font-semibold text-white">{_safe(title)}</p>
-          <p class="mt-1 text-xs leading-relaxed text-white/50">{_safe(desc)}</p>
-        </div>"""
-        for title, desc in profile["benefits"]
-    )
-
-    review_cards = "".join(
-        f"""<div class="rounded-2xl border border-[#272727] bg-[#181818] p-4">
-          <div class="flex items-center justify-between">
-            <p class="text-sm font-semibold text-white">{_safe(author)}</p>
-            <span class="text-xs text-amber-400">★★★★★</span>
-          </div>
-          <p class="mt-2 text-xs leading-relaxed text-white/60">«{_safe(text)}»</p>
-        </div>"""
-        for author, text in profile["reviews"]
-    )
-
+    # Secondary action buttons
     secondary: list[str] = []
     if socials.get("telegram"):
         secondary.append(
             f'<a href="{html.escape(socials["telegram"])}" target="_blank" rel="noopener" '
-            f'class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#272727] bg-[#181818] text-sm font-semibold text-white transition hover:bg-[#272727]">'
+            f'class="inline-flex h-11 items-center justify-center gap-2 {theme["radius_inner"]} border {theme["badge_border"]} {theme["badge_bg"]} text-xs font-semibold transition hover:opacity-80" '
+            f'style="color: {theme["text_primary"]};">'
+            f'<svg class="w-4 h-4 fill-current text-[#229ED9]" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.56 8.16l-1.97 9.28c-.15.65-.53.81-1.08.5l-3-2.21-1.45 1.4c-.16.16-.3.3-.61.3l.21-3.05 5.56-5.02c.24-.22-.05-.34-.38-.13l-6.87 4.33-2.96-.92c-.64-.2-.66-.64.13-.95l11.57-4.46c.54-.19 1.01.14.88.93z"/></svg>'
             f'Telegram</a>'
         )
     if phone:
         secondary.append(
-            f'<a href="tel:{html.escape(phone_digits)}" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#272727] bg-[#181818] text-sm font-semibold text-white transition hover:bg-[#272727]">'
-            f'Позвонить</a>'
+            f'<a href="tel:{html.escape(phone_digits)}" '
+            f'class="inline-flex h-11 items-center justify-center gap-2 {theme["radius_inner"]} border {theme["badge_border"]} {theme["badge_bg"]} text-xs font-semibold transition hover:opacity-80" '
+            f'style="color: {theme["text_primary"]};">'
+            f'<span>📞</span> Позвонить</a>'
         )
     if not secondary:
         secondary.append(
-            f'<a href="#contacts" class="inline-flex h-11 items-center justify-center rounded-xl border border-[#272727] bg-[#181818] text-sm font-semibold text-white transition hover:bg-[#272727]">Наши контакты</a>'
+            f'<a href="#contacts" class="inline-flex h-11 items-center justify-center {theme["radius_inner"]} border {theme["badge_border"]} {theme["badge_bg"]} text-xs font-semibold transition hover:opacity-80" '
+            f'style="color: {theme["text_primary"]};">Контакты и адрес</a>'
         )
 
-    primary_cta = (
+    sec_class = "grid gap-2" if len(secondary) == 1 else "grid grid-cols-2 gap-2"
+    secondary_ctas_html = "".join(secondary)
+
+    # Primary CTA button
+    primary_btn_html = (
         f'<a href="{html.escape(primary_href)}" target="_blank" rel="noopener" '
-        f'class="inline-flex h-12 w-full items-center justify-center rounded-xl bg-white text-base font-semibold text-black transition hover:bg-neutral-200">'
+        f'class="inline-flex h-12 w-full items-center justify-center {theme["radius_inner"]} text-sm font-bold transition transform hover:scale-[1.01] active:scale-[0.99]" '
+        f'style="background-color: {theme["accent"]}; color: {theme["accent_text"]}; box-shadow: 0 4px 14px {theme["accent"]}40;">'
         f'{_safe(primary_label)}</a>'
     )
 
-    address = _safe(lead.get("address"), "Адрес уточняется")
-    hours = "<br>".join(_safe(item) for item in (lead.get("opening_hours") or [])) or "Ежедневно 10:00–20:00"
-    map_url = f"https://yandex.ru/maps/?text={quote(lead.get('name', '') + ' ' + (lead.get('address') or ''))}"
-    rating = f"{lead.get('rating'):.1f}" if lead.get("rating") else "4.9"
+    # ── Layout Variation (3 Distinct Hero Styles based on business ID/name hash) ──
+    seed_str = str(lead.get("id") or business_name)
+    variant_idx = int(hashlib.md5(seed_str.encode("utf-8")).hexdigest(), 16) % 3
 
-    return PAGE.safe_substitute(
-        business_name=_safe(lead.get("name"), "Ваш бизнес"),
-        category=_safe(category),
-        city=_safe(lead.get("city"), "вашем городе"),
-        city_in=_safe(_city_in(lead.get("city"))),
-        tagline=_safe(profile["tagline"]),
-        subtitle=_safe(profile["subtitle"]),
-        stars=_stars(lead.get("rating")),
-        rating=rating,
-        reviews_count=lead.get("reviews_count") or 0,
-        accent=accent,
-        primary_cta=primary_cta,
-        secondary_class="grid gap-3" if len(secondary) == 1 else "grid grid-cols-2 gap-3",
-        secondary_ctas="".join(secondary),
-        primary_href=html.escape(primary_href),
-        primary_label=_safe(sticky_label),
-        service_cards=service_cards,
-        benefit_cards=benefit_cards,
-        review_cards=review_cards,
-        address=address,
-        hours=hours,
-        map_url=html.escape(map_url),
-        year="2026",
+    logo_url = lead.get("logo_url")
+    logo_img_html = ""
+    if logo_url and str(logo_url).startswith("http"):
+        logo_img_html = (
+            f'<img src="{html.escape(logo_url)}" alt="{business_name}" '
+            f'class="h-12 w-12 rounded-full object-cover border-2 shadow-sm" '
+            f'style="border-color: {theme["accent"]};" '
+            f'onerror="this.style.display=\'none\';">'
+        )
+
+    if variant_idx == 0:
+        # Variant A: Split Card Hero with Photo Card and Rating Badge
+        hero_html = f"""
+        <section class="px-5 pt-7 pb-6">
+          <div class="flex items-center justify-between gap-3">
+            <span class="inline-flex items-center gap-1.5 {theme['radius_inner']} px-3 py-1 text-xs font-semibold border {theme['badge_border']} {theme['badge_bg']}" style="color: {theme['text_secondary']};">
+              <span class="h-2 w-2 rounded-full" style="background-color: {theme['accent']};"></span>
+              {_safe(category)} · {city}
+            </span>
+            {logo_img_html}
+          </div>
+
+          <h1 class="mt-4 text-3xl font-extrabold tracking-tight [text-wrap:balance]" style="font-family: {theme['font_heading']}; color: {theme['text_primary']};">
+            {business_name}
+          </h1>
+          <p class="mt-2 text-base font-medium [text-wrap:balance]" style="color: {theme['text_primary']};">
+            {_safe(profile['tagline'])}
+          </p>
+          <p class="mt-1.5 text-xs leading-relaxed" style="color: {theme['text_secondary']};">
+            {_safe(profile['subtitle'])}
+          </p>
+
+          <!-- Photo Card with overlay rating -->
+          <div class="relative mt-5 overflow-hidden {theme['radius']} {theme['shadow']} border {theme['border_color']}">
+            <img src="{html.escape(hero_img)}" alt="{business_name}" class="h-52 w-full object-cover" onerror="this.onerror=null; this.src='{hero_fallback}';">
+            <div class="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white backdrop-blur-md">
+              <span class="text-amber-400">★</span>
+              <span>{rating}</span>
+              <span class="text-white/60">({reviews_count} отзывов)</span>
+            </div>
+          </div>
+
+          <div class="mt-5 space-y-2.5">
+            {primary_btn_html}
+            <div class="{sec_class}">
+              {secondary_ctas_html}
+            </div>
+            <p class="pt-1 text-center text-[11px]" style="color: {theme['text_muted']};">
+              ⚡ Ответим в течение 5 минут • Без звонков и ожидания
+            </p>
+          </div>
+        </section>
+        """
+    elif variant_idx == 1:
+        # Variant B: Full-width Immersive Banner Hero
+        overlay_gradient = f"linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, {theme['bg_page']} 100%)"
+        hero_html = f"""
+        <section class="relative">
+          <div class="relative h-64 w-full overflow-hidden">
+            <img src="{html.escape(hero_img)}" alt="{business_name}" class="h-full w-full object-cover" onerror="this.onerror=null; this.src='{hero_fallback}';">
+            <div class="absolute inset-0" style="background: {overlay_gradient};"></div>
+            <div class="absolute top-4 left-4 right-4 flex items-center justify-between">
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white backdrop-blur-md">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                {_safe(category)} · {city}
+              </span>
+              {logo_img_html}
+            </div>
+          </div>
+
+          <div class="relative -mt-16 px-5 pb-6">
+            <div class="{theme['radius']} p-5 {theme['shadow']} border {theme['border_color']}" style="background-color: {theme['bg_card']};">
+              <div class="flex items-center gap-2 text-xs font-semibold" style="color: {theme['text_secondary']};">
+                <span class="text-amber-400">★ {rating}</span>
+                <span>•</span>
+                <span>{reviews_count} проверенных отзывов на картах</span>
+              </div>
+              <h1 class="mt-2 text-2xl font-bold tracking-tight [text-wrap:balance]" style="font-family: {theme['font_heading']}; color: {theme['text_primary']};">
+                {business_name}
+              </h1>
+              <p class="mt-1.5 text-sm font-medium" style="color: {theme['text_primary']};">
+                {_safe(profile['tagline'])}
+              </p>
+              <p class="mt-1 text-xs leading-relaxed" style="color: {theme['text_secondary']};">
+                {_safe(profile['subtitle'])}
+              </p>
+
+              <div class="mt-5 space-y-2.5">
+                {primary_btn_html}
+                <div class="{sec_class}">
+                  {secondary_ctas_html}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        """
+    else:
+        # Variant C: Centered Brand Hero with Logo & Quick Highlights
+        hero_html = f"""
+        <section class="px-5 pt-8 pb-6 text-center">
+          <div class="inline-flex items-center gap-1.5 {theme['radius_inner']} px-3 py-1 text-xs font-semibold border {theme['badge_border']} {theme['badge_bg']}" style="color: {theme['text_secondary']};">
+            <span class="h-2 w-2 rounded-full" style="background-color: {theme['accent']};"></span>
+            {_safe(category)} · {city}
+          </div>
+
+          <div class="mt-4 flex justify-center">
+            <div class="relative">
+              <img src="{html.escape(logo_url or hero_img)}" alt="{business_name}" class="h-20 w-20 rounded-2xl object-cover shadow-md border-2" style="border-color: {theme['accent']};" onerror="this.onerror=null; this.src='{hero_fallback}';">
+              <span class="absolute -bottom-2 -right-2 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-black shadow">★ {rating}</span>
+            </div>
+          </div>
+
+          <h1 class="mt-4 text-3xl font-extrabold tracking-tight [text-wrap:balance]" style="font-family: {theme['font_heading']}; color: {theme['text_primary']};">
+            {business_name}
+          </h1>
+          <p class="mt-2 text-sm font-semibold" style="color: {theme['text_primary']};">
+            {_safe(profile['tagline'])}
+          </p>
+          <p class="mt-1 text-xs max-w-sm mx-auto" style="color: {theme['text_secondary']};">
+            {_safe(profile['subtitle'])}
+          </p>
+
+          <div class="relative mt-4 overflow-hidden {theme['radius']} {theme['shadow']} border {theme['border_color']}">
+            <img src="{html.escape(hero_img)}" alt="{business_name}" class="h-44 w-full object-cover" onerror="this.onerror=null; this.src='{hero_fallback}';">
+          </div>
+
+          <div class="mt-5 space-y-2.5 text-left">
+            {primary_btn_html}
+            <div class="{sec_class}">
+              {secondary_ctas_html}
+            </div>
+            <p class="pt-1 text-center text-[11px]" style="color: {theme['text_muted']};">
+              {reviews_count} отзывов на картах • Запись онлайн за минуту
+            </p>
+          </div>
+        </section>
+        """
+
+    # ── Service Cards ─────────────────────────────────────────────────────────
+    service_cards = "".join(
+        f"""<div class="flex items-start justify-between gap-3 p-4 {theme['radius_inner']} border {theme['border_color']}" style="background-color: {theme['bg_card']};">
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-bold truncate" style="color: {theme['text_primary']};">{_safe(name)}</p>
+            <p class="mt-1 text-xs leading-relaxed" style="color: {theme['text_secondary']};">{_safe(desc)}</p>
+          </div>
+          <span class="shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-bold" style="background-color: {theme['accent_soft']}; color: {theme['accent']}; border: 1px solid {theme['accent_border']};">{_safe(price)}</span>
+        </div>"""
+        for name, price, desc in profile["services"]
     )
+
+    # ── Benefit Cards ─────────────────────────────────────────────────────────
+    benefit_cards = "".join(
+        f"""<div class="p-4 {theme['radius_inner']} border {theme['border_color']}" style="background-color: {theme['bg_card']};">
+          <div class="flex items-center gap-2">
+            <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background-color: {theme['accent_soft']}; color: {theme['accent']};">✓</span>
+            <p class="text-sm font-bold truncate" style="color: {theme['text_primary']};">{_safe(title)}</p>
+          </div>
+          <p class="mt-2 text-xs leading-relaxed" style="color: {theme['text_secondary']};">{_safe(desc)}</p>
+        </div>"""
+        for title, desc in profile["benefits"]
+    )
+
+    # ── Review Cards ──────────────────────────────────────────────────────────
+    review_cards = "".join(
+        f"""<div class="p-4 {theme['radius_inner']} border {theme['border_color']}" style="background-color: {theme['bg_card']};">
+          <div class="flex items-center justify-between">
+            <p class="text-sm font-bold" style="color: {theme['text_primary']};">{_safe(author)}</p>
+            <span class="text-xs text-amber-400">★★★★★</span>
+          </div>
+          <p class="mt-2 text-xs leading-relaxed italic" style="color: {theme['text_secondary']};">«{_safe(text)}»</p>
+        </div>"""
+        for author, text in profile["reviews"]
+    )
+
+    # ── Gallery Section (Real photos from Yandex / Telegram / Curated) ────────
+    gallery_items_html = ""
+    for idx, g_img in enumerate(gallery_imgs[:4]):
+        fb_src = niche_fallback["gallery"][idx % len(niche_fallback["gallery"])]
+        gallery_items_html += f"""
+        <div class="relative overflow-hidden {theme['radius_inner']} border {theme['border_color']} aspect-[4/3] group">
+          <img src="{html.escape(g_img)}" alt="Фото {business_name} {idx+1}" class="h-full w-full object-cover transition duration-300 group-hover:scale-105" onerror="this.onerror=null; this.src='{fb_src}';">
+        </div>
+        """
+
+    return f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{business_name} — {_safe(category)} {city_in}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+{theme['font_css']}
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  html {{ scroll-behavior: smooth; }}
+  body {{
+    font-family: {theme['font_body']};
+    background-color: {theme['bg_page']};
+    color: {theme['text_primary']};
+  }}
+  h1, h2, h3 {{
+    font-family: {theme['font_heading']};
+  }}
+</style>
+</head>
+<body class="antialiased">
+
+<!-- Floating Top Demo Badge -->
+<div class="fixed top-3 inset-x-3 z-50 mx-auto max-w-md pointer-events-none">
+  <div class="pointer-events-auto flex items-center justify-between gap-2.5 rounded-2xl border border-black/10 bg-white/95 px-3.5 py-2 shadow-xl backdrop-blur-md">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="relative flex h-2 w-2">
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+      </span>
+      <p class="truncate text-xs font-semibold text-slate-800">
+        Демо-концепт для {business_name}
+      </p>
+    </div>
+    <a href="https://t.me/Murasaki_website" target="_blank" rel="noopener" class="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-[#229ED9] px-2.5 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-[#1C88BD]">
+      <svg class="w-3 h-3 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.56 8.16l-1.97 9.28c-.15.65-.53.81-1.08.5l-3-2.21-1.45 1.4c-.16.16-.3.3-.61.3l.21-3.05 5.56-5.02c.24-.22-.05-.34-.38-.13l-6.87 4.33-2.96-.92c-.64-.2-.66-.64.13-.95l11.57-4.46c.54-.19 1.01.14.88.93z"/></svg>
+      <span>Написать</span>
+    </a>
+  </div>
+</div>
+
+<div class="mx-auto min-h-screen max-w-md shadow-2xl pt-8" style="background-color: {theme['bg_container']};">
+
+  <!-- HERO SECTION -->
+  {hero_html}
+
+  <!-- TAGLINE REVEAL -->
+  <section class="border-y px-5 py-7" style="border-color: {theme['border_color']}; background-color: {theme['bg_card']};">
+    <p class="text-[11px] font-bold uppercase tracking-wider" style="color: {theme['accent']};">Главный ориентир</p>
+    <p class="mt-2 text-2xl font-bold leading-snug tracking-tight [text-wrap:balance]" style="font-family: {theme['font_heading']}; color: {theme['text_primary']};">
+      Качество, за которым клиенты возвращаются снова
+    </p>
+    <p class="mt-2 text-xs leading-relaxed [text-wrap:pretty]" style="color: {theme['text_secondary']};">
+      Честный подход, открытый расчет стоимости до начала работы и внимательное отношение к каждому посетителю.
+    </p>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="px-5 py-7 border-b" style="border-color: {theme['border_color']};">
+    <h2 class="text-lg font-bold tracking-tight" style="color: {theme['text_primary']};">Как мы работаем</h2>
+    <div class="mt-4 grid grid-cols-3 gap-2 text-center">
+      <div class="p-3 {theme['radius_inner']} border {theme['border_color']}" style="background-color: {theme['bg_card']};">
+        <span class="text-xs font-bold" style="color: {theme['accent']};">01</span>
+        <p class="mt-1 text-xs font-bold" style="color: {theme['text_primary']};">Заявка</p>
+        <p class="mt-0.5 text-[10px]" style="color: {theme['text_muted']};">В один клик</p>
+      </div>
+      <div class="p-3 {theme['radius_inner']} border {theme['border_color']}" style="background-color: {theme['bg_card']};">
+        <span class="text-xs font-bold" style="color: {theme['accent']};">02</span>
+        <p class="mt-1 text-xs font-bold" style="color: {theme['text_primary']};">Детали</p>
+        <p class="mt-0.5 text-[10px]" style="color: {theme['text_muted']};">За 5 минут</p>
+      </div>
+      <div class="p-3 {theme['radius_inner']} border {theme['border_color']}" style="background-color: {theme['bg_card']};">
+        <span class="text-xs font-bold" style="color: {theme['accent']};">03</span>
+        <p class="mt-1 text-xs font-bold" style="color: {theme['text_primary']};">Результат</p>
+        <p class="mt-0.5 text-[10px]" style="color: {theme['text_muted']};">С гарантией</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SERVICES & PRICES -->
+  <section class="px-5 py-7">
+    <div class="flex items-end justify-between">
+      <h2 class="text-lg font-bold tracking-tight" style="color: {theme['text_primary']};">Услуги и цены</h2>
+      <span class="text-xs font-medium" style="color: {theme['text_muted']};">актуальный прайс</span>
+    </div>
+    <div class="mt-4 space-y-2.5">
+      {service_cards}
+    </div>
+  </section>
+
+  <!-- PHOTO GALLERY / ATMOSPHERE -->
+  <section class="border-y px-5 py-7" style="border-color: {theme['border_color']}; background-color: {theme['bg_card']};">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-bold tracking-tight" style="color: {theme['text_primary']};">Атмосфера и работы</h2>
+      <span class="text-xs font-medium" style="color: {theme['text_muted']};">реальные кадры</span>
+    </div>
+    <div class="mt-4 grid grid-cols-2 gap-2.5">
+      {gallery_items_html}
+    </div>
+  </section>
+
+  <!-- BENEFITS -->
+  <section class="px-5 py-7">
+    <h2 class="text-lg font-bold tracking-tight" style="color: {theme['text_primary']};">Почему выбирают нас</h2>
+    <div class="mt-4 grid grid-cols-2 gap-2.5">
+      {benefit_cards}
+    </div>
+  </section>
+
+  <!-- REVIEWS -->
+  <section class="border-y px-5 py-7" style="border-color: {theme['border_color']}; background-color: {theme['bg_card']};">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-bold tracking-tight" style="color: {theme['text_primary']};">Отзывы гостей</h2>
+      <span class="text-xs text-amber-500 font-semibold">★ {rating} на картах</span>
+    </div>
+    <div class="mt-4 space-y-2.5">
+      {review_cards}
+    </div>
+  </section>
+
+  <!-- RISK REVERSAL -->
+  <section class="px-5 py-6">
+    <div class="p-4 {theme['radius_inner']} border" style="background-color: {theme['accent_soft']}; border-color: {theme['accent_border']};">
+      <p class="text-xs font-bold uppercase tracking-wider" style="color: {theme['accent']};">Гарантия прозрачности</p>
+      <p class="mt-1 text-sm font-bold" style="color: {theme['text_primary']};">Честная смета без неожиданных доплат</p>
+      <p class="mt-1 text-xs leading-relaxed" style="color: {theme['text_secondary']};">
+        Все детали и стоимость фиксируются до начала оказания услуг. Вы платите только за согласованный результат.
+      </p>
+    </div>
+  </section>
+
+  <!-- CONTACTS & LOCATION -->
+  <section class="px-5 pb-7">
+    <div class="p-5 {theme['radius']} border {theme['border_color']}" style="background-color: {theme['bg_card']};">
+      <h2 class="text-lg font-bold tracking-tight" style="color: {theme['text_primary']};">Как нас найти</h2>
+      <div class="mt-3.5 space-y-2 text-xs leading-relaxed" style="color: {theme['text_secondary']};">
+        <p class="flex items-start gap-2"><span>📍</span><span>{address}</span></p>
+        <p class="flex items-start gap-2"><span>🕘</span><span>{hours}</span></p>
+      </div>
+      <a href="{html.escape(map_url)}" target="_blank" rel="noopener" class="mt-4 inline-flex h-11 w-full items-center justify-center {theme['radius_inner']} border text-xs font-bold transition hover:opacity-90" style="background-color: {theme['badge_bg']}; border-color: {theme['badge_border']}; color: {theme['text_primary']};">
+        Открыть на Яндекс Картах →
+      </a>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="border-t px-5 py-6 text-center text-xs" style="border-color: {theme['border_color']}; color: {theme['text_muted']};">
+    <p class="font-bold" style="color: {theme['text_primary']};">{business_name}</p>
+    <p class="mt-1">{city} · {_safe(category)}</p>
+    <div class="mt-4 pt-3 border-t border-dashed" style="border-color: {theme['border_color']};">
+      <p class="text-[11px] leading-relaxed">
+        💡 Этот сайт является персональным интерактивным демо-концептом, созданным на платформе <b>Murasaki LeadRadar</b>.
+      </p>
+      <a href="https://t.me/Murasaki_website" target="_blank" rel="noopener" class="mt-2 inline-flex items-center gap-1 font-semibold text-[#229ED9] hover:underline">
+        <span>Связаться с разработчиком в Telegram</span> →
+      </a>
+    </div>
+    <p class="mt-4 text-[10px]">© 2026 {business_name}. Все права защищены.</p>
+  </footer>
+
+  <div class="h-24"></div>
+</div>
+
+<!-- STICKY BOTTOM ACTION BAR -->
+<div class="fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur-xl" style="background-color: {theme['bg_page']}F0; border-color: {theme['border_color']};">
+  <div class="mx-auto flex max-w-md items-center justify-between gap-3 px-4 py-3">
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-xs font-bold" style="color: {theme['text_primary']};">{business_name}</p>
+      <p class="truncate text-[11px]" style="color: {theme['text_muted']};">{_safe(profile['tagline'])}</p>
+    </div>
+    <a href="{html.escape(primary_href)}" target="_blank" rel="noopener" class="inline-flex h-11 shrink-0 items-center justify-center {theme['radius_inner']} px-5 text-xs font-bold transition hover:opacity-95" style="background-color: {theme['accent']}; color: {theme['accent_text']}; box-shadow: 0 4px 12px {theme['accent']}35;">
+      {_safe(sticky_label)}
+    </a>
+  </div>
+</div>
+
+</body>
+</html>
+"""
 
 
 def _sanitize_html(value: str) -> str:
@@ -653,15 +1031,16 @@ def _extract_html(raw: str) -> str | None:
 
 
 LANDING_SYSTEM = (
-    "Ты ведущий UI/UX дизайнер и frontend-разработчик премиальных конверсионных мобильных лендингов. "
-    "Ты создаёшь посадочные страницы строго по дизайн-системе landing-page-design: "
-    "один оффер → одна аудитория → одно целевое действие. "
+    "Ты ведущий UI/UX дизайнер и frontend-разработчик премиальных конверсионных мобильных сайтов. "
+    "Твоя задача — создать превосходный адаптивный посадочный сайт (mobile-first), адаптированный под нишу бизнеса. "
+    "Используй Google Fonts, Tailwind CSS и стильную цветовую гамму ниши (светлую пастельную для бьюти/медицины, темную графитовую для авто, теплую для кафе, строгую сине-белую для юристов/B2B). "
+    "Обязательно добавь в верстку плавающую плашку демо-концепта со ссылкой на Telegram разработчика (https://t.me/Murasaki_website). "
     "Отвечай ИСКЛЮЧИТЕЛЬНО готовым полным валидным HTML-кодом (начиная с <!DOCTYPE html> и заканчивая </html>), "
-    "без markdown-разметки (без тройных бэктиков), без пояснений и комментариев."
+    "без markdown-разметки (без тройных бэктиков), без вступительных и заключительных комментариев."
 )
 
 LANDING_PROMPT = Template(
-    """Создай премиальный конверсионный мобильный лендинг (mobile-first) для бизнеса по строгой дизайн-системе landing-page-design.
+    """Создай премиальный конверсионный мобильный лендинг (mobile-first, max-w-md mx-auto) для бизнеса:
 
 Данные компании в JSON:
 $company
@@ -671,58 +1050,35 @@ CTA-ссылки:
 - Telegram: $telegram_link
 - Телефон: $phone_link
 
-ТРЕБОВАНИЯ ДИЗАЙН-СИСТЕМЫ (LANDING-PAGE-DESIGN):
+ТРЕБОВАНИЯ К ДИЗАЙНУ И СТРУКТУРЕ:
+1. Тематическая палитра и шрифты под нишу «$category»:
+   - Подбери шрифты через Google Fonts (например, Playfair Display/Cormorant для бьюти, Montserrat для авто, Lora/Plus Jakarta Sans для ресторанов, Inter для юристов).
+   - Цветовая гамма строго соответствует нише бизнеса.
+2. Вёрстка первого экрана (Hero):
+   - Заголовок (результат + аудитория), подзаголовок, бейдж рейтинга, главный CTA, вторичные кнопки (Telegram/Телефон).
+   - Вставь реальные фото компании или качественные тематические фото. Для всех тегов <img> ОБЯЗАТЕЛЬНО укажи защитный атрибут onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=1200&q=80';".
+3. Секции:
+   - Tagline Reveal: ключевая ценность бизнеса крупным шрифтом.
+   - Как мы работаем: 3 последовательных шага.
+   - Услуги и цены: карточки с понятными описаниями и ценами.
+   - Галерея: 3-4 фото с закругленными углами.
+   - Преимущества и Выгоды: 4 карточки.
+   - Отзывы: 3 реалистичных отзыва с именами и оценками 5★.
+   - Контакты и адрес с кнопкой открытия Яндекс Карт.
+4. Обязательная демо-плашка:
+   - Закрепленная плавающая аккуратная плашка или футер с пометкой: «Персональный демо-концепт для $name • Связаться с разработчиком в Telegram (https://t.me/Murasaki_website)».
+   - Фиксированная нижняя панель (sticky bottom bar) с кнопкой быстрой связи.
 
-ЧАСТЬ 1 — СТРУКТУРА И КОПИРАЙТИНГ (PART A):
-1. Структура страницы (max-w-md mx-auto):
-   - Hero: заголовок (конкретный результат + аудитория), подзаголовок (детали как именно достигается), один главный CTA, блок социального доказательства (рейтинг со звездами, число реальных отзывов).
-   - B11 Tagline Reveal: отдельная выразительная секция (text-2xl / text-3xl font-bold) с главным слоганом/ценностью бизнеса в 2 строки.
-   - Проблема → Решение: 1 краткий блок, закрывающий главную боль клиентов в нише «$category».
-   - Выгоды: 3-4 пункта, ориентированные на результат (жирный заголовок выгоды + деталь).
-   - Как мы работаем: ровно 3 простых последовательных шага.
-   - Услуги и цены: карточки с названием, понятным описанием и конкретными реалистичными ценами (без подозрительно круглых цифр).
-   - Отзывы: 3 реалистичных отзыва с полными именами людей (например, «Алёна Воронина», «Дмитрий Смирнов») и конкретными фактами.
-   - Снятие рисков (Risk reversal): блок о прозрачной смете, гарантии и проверке до оплаты.
-   - Контакты и локация: адрес, часы работы, кнопка открытия карты.
-   - Фиксированная нижняя панель (sticky bottom bar) с кнопкой быстрой записи в $whatsapp_link или $telegram_link.
-2. Копирайтинг:
-   - Без дефисов внутри предложений.
-   - text-wrap: balance для заголовков, text-wrap: pretty для текста.
-   - Запрещены пустые клише: «revolutionize», «cutting edge», «supercharge», «лучший в мире», «инновационный», «премиум под ключ». Пиши живым языком, чем реально полезна услуга.
-
-ЧАСТЬ 2 — СТРОГАЯ ВИЗУАЛЬНАЯ СИСТЕМА (PART B):
-1. Шрифт: подключай через Google Fonts СТРОГО шрифт Manrope:
-   <link rel="preconnect" href="https://fonts.googleapis.com">
-   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-   CSS: font-family: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-   СТРОГО ЗАПРЕЩЕНО: Inter, Roboto, Arial, Open Sans, Helvetica.
-   СТРОГО ЗАПРЕЩЕНО использовать курсив (italic) и начертания тяжелее 700 (никаких 900/black).
-2. Цвета фона:
-   СТРОГО ЗАПРЕЩЕНЫ градиенты на фоне! Все фоны исключительно ПЛОСКИЕ (flat).
-   Используй только допустимые темные цвета: #000000, #181818, #1F1F1F, #272727, #313131.
-   Фон страницы — #000000. Поверхности карточек — #181818 или #1F1F1F.
-3. Градиенты в Hero:
-   Градиент разрешен ТОЛЬКО на тексте главного заголовка: слева направо от #FFFFFF к #9B9B9B:
-   (bg-gradient-to-r from-white to-[#9B9B9B] bg-clip-text text-transparent). Никаких градиентов на фоне!
-4. Границы (Borders):
-   Границы карточек — всегда по всему периметру (border border-[#272727] или border-white/10). Запрещено делать границу только с одной стороны.
-5. Скругления (Nested radius formula):
-   inner radius = outer radius - gap. Если внешняя карточка rounded-2xl (16px) с padding 8px -> внутренний бейдж rounded-lg (8px).
-6. Типографика:
-   Строго шкала Tailwind: text-xs, text-sm, text-base, text-lg, text-xl, text-2xl, text-3xl, text-4xl.
-7. Кнопки:
-   Высота h-11 или h-12, text-base, font-semibold, контрастный фон (белый с черным текстом или акцентный).
-8. Стилизация только через <script src="https://cdn.tailwindcss.com"></script>. Не добавляй формы сбора данных, метрики и сторонние скрипты.
-
-Верни ТОЛЬКО готовый HTML код."""
+Верни ТОЛЬКО готовый валидный HTML код."""
 )
 
 
 async def generate_landing_html(lead: dict) -> tuple[str, str]:
+    """Generates an HTML landing page via AI or high-grade deterministic fallback template."""
+    category = lead.get("category") or "Бизнес"
     company = {
         "name": lead.get("name"),
-        "category": lead.get("category"),
+        "category": category,
         "city": lead.get("city"),
         "address": lead.get("address"),
         "phone": lead.get("phone"),
@@ -730,25 +1086,29 @@ async def generate_landing_html(lead: dict) -> tuple[str, str]:
         "reviews_count": lead.get("reviews_count"),
         "opening_hours": lead.get("opening_hours"),
         "social_links": lead.get("social_links"),
-        "has_website": lead.get("has_website"),
+        "photos": lead.get("photos") or [],
+        "logo_url": lead.get("logo_url"),
     }
     socials = lead.get("social_links") or {}
     phone = _phone_digits(lead.get("phone"))
-    prompt = LANDING_PROMPT.safe_substitute(
-        company=json.dumps(company, ensure_ascii=False, indent=2),
-        whatsapp_link=socials.get("whatsapp") or (f"https://wa.me/{phone}" if phone else "нет"),
-        telegram_link=socials.get("telegram") or "нет",
-        phone_link=f"tel:{phone}" if phone else "нет",
-        category=lead.get("category") or "Бизнес",
-        city=lead.get("city") or "Россия",
-    )
-    try:
-        raw = await ask_ai(prompt, system_prompt=LANDING_SYSTEM, task_type="code", max_tokens=4000, temperature=0.7)
-        parsed = _extract_html(raw)
-        if parsed:
-            return parsed, "llm"
-    except Exception:
-        pass
+
+    if settings.llm_provider and settings.llm_provider.lower() != "mock":
+        prompt = LANDING_PROMPT.safe_substitute(
+            company=json.dumps(company, ensure_ascii=False, indent=2),
+            whatsapp_link=socials.get("whatsapp") or (f"https://wa.me/{phone}" if phone else "нет"),
+            telegram_link=socials.get("telegram") or "нет",
+            phone_link=f"tel:{phone}" if phone else "нет",
+            category=category,
+            name=lead.get("name") or "компания",
+        )
+        try:
+            raw = await ask_ai(prompt, system_prompt=LANDING_SYSTEM, task_type="code", max_tokens=4000, temperature=0.7)
+            parsed = _extract_html(raw)
+            if parsed:
+                return parsed, "llm"
+        except Exception:
+            pass
+
     return build_fallback_landing(lead), "template"
 
 
@@ -770,7 +1130,7 @@ OUTREACH_PROMPT = Template(
 Правила:
 1. Приветствие строго «Здравствуйте!» (никаких панибратских «Привет»).
 2. НЕ критикуй клиента («у вас плохой сайт», «клиенты уходят к конкурентам»). Никакого давления и агрессивного спама.
-3. Коротко поясни, что разрабатываешь сайты под ключ для этой сферы бизнеса, помогаешь упаковать услуги и привлекать клиентов через мессенджеры.
+3. Коротко поясни, что разрабатываешь современные мобильные сайты под ключ для этой сферы бизнеса, помогаешь упаковать услуги и привлекать клиентов через мессенджеры.
 4. Мягкий призыв: если тема актуальна — напишите в ответ, пришлю примеры реальных работ и сориентирую по ценам и срокам.
 5. В конце в скобках или P.S. ненавязчиво упомяни ссылку на черновой концепт: $demo_url.
 6. Заверши пожеланием хорошего дня.

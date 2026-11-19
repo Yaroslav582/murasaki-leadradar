@@ -368,7 +368,7 @@ export const api = {
     return request<BlogStatus>("/api/growth/blog/status");
   },
   updateBlogSettings(payload: { enabled?: boolean; channel_id?: string; interval_hours?: number }) {
-    return request<{ status: string; enabled: boolean; channel_id: string; interval_hours: number }>("/api/growth/blog/settings", {
+    return request<{ status: string; enabled: boolean; channel_id: string; interval_hours: number; last_post_at?: string | null; next_post_at?: string | null }>("/api/growth/blog/settings", {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -394,8 +394,11 @@ export const api = {
   addAccount(payload: { phone: string; session_string?: string; proxy_id?: string; user_id?: string }) {
     return request<TgAccount>("/api/accounts", { method: "POST", body: JSON.stringify(payload) });
   },
-  updateAccount(id: string, payload: Partial<Pick<TgAccount, "auto_warmup" | "warmup_preset" | "proxy_id">>) {
+  updateAccount(id: string, payload: Partial<Pick<TgAccount, "auto_warmup" | "warmup_preset" | "proxy_id">> & { auto_warmup_enabled?: boolean }) {
     return request<TgAccount>(`/api/accounts/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+  getWarmupStatus() {
+    return request<{ active_warmup_count: number; total_accounts: number; accounts: TgAccount[] }>("/api/accounts/warmup/status");
   },
   deleteAccount(id: string) { return request<{status: string}>(`/api/accounts/${id}`, { method: "DELETE" }); },
   checkAccount(id: string) { return request<TgAccount>(`/api/accounts/${id}/check`, { method: "POST" }); },

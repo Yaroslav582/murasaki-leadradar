@@ -60,7 +60,8 @@ export default function DemoModal({
   const dirtyHtml = html !== current.html;
 
   const previewUrl = `${API_URL}/api/demos/${current.id}/raw?v=${encodeURIComponent(current.updated_at)}-${reloadKey}`;
-  const displayPublicUrl = current.public_url || (typeof window !== "undefined" ? `${window.location.origin}/demo/${current.id}` : `/demo/${current.id}`);
+  const fallbackHost = API_URL || (typeof window !== "undefined" ? window.location.origin : "");
+  const displayPublicUrl = current.public_url || `${fallbackHost}/demo/${current.id}`;
 
   const handleCopy = async (text: string) => {
     try {

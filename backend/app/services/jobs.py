@@ -58,6 +58,14 @@ async def save_places(
             socials = dict(existing.social_links or {})
             socials.update(place.social_links)
             existing.social_links = socials
+            if place.photos:
+                current_photos = list(existing.photos or [])
+                for ph in place.photos:
+                    if ph not in current_photos:
+                        current_photos.append(ph)
+                existing.photos = current_photos[:10]
+            if place.logo_url and not existing.logo_url:
+                existing.logo_url = place.logo_url
             session.add(existing)
             leads.append(existing)
             updated += 1
@@ -82,6 +90,8 @@ async def save_places(
             source=place.source,
             source_id=place.source_id,
             status="new",
+            photos=list(place.photos or []),
+            logo_url=place.logo_url,
         )
         session.add(lead)
         leads.append(lead)

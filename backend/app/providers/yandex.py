@@ -100,6 +100,23 @@ def feature_to_place(feature: dict, city: str, fallback_category: str) -> PlaceR
     longitude = coordinates[0] if len(coordinates) > 1 else None
     latitude = coordinates[1] if len(coordinates) > 1 else None
 
+    # Photos and Logo extraction
+    raw_photos = company.get("Photos") or properties.get("Photos") or []
+    photos: list[str] = []
+    if isinstance(raw_photos, list):
+        for p in raw_photos:
+            p_url = p.get("urlTemplate") or p.get("url") if isinstance(p, dict) else str(p)
+            if p_url:
+                if "%s" in p_url:
+                    p_url = p_url.replace("%s", "orig")
+                photos.append(p_url)
+            if len(photos) >= 6:
+                break
+    logo_raw = company.get("Logotype") or properties.get("Logotype")
+    logo_url = (logo_raw.get("urlTemplate") or logo_raw.get("url") if isinstance(logo_raw, dict) else str(logo_raw)) if logo_raw else None
+    if logo_url and "%s" in logo_url:
+        logo_url = logo_url.replace("%s", "orig")
+
     return PlaceResult(
         name=str(name),
         category=fallback_category or (categories[0] if categories else "Бизнес"),
@@ -115,6 +132,8 @@ def feature_to_place(feature: dict, city: str, fallback_category: str) -> PlaceR
         opening_hours=hours,
         source="yandex",
         source_id=str(company_id),
+        photos=photos,
+        logo_url=logo_url,
     )
 
 

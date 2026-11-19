@@ -63,7 +63,7 @@ async def list_dialogs(
             "peer_name": d.peer_name or d.peer_username or d.peer_id,
             "lead_id": d.lead_id,
             "status": d.status,
-            "ai_auto_reply_enabled": getattr(d, "ai_auto_reply_enabled", True),
+            "ai_auto_reply_enabled": getattr(d, "ai_auto_reply_enabled", False),
             "unread_count": d.unread_count,
             "last_message_at": d.last_message_at.isoformat() if d.last_message_at else None,
             "last_message_preview": last_msg.text[:80] + "..." if last_msg and len(last_msg.text) > 80 else (last_msg.text if last_msg else "Нет сообщений"),
@@ -89,7 +89,7 @@ async def get_dialog(dialog_id: str, session: AsyncSession = Depends(get_session
         "peer_name": dialog.peer_name,
         "lead_id": dialog.lead_id,
         "status": dialog.status,
-        "ai_auto_reply_enabled": getattr(dialog, "ai_auto_reply_enabled", True),
+        "ai_auto_reply_enabled": getattr(dialog, "ai_auto_reply_enabled", False),
         "unread_count": dialog.unread_count,
         "last_message_at": dialog.last_message_at.isoformat() if dialog.last_message_at else None,
     }
@@ -167,7 +167,7 @@ async def send_message(
             if await client.is_user_authorized():
                 peer_val = dialog.peer_username or int(dialog.peer_id) if dialog.peer_id.isdigit() else dialog.peer_id
                 entity = await client.get_entity(peer_val)
-                sent = await client.send_message(entity, text)
+                sent = await client.send_message(entity, text, parse_mode="md", link_preview=False)
                 msg.tg_message_id = getattr(sent, "id", None)
                 await session.commit()
     except Exception as e:

@@ -104,12 +104,18 @@ class AccountPool:
 
                 # 2. Filter out Telegram system services & bots
                 chat_id = event.chat_id
-                if chat_id in (777000, 4244):
+                if chat_id in (777000, 4244, 4000000):
                     return
 
                 sender = await event.get_sender()
                 peer_username = getattr(sender, "username", None) or ""
-                if peer_username.lower() in ("spambot", "telegram"):
+                is_bot = bool(
+                    getattr(sender, "bot", False)
+                    or (peer_username and peer_username.lower().endswith("bot"))
+                    or (peer_username and peer_username.lower() in ("spambot", "telegram", "botfather"))
+                )
+                if is_bot:
+                    # Strictly ignore all bots to prevent infinite auto-reply loops
                     return
 
                 # 3. Determine direction and peer
@@ -130,6 +136,8 @@ class AccountPool:
 
                 dialog_id = None
                 auto_reply_enabled = False
+                dialog_status = "new"
+                has_lead = False
 
                 async with SessionLocal() as db_session:
                     stmt = select(Dialog).where(
@@ -145,10 +153,10 @@ class AccountPool:
                             peer_id=peer_id,
                             peer_username=peer_username or None,
                             peer_name=peer_name,
-                            status="new",
+                            status="manual" if is_out else "new",
                             unread_count=1 if not is_out else 0,
                             last_message_at=utcnow(),
-                            ai_auto_reply_enabled=True,
+                            ai_auto_reply_enabled=False,
                         )
                         db_session.add(dialog)
                         await db_session.flush()
@@ -160,6 +168,10 @@ class AccountPool:
                             dialog.peer_name = peer_name
                         if not is_out:
                             dialog.unread_count += 1
+                        else:
+                            # User manually replied from personal account -> disable AI auto-reply
+                            dialog.status = "manual"
+                            dialog.ai_auto_reply_enabled = False
 
                     # Save message if not already saved
                     msg_id = getattr(event, "id", None)
@@ -182,10 +194,24 @@ class AccountPool:
 
                     await db_session.commit()
                     dialog_id = dialog.id
-                    auto_reply_enabled = dialog.ai_auto_reply_enabled
+                    auto_reply_enabled = bool(dialog.ai_auto_reply_enabled)
+                    dialog_status = dialog.status
+                    has_lead = bool(dialog.lead_id)
 
-                # 5. Trigger AI auto-reply if enabled and message is incoming
-                if not is_out and auto_reply_enabled and dialog_id:
+                # 5. Trigger AI auto-reply ONLY if:
+                # - message is incoming (!is_out)
+                # - auto-reply is explicitly enabled for this specific dialog
+                # - peer is NOT a bot
+                # - dialog is in 'ai_handling' status
+                # - dialog has a confirmed lead linked to it
+                if (
+                    not is_out
+                    and not is_bot
+                    and auto_reply_enabled
+                    and dialog_id
+                    and dialog_status == "ai_handling"
+                    and has_lead
+                ):
                     asyncio.create_task(inbox_service.handle_incoming_auto_reply(dialog_id, raw_text))
 
             except Exception as e:

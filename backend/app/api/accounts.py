@@ -87,6 +87,7 @@ class AccountCreate(BaseModel):
     proxy_id: Optional[str] = None
     warmup_preset: str = "optimal"
     auto_warmup: bool = False
+    auto_warmup_enabled: Optional[bool] = None
 
 
 class AccountUpdate(BaseModel):
@@ -94,6 +95,7 @@ class AccountUpdate(BaseModel):
     status: Optional[str] = None
     warmup_preset: Optional[str] = None
     auto_warmup: Optional[bool] = None
+    auto_warmup_enabled: Optional[bool] = None
 
 
 class ProxyCreate(BaseModel):
@@ -155,6 +157,7 @@ async def list_accounts(
             "warmup_level": acc.warmup_level,
             "warmup_preset": acc.warmup_preset,
             "auto_warmup": acc.auto_warmup,
+            "auto_warmup_enabled": acc.auto_warmup,
             "created_at": acc.created_at.isoformat(),
         })
     return result
@@ -188,9 +191,11 @@ async def create_account(
         if payload.proxy_id:
             acc.proxy_id = payload.proxy_id
         acc.warmup_preset = payload.warmup_preset
-        acc.auto_warmup = payload.auto_warmup
+        warmup_val = payload.auto_warmup if payload.auto_warmup_enabled is None else payload.auto_warmup_enabled
+        acc.auto_warmup = warmup_val
         acc.updated_at = utcnow()
     else:
+        warmup_val = payload.auto_warmup if payload.auto_warmup_enabled is None else payload.auto_warmup_enabled
         acc = TgAccount(
             user_id=owner_id,
             phone=clean_phone,
@@ -200,7 +205,7 @@ async def create_account(
             app_version=payload.app_version,
             proxy_id=payload.proxy_id,
             warmup_preset=payload.warmup_preset,
-            auto_warmup=payload.auto_warmup,
+            auto_warmup=warmup_val,
             status="active" if payload.session_string else "warming",
         )
         session.add(acc)
@@ -217,6 +222,31 @@ async def create_account(
     return {"id": acc.id, "phone": acc.phone, "status": acc.status, "user_id": acc.user_id}
 
 
+@router.get("/accounts/warmup/status")
+async def get_warmup_status(session: AsyncSession = Depends(get_session)) -> dict[str, Any]:
+    """Returns global and per-account auto-warmup status from Supabase."""
+    stmt = select(TgAccount).order_by(TgAccount.created_at.desc())
+    res = await session.execute(stmt)
+    accounts = res.scalars().all()
+    active_count = sum(1 for a in accounts if a.auto_warmup)
+    return {
+        "active_warmup_count": active_count,
+        "total_accounts": len(accounts),
+        "accounts": [
+            {
+                "id": a.id,
+                "phone": a.phone,
+                "status": a.status,
+                "auto_warmup": a.auto_warmup,
+                "auto_warmup_enabled": a.auto_warmup,
+                "warmup_level": a.warmup_level,
+                "warmup_preset": a.warmup_preset,
+            }
+            for a in accounts
+        ],
+    }
+
+
 @router.get("/accounts/{account_id}")
 async def get_account(account_id: str, session: AsyncSession = Depends(get_session)) -> dict[str, Any]:
     acc = await find_account(session, account_id)
@@ -230,6 +260,7 @@ async def get_account(account_id: str, session: AsyncSession = Depends(get_sessi
         "warmup_level": acc.warmup_level,
         "warmup_preset": acc.warmup_preset,
         "auto_warmup": acc.auto_warmup,
+        "auto_warmup_enabled": acc.auto_warmup,
         "proxy_id": acc.proxy_id,
         "daily_actions_count": acc.daily_actions_count,
         "created_at": acc.created_at.isoformat(),
@@ -250,8 +281,18 @@ async def update_account(
         acc.status = payload.status
     if payload.warmup_preset is not None:
         acc.warmup_preset = payload.warmup_preset
-    if payload.auto_warmup is not None:
-        acc.auto_warmup = payload.auto_warmup
+    if payload.auto_warmup is not None or payload.auto_warmup_enabled is not None:
+        val = payload.auto_warmup if payload.auto_warmup is not None else payload.auto_warmup_enabled
+        acc.auto_warmup = bool(val)
+        try:
+            from app.models import AppSetting
+            st = await session.get(AppSetting, f"account_warmup_{acc.id}")
+            if st:
+                st.value = {"auto_warmup_enabled": acc.auto_warmup, "phone": acc.phone}
+            else:
+                session.add(AppSetting(key=f"account_warmup_{acc.id}", value={"auto_warmup_enabled": acc.auto_warmup, "phone": acc.phone}))
+        except Exception as e:
+            logger.debug("Failed saving account warmup to AppSetting: %s", e)
 
     acc.updated_at = utcnow()
     await session.commit()
@@ -261,6 +302,7 @@ async def update_account(
         "status": acc.status,
         "warmup_level": acc.warmup_level,
         "auto_warmup": acc.auto_warmup,
+        "auto_warmup_enabled": acc.auto_warmup,
         "warmup_preset": acc.warmup_preset,
     }
 

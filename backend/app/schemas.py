@@ -59,6 +59,9 @@ class LeadOut(BaseModel):
     status_label: str = "Новый"
     notes: str | None = None
     demo_id: str | None = None
+    demo_url: str | None = None
+    photos: list = Field(default_factory=list)
+    logo_url: str | None = None
     enriched_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
@@ -72,6 +75,12 @@ class LeadOut(BaseModel):
     @model_validator(mode="after")
     def _fill_computed_fields(self) -> "LeadOut":
         self.status_label = STATUS_LABELS.get(self.status, self.status)
+
+        if self.demo_id and not self.demo_url:
+            base = settings.public_base_url.strip().rstrip("/")
+            if not base.startswith(("http://", "https://")):
+                base = f"https://{base}"
+            self.demo_url = f"{base}/demo/{self.demo_id}"
 
         # 1. Website status (no_website, only_social, weak_website, has_website)
         socials = self.social_links or {}

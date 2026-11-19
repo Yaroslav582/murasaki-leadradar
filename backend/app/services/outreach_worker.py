@@ -154,7 +154,7 @@ class OutreachWorker:
 
                     if await client.is_user_authorized():
                         peer_entity = await client.get_entity(target_peer)
-                        sent_msg = await client.send_message(peer_entity, message_text)
+                        sent_msg = await client.send_message(peer_entity, message_text, parse_mode="md", link_preview=False)
 
                         # Create or update Dialog + Message in Unified Inbox
                         peer_id = str(getattr(peer_entity, "id", target_peer))

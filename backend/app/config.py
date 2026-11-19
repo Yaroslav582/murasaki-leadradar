@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     )
 
     # Telegram Freelance Radar & Outreach Automation
+    tgstat_token: str | None = None
     telegram_bot_token: str | None = "9286221746:AAFZapvWPAsJS1llwaydBUiyngF3RPlVyRI"
     telegram_bot_username: str | None = "murasaki_radar_1438_bot"
     telegram_api_id: int | None = None
@@ -92,7 +93,7 @@ class Settings(BaseSettings):
     telegram_phone: str | None = None
     telegram_session_string: str | None = None
     telegram_session_name: str = "leadradar_user"
-    telegram_owner_id: int | None = None
+    telegram_owner_id: int | None = 7585665607
     telegram_portfolio_url: str = "https://murasaki-portfolio.vercel.app/"
     telegram_auto_response_delay_min: int = 480  # 8 min
     telegram_auto_response_delay_max: int = 780  # 13 min
@@ -145,6 +146,14 @@ class Settings(BaseSettings):
         max_calls = read_secret_fallback("MAX_DAILY_LLM_CALLS")
         if max_calls and str(max_calls).strip().isdigit():
             self.max_daily_llm_calls = int(str(max_calls).strip())
+        base_url = read_secret_fallback("PUBLIC_BASE_URL", self.public_base_url)
+        if base_url and str(base_url).strip():
+            url_str = str(base_url).strip().rstrip("/")
+            if not url_str.startswith(("http://", "https://")):
+                url_str = f"https://{url_str}"
+            self.public_base_url = url_str
+        else:
+            self.public_base_url = "http://127.0.0.1:8000"
 
     @property
     def telegram_keywords_list(self) -> list[str]:

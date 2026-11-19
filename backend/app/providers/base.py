@@ -22,6 +22,8 @@ class PlaceResult:
     price_level: int | None = None
     source: str = "demo"
     source_id: str | None = None
+    photos: list[str] = field(default_factory=list)
+    logo_url: str | None = None
 
     @property
     def has_website(self) -> bool:
