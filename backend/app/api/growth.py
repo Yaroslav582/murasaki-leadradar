@@ -274,6 +274,7 @@ class BlogSettingsIn(BaseModel):
 class BlogGenerateIn(BaseModel):
     topic_hint: str | None = None
     channel_id: str = "@Murasaki_website"
+    attach_image: bool = False
 
 
 @router.get("/blog/status")
@@ -397,5 +398,5 @@ async def generate_blog_preview(payload: BlogGenerateIn) -> dict[str, Any]:
 @router.post("/blog/publish-now")
 async def publish_blog_now(payload: BlogGenerateIn) -> dict[str, Any]:
     cid = payload.channel_id or getattr(settings, "channel_blog_chat_id", "@Murasaki_website")
-    res = await publish_blog_post(channel_id=cid, topic_hint=payload.topic_hint)
+    res = await publish_blog_post(channel_id=cid, topic_hint=payload.topic_hint, attach_image=payload.attach_image)
     return res

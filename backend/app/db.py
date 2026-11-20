@@ -293,7 +293,22 @@ async def init_db() -> None:
         except Exception as exc:
             logger.warning("SQLite migration runner warning: %s", exc)
 
-    # 3. Check for automatic initial migration from SQLite to PostgreSQL if PostgreSQL is empty
+    # 3. Disarm promo autopost for personal channel @Murasaki_website
+    try:
+        from sqlalchemy import text
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "UPDATE telegram_chat_targets "
+                    "SET auto_post_enabled = FALSE, custom_text = NULL "
+                    "WHERE lower(chat_id) IN ('@murasaki_website', 'murasaki_website');"
+                )
+            )
+        logger.info("Disarmed promo auto-post for @Murasaki_website in telegram_chat_targets")
+    except Exception as exc:
+        logger.debug("Notice disarming promo for @Murasaki_website: %s", exc)
+
+    # 4. Check for automatic initial migration from SQLite to PostgreSQL if PostgreSQL is empty
     if not _is_sqlite:
         await _check_and_auto_import_from_sqlite()
 

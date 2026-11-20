@@ -22,9 +22,9 @@ DEFAULT_TARGETS = [
         "title": "Murasaki | Собственный канал",
         "username": "Murasaki_website",
         "kind": "promo",
-        "cooldown_minutes": 360,
-        "auto_post_enabled": True,
-        "custom_text": "⚡️ Разработка продающих сайтов, лендингов и Telegram Mini Apps под ключ.\n\nПортфолио проектов: {portfolio}\nСвязь и бесплатный аудит: @loves_kyni",
+        "cooldown_minutes": 1440,
+        "auto_post_enabled": False,
+        "custom_text": None,
     },
     {
         "chat_id": "@freelancetavern",
@@ -119,6 +119,9 @@ FALLBACK_PROMOS = [
     "Всем привет! Занимаюсь разработкой современных лендингов, продающих сайтов и Telegram Mini Apps под ключ. Чистая верстка, высокая скорость загрузки и адаптивность под мобилки. Беру 1-2 проекта на этой неделе.\n\nПортфолио: {portfolio}\nКому актуально освежить сайт или запустить новый — пишите в ЛС @loves_kyni, с радостью обсудим задачу!",
     "Здравствуйте! Помогаю предпринимателям и проектам упаковывать бизнес в конверсионные сайты и лендинги. Сроки — от 3 дней, прозрачный процесс и внимание к деталям.\n\nМои работы можно посмотреть тут: {portfolio}\nЕсли нужен сайт или хотите сделать аудит текущего — буду рад пообщаться в ЛС @loves_kyni.",
     "Привет! Свободен для 1-2 интересных проектов по веб-разработке и дизайну лендингов. Делаю аккуратно, быстро и без лишней воды.\n\nКейсы и примеры: {portfolio}\nПишите в личку @loves_kyni, обсудим вашу задачу и подберем оптимальный формат.",
+    "Создаю Telegram Mini Apps и интерактивные сайты для бизнеса: онлайн-запись, каталоги и оформление заявок прямо внутри Telegram в 2 клика.\n\nПримеры кейсов: {portfolio}\nНужен бот или Mini App для вашего проекта? Напишите мне в ЛС @loves_kyni — подскажу варианты реализации.",
+    "Планируете запуск продукта или редизайн сайта? Делаю быстрые адаптивные лендинги с понятной структурой и высокой конверсией в заявки.\n\nОзнакомиться с портфолио: {portfolio}\nДля бесплатного аудита и консультации пишите в ЛС @loves_kyni.",
+    "Разработка сайтов и Telegram Mini Apps для сферы услуг, e-commerce и экспертов. От первого прототипа до полного запуска.\n\nСмотрите работы в портфолио: {portfolio}\nОбсудить задачу или узнать сроки: @loves_kyni",
 ]
 
 
@@ -502,6 +505,11 @@ class TelegramClientManager:
             targets = (await session.scalars(stmt)).all()
 
             for target in targets:
+                # Do NOT auto-post short promo pitches to user's personal blog channel
+                blog_channel = (getattr(settings, "channel_blog_chat_id", "@Murasaki_website") or "@Murasaki_website").lower().strip()
+                if target.chat_id.lower().strip() == blog_channel:
+                    continue
+
                 # Check if it is time to post
                 if target.next_post_at and target.next_post_at > now:
                     continue

@@ -289,36 +289,32 @@ def get_task_chain(task_type: str) -> list[tuple[str, list[str]]]:
 
     if task_type == "fast":
         return [
-            ("groq", ["openai/gpt-oss-20b", "llama-3.1-8b-instant", "llama-3.2-3b-preview"]),
-            ("gemini", ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-1.5-flash"]),
-            ("groq", ["qwen/qwen3.8-27b", "llama-3.3-70b-versatile"]),
-            ("openrouter", ["openrouter/free", "meta-llama/llama-3.1-8b-instruct:free"]),
+            ("groq", ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "gemma2-9b-it"]),
+            ("gemini", ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"]),
+            ("openrouter", ["meta-llama/llama-3.1-8b-instruct:free", "openrouter/free"]),
             ("mxr", [reserve_model, "gpt-4o-mini"]),
         ]
 
     if task_type == "smart":
         return [
-            ("groq", ["qwen/qwen3.8-27b", "llama-3.3-70b-versatile"]),
-            ("gemini", ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]),
-            ("gemini", ["gemini-3.6-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]),
-            ("groq", ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"]),
-            ("openrouter", ["openrouter/free", "meta-llama/llama-3.3-70b-instruct:free"]),
+            ("groq", ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "llama-3.1-8b-instant"]),
+            ("gemini", ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]),
+            ("openrouter", ["meta-llama/llama-3.3-70b-instruct:free", "openrouter/free"]),
             ("mxr", [reserve_model, "gpt-4o-mini"]),
         ]
 
     if task_type == "code":
         return [
-            ("gemini", ["gemini-4-hydrogen", "gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]),
-            ("gemini", ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]),
-            ("groq", ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"]),
-            ("openrouter", ["openrouter/free", "meta-llama/llama-3.3-70b-instruct:free"]),
+            ("gemini", ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]),
+            ("groq", ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"]),
+            ("openrouter", ["meta-llama/llama-3.3-70b-instruct:free", "openrouter/free"]),
             ("mxr", [reserve_model, "gpt-4o-mini"]),
         ]
 
     return [
-        ("groq", ["openai/gpt-oss-20b", "llama-3.1-8b-instant"]),
-        ("gemini", ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-1.5-flash"]),
-        ("openrouter", ["openrouter/free"]),
+        ("groq", ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]),
+        ("gemini", ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]),
+        ("openrouter", ["meta-llama/llama-3.1-8b-instruct:free", "openrouter/free"]),
         ("mxr", [reserve_model, "gpt-4o-mini"]),
     ]
 
