@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
+import os
 import random
+import re
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete, desc, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import DATA_DIR, settings
@@ -130,6 +133,49 @@ class TelegramSettingsUpdate(BaseModel):
     telegram_broadcast_interval_minutes: int | None = None
     keywords: str | None = None
     stop_words: str | None = None
+
+
+class TGStatStatusOut(BaseModel):
+    has_token: bool
+    token_preview: str | None = None
+    default_keywords: list[str]
+    default_categories: list[str]
+    queue_count: int = 0
+
+
+class TGStatItem(BaseModel):
+    username_or_link: str
+    title: str = ""
+    category: str = ""
+    members_count: int = 0
+    is_already_added: bool = False
+
+
+class TGStatSearchIn(BaseModel):
+    keywords: str = ""
+    category: str = "all"
+    min_ci: float = 5.0
+    min_members: int = 100
+    token: str | None = None
+    auto_add: bool = False
+
+
+class TGStatSearchOut(BaseModel):
+    total_found: int
+    saved_count: int = 0
+    used_token: bool = False
+    items: list[TGStatItem]
+
+
+class TGStatAddTargetsIn(BaseModel):
+    items: list[TGStatItem]
+    kind: str = "both"  # orders, promo, both
+    cooldown_minutes: int = 120
+    auto_post_enabled: bool = False
+
+
+class TGStatTokenIn(BaseModel):
+    token: str
 
 
 # --- Endpoints ---
@@ -695,3 +741,206 @@ async def upload_portfolio_screenshot(file: UploadFile = File(...)) -> dict:
         (folder / "portfolio_hero.png").write_bytes(content)
 
     return {"status": "ok", "message": "Новое изображение для постов успешно сохранено!"}
+
+
+# --- TGStat Discovery Endpoints ---
+@router.get("/tgstat/status", response_model=TGStatStatusOut)
+async def get_tgstat_status(session: AsyncSession = Depends(get_session)) -> TGStatStatusOut:
+    from app.models import AppSetting, JoinQueue
+    setting = await session.get(AppSetting, "tgstat_token")
+    token = (setting.value.get("token") if setting and setting.value else None) or os.getenv("TGSTAT_TOKEN")
+    preview = f"{token[:4]}...{token[-4:]}" if token and len(token) > 8 else (token if token else None)
+
+    try:
+        queue_count = await session.scalar(select(func.count(JoinQueue.id))) or 0
+    except Exception:
+        queue_count = 0
+
+    from tgstat_collector import DEFAULT_CATEGORIES, DEFAULT_KEYWORDS
+    return TGStatStatusOut(
+        has_token=bool(token),
+        token_preview=preview,
+        default_keywords=DEFAULT_KEYWORDS,
+        default_categories=DEFAULT_CATEGORIES,
+        queue_count=queue_count,
+    )
+
+
+@router.post("/tgstat/token")
+async def save_tgstat_token(payload: TGStatTokenIn, session: AsyncSession = Depends(get_session)) -> dict:
+    from app.models import AppSetting
+    token = payload.token.strip()
+    setting = await session.get(AppSetting, "tgstat_token")
+    if not setting:
+        setting = AppSetting(key="tgstat_token", value={"token": token})
+        session.add(setting)
+    else:
+        setting.value = {"token": token}
+        session.add(setting)
+    await session.commit()
+    return {"saved": True, "has_token": bool(token)}
+
+
+@router.post("/tgstat/search", response_model=TGStatSearchOut)
+async def search_tgstat(payload: TGStatSearchIn, session: AsyncSession = Depends(get_session)) -> TGStatSearchOut:
+    from app.models import AppSetting, TelegramChatTarget
+    from tgstat_collector import (
+        TGStatCollector,
+        DEFAULT_KEYWORDS,
+        DEFAULT_CATEGORIES,
+        CURATED_DEMO_CHATS,
+        clean_username_or_link,
+    )
+
+    # 1. Determine token
+    token = payload.token.strip() if payload.token else None
+    if not token:
+        setting = await session.get(AppSetting, "tgstat_token")
+        if setting and setting.value:
+            token = setting.value.get("token")
+    if not token:
+        token = os.getenv("TGSTAT_TOKEN") or ""
+
+    # Parse keywords
+    kw_raw = payload.keywords.strip()
+    if kw_raw:
+        keywords = [k.strip() for k in re.split(r"[,;\n]+", kw_raw) if k.strip()]
+    else:
+        keywords = DEFAULT_KEYWORDS[:3]
+
+    categories = [payload.category] if payload.category and payload.category != "all" else DEFAULT_CATEGORIES[:2]
+
+    # Existing targets
+    collector = TGStatCollector(token=token, min_ci=payload.min_ci, min_members=payload.min_members)
+    existing = await collector.get_existing_targets()
+
+    items: list[TGStatItem] = []
+    total_found = 0
+    used_token = False
+
+    if token:
+        used_token = True
+        try:
+            async with collector:
+                raw_items = []
+                for kw in keywords:
+                    res = await collector.search_query(query=kw, peer_type="chat")
+                    raw_items.extend(res)
+                if payload.category and payload.category != "all":
+                    res = await collector.search_query(category=payload.category, peer_type="all")
+                    raw_items.extend(res)
+
+                total_found = len(raw_items)
+                extracted = await collector.filter_and_extract_targets(
+                    raw_items, set(), category_label=payload.category if payload.category != "all" else "freelance"
+                )
+
+                seen = set()
+                for e in extracted:
+                    uname = e["username_or_link"]
+                    norm = uname.lower()
+                    if norm in seen:
+                        continue
+                    seen.add(norm)
+                    title = e.get("title") or uname.lstrip("@").replace("_", " ").title()
+                    is_added = norm in existing
+                    items.append(
+                        TGStatItem(
+                            username_or_link=uname,
+                            title=title,
+                            category=e.get("category") or "фриланс",
+                            members_count=e.get("members_count", 0),
+                            is_already_added=is_added,
+                        )
+                    )
+        except Exception as exc:
+            logger.warning("Error querying live TGStat: %s", exc)
+
+    # If no token or no items from live API (or demo/fallback)
+    if not items:
+        total_found = len(CURATED_DEMO_CHATS)
+        for d in CURATED_DEMO_CHATS:
+            uname = d["username_or_link"]
+            norm = uname.lower()
+            title = uname.lstrip("@").replace("_", " ").title()
+            is_added = norm in existing
+            items.append(
+                TGStatItem(
+                    username_or_link=uname,
+                    title=title,
+                    category=d.get("category", "фриланс"),
+                    members_count=d.get("members_count", 15000),
+                    is_already_added=is_added,
+                )
+            )
+
+    saved_count = 0
+    if payload.auto_add and items:
+        for it in items:
+            if not it.is_already_added:
+                new_target = TelegramChatTarget(
+                    chat_id=it.username_or_link,
+                    title=it.title or it.username_or_link,
+                    username=it.username_or_link.lstrip("@"),
+                    kind="both",
+                    cooldown_minutes=120,
+                    is_active=True,
+                )
+                session.add(new_target)
+                it.is_already_added = True
+                saved_count += 1
+        await session.commit()
+
+    return TGStatSearchOut(
+        total_found=total_found,
+        saved_count=saved_count,
+        used_token=used_token,
+        items=items,
+    )
+
+
+@router.post("/tgstat/add-targets")
+async def add_tgstat_targets(payload: TGStatAddTargetsIn, session: AsyncSession = Depends(get_session)) -> dict:
+    from app.models import TelegramChatTarget, JoinQueue
+    from tgstat_collector import clean_username_or_link
+
+    added_count = 0
+    for it in payload.items:
+        clean_handle = clean_username_or_link(it.username_or_link)
+        if not clean_handle:
+            continue
+        existing = await session.scalar(
+            select(TelegramChatTarget).where(
+                (TelegramChatTarget.chat_id == clean_handle) | (TelegramChatTarget.username == clean_handle.lstrip("@"))
+            )
+        )
+        if not existing:
+            target = TelegramChatTarget(
+                chat_id=clean_handle,
+                title=it.title or clean_handle,
+                username=clean_handle.lstrip("@"),
+                kind=payload.kind,
+                cooldown_minutes=payload.cooldown_minutes,
+                auto_post_enabled=payload.auto_post_enabled,
+                is_active=True,
+            )
+            session.add(target)
+            added_count += 1
+
+        try:
+            jq_existing = await session.scalar(
+                select(JoinQueue).where(JoinQueue.username_or_link == clean_handle)
+            )
+            if not jq_existing:
+                jq_entry = JoinQueue(
+                    username_or_link=clean_handle,
+                    category=it.category or "freelance",
+                    members_count=it.members_count or 0,
+                    status="pending",
+                )
+                session.add(jq_entry)
+        except Exception as e:
+            logger.debug("JoinQueue insert note: %s", e)
+
+    await session.commit()
+    return {"added_count": added_count}

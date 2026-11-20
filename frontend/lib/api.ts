@@ -26,6 +26,10 @@ import type {
   TelegramChatTarget,
   TelegramOrder,
   TelegramStatus,
+  TGStatItem,
+  TGStatSearchParams,
+  TGStatSearchResponse,
+  TGStatStatus,
   TgAccount,
 } from "./types";
 import { getCurrentTelegramUserId, getTelegramWebApp } from "./telegram";
@@ -273,6 +277,29 @@ export const api = {
 
   deleteTelegramChat(id: string) {
     return request<{ status: string }>(`/api/telegram/chats/${id}`, { method: "DELETE" });
+  },
+
+  // TGStat Chat Discovery
+  getTGStatStatus() {
+    return request<TGStatStatus>("/api/telegram/tgstat/status");
+  },
+  saveTGStatToken(token: string) {
+    return request<{ saved: boolean; has_token: boolean }>("/api/telegram/tgstat/token", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  },
+  searchTGStat(params: TGStatSearchParams) {
+    return request<TGStatSearchResponse>("/api/telegram/tgstat/search", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  },
+  addTGStatTargets(items: TGStatItem[], kind: string = "both", cooldown_minutes: number = 120) {
+    return request<{ added_count: number }>("/api/telegram/tgstat/add-targets", {
+      method: "POST",
+      body: JSON.stringify({ items, kind, cooldown_minutes }),
+    });
   },
 
   updateTelegramSettings(payload: {

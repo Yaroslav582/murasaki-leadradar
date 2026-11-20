@@ -20,6 +20,7 @@ import {
   Plus,
   Radio,
   RefreshCw,
+  Search,
   Send,
   Settings,
   Share2,
@@ -40,6 +41,7 @@ import NeuroCommentingView from "./NeuroCommentingView";
 import ChatScrapingView from "./ChatScrapingView";
 import StoriesMasslookingView from "./StoriesMasslookingView";
 import ChannelAutoBlogView from "./ChannelAutoBlogView";
+import TGStatModal from "./TGStatModal";
 
 const COOLDOWN_OPTIONS = [
   { label: "30 минут", value: 30 },
@@ -93,6 +95,7 @@ export default function TelegramRadarView({
 
   // New chat modal
   const [showAddChat, setShowAddChat] = useState(false);
+  const [showTGStatModal, setShowTGStatModal] = useState(false);
   const [newChatId, setNewChatId] = useState("");
   const [newChatTitle, setNewChatTitle] = useState("");
   const [newChatKind, setNewChatKind] = useState("both");
@@ -917,10 +920,23 @@ export default function TelegramRadarView({
         )}
 
         {tab === "chats" && (
-          <button onClick={() => setShowAddChat(true)} className="btn-primary text-xs">
-            <Plus size={13} />
-            Добавить канал / чат
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                triggerHaptic("light");
+                setShowTGStatModal(true);
+              }}
+              className="btn-secondary text-xs flex items-center gap-1.5 bg-gradient-to-r from-violet-600/20 to-brand-500/20 text-brand-300 border border-brand-500/30 hover:border-brand-500/50 shadow-sm"
+              title="Поиск супергрупп и чатов через официальный TGStat API"
+            >
+              <Sparkles size={13} className="text-amber-400" />
+              <span>Поиск чатов в TGStat</span>
+            </button>
+            <button onClick={() => setShowAddChat(true)} className="btn-primary text-xs">
+              <Plus size={13} />
+              Добавить вручную
+            </button>
+          </div>
         )}
       </div>
 
@@ -1286,6 +1302,38 @@ export default function TelegramRadarView({
       {/* Tab 3: Channels & Chats Management */}
       {tab === "chats" && (
         <div className="space-y-4">
+          {/* TGStat Pro Discovery Banner */}
+          <div className="relative overflow-hidden rounded-2xl border border-violet-500/30 bg-gradient-to-r from-violet-950/40 via-[#1F1E2E] to-brand-950/30 p-4 text-xs shadow-lg">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-600/20 border border-violet-500/40 text-violet-300">
+                  <Sparkles size={18} className="text-amber-400" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white flex items-center gap-2">
+                    Авто-поиск целевых чатов через TGStat
+                    <span className="rounded-full bg-violet-500/20 px-1.5 py-0.2 text-[10px] text-violet-300 font-semibold border border-violet-500/30">
+                      PRO
+                    </span>
+                  </h4>
+                  <p className="text-slate-400 text-[11px] mt-0.5">
+                    Находите живые супергруппы по ключевым словам («фриланс заказы», «веб-разработка», «дизайн») и добавляйте в радар в 1 клик
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  triggerHaptic("medium");
+                  setShowTGStatModal(true);
+                }}
+                className="btn-primary text-xs shrink-0 py-1.5 px-3 bg-gradient-to-r from-violet-600 to-brand-500 hover:from-violet-500 hover:to-brand-400 shadow-md shadow-violet-900/40 flex items-center gap-1.5"
+              >
+                <Search size={12} />
+                <span>Найти чаты в TGStat</span>
+              </button>
+            </div>
+          </div>
+
           {/* Subfilter */}
           <div className="flex items-center gap-2 border-b border-white/10 pb-3 text-xs">
             <span className="text-slate-400 mr-2">Фильтр:</span>
@@ -1561,6 +1609,14 @@ export default function TelegramRadarView({
           </div>
         </div>
       )}
+
+      {/* TGStat Discovery Modal */}
+      <TGStatModal
+        open={showTGStatModal}
+        onClose={() => setShowTGStatModal(false)}
+        onSuccess={loadData}
+        showToast={showToast}
+      />
     </div>
   );
 }

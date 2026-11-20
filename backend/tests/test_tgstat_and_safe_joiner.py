@@ -129,3 +129,47 @@ async def test_join_queue_deduplication():
     assert "@freelance_super_test" in extracted_links
     assert "@orders_linked_chat" in extracted_links
     assert "@dead_chat_test" not in extracted_links
+
+
+@pytest.mark.asyncio
+async def test_tgstat_api_endpoints(client):
+    # 1. Status
+    res = await client.get("/api/telegram/tgstat/status")
+    assert res.status_code == 200
+    status_data = res.json()
+    assert "has_token" in status_data
+    assert "default_keywords" in status_data
+    assert "default_categories" in status_data
+
+    # 2. Token save
+    res = await client.post("/api/telegram/tgstat/token", json={"token": "test-mock-token-12345"})
+    assert res.status_code == 200
+    assert res.json()["has_token"] is True
+
+    # 3. Search (fallback/curated in test env)
+    res = await client.post("/api/telegram/tgstat/search", json={"keywords": "фриланс, дизайн"})
+    assert res.status_code == 200
+    search_data = res.json()
+    assert search_data["total_found"] > 0
+    assert len(search_data["items"]) > 0
+    first_item = search_data["items"][0]
+    assert "username_or_link" in first_item
+
+    # 4. Add targets to monitor
+    res = await client.post(
+        "/api/telegram/tgstat/add-targets",
+        json={
+            "items": [
+                {
+                    "username_or_link": "@test_chat_new_1",
+                    "title": "Test Chat 1",
+                    "category": "фриланс",
+                    "members_count": 5000,
+                    "is_already_added": False,
+                }
+            ],
+            "kind": "both",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["added_count"] == 1

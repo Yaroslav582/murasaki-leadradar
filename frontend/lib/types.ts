@@ -213,6 +213,38 @@ export interface TelegramChatTarget {
   created_at: string;
 }
 
+export interface TGStatStatus {
+  has_token: boolean;
+  token_preview: string | null;
+  default_keywords: string[];
+  default_categories: string[];
+  queue_count: number;
+}
+
+export interface TGStatItem {
+  username_or_link: string;
+  title: string;
+  category: string;
+  members_count: number;
+  is_already_added: boolean;
+}
+
+export interface TGStatSearchParams {
+  keywords?: string;
+  category?: string;
+  min_ci?: number;
+  min_members?: number;
+  token?: string;
+  auto_add?: boolean;
+}
+
+export interface TGStatSearchResponse {
+  total_found: number;
+  saved_count: number;
+  used_token: boolean;
+  items: TGStatItem[];
+}
+
 
 export interface DemoUpdate {
   html?: string;

@@ -125,3 +125,4 @@ async def test_init_db_auto_migration_idempotent():
     """Ensure init_db can be called multiple times without error, ensuring migration is safe."""
     await init_db()
     await init_db()
+

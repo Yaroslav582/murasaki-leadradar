@@ -351,27 +351,26 @@ class TGStatCollector:
         return existing
 
     async def save_to_join_queue(self, targets: list[dict[str, Any]]) -> int:
-        """Batch save unique targets into join_queue table in Supabase."""
+        """Save unique targets into join_queue table in DB (PostgreSQL / SQLite)."""
         if not targets:
             return 0
 
         async with SessionLocal() as session:
             inserted_count = 0
             for item in targets:
-                # ON CONFLICT DO NOTHING to prevent race condition duplicates
-                stmt = (
-                    pg_insert(JoinQueue)
-                    .values(
-                        username_or_link=item["username_or_link"],
+                uname = item["username_or_link"]
+                existing = await session.scalar(
+                    select(JoinQueue).where(JoinQueue.username_or_link == uname)
+                )
+                if not existing:
+                    entry = JoinQueue(
+                        username_or_link=uname,
                         tgstat_id=item.get("tgstat_id"),
                         category=item.get("category"),
                         members_count=item.get("members_count", 0),
                         status="pending",
                     )
-                    .on_conflict_do_nothing(index_elements=["username_or_link"])
-                )
-                res = await session.execute(stmt)
-                if res.rowcount and res.rowcount > 0:
+                    session.add(entry)
                     inserted_count += 1
             await session.commit()
             return inserted_count
