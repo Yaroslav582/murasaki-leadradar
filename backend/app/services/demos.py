@@ -45,16 +45,18 @@ def demo_out(demo: DemoSite) -> DemoOut:
 
 async def create_demo(session: AsyncSession, lead: Lead) -> DemoSite:
     # Auto-fetch TG photos if missing and TG channel exists
-    if (not lead.photos or not lead.logo_url) and lead.social_links:
-        tg_url = lead.social_links.get("telegram")
+    cur_photos = list(getattr(lead, "photos", []) or [])
+    logo = getattr(lead, "logo_url", None)
+    socials = getattr(lead, "social_links", {}) or {}
+    if (not cur_photos or not logo) and isinstance(socials, dict):
+        tg_url = socials.get("telegram")
         if tg_url:
             try:
                 from app.services.telegram_channel_scraper import scrape_telegram_channel
                 tg_data = await scrape_telegram_channel(tg_url)
-                if tg_data.get("avatar_url") and not lead.logo_url:
+                if tg_data.get("avatar_url") and not logo:
                     lead.logo_url = tg_data["avatar_url"]
                 if tg_data.get("photos"):
-                    cur_photos = list(lead.photos or [])
                     for p in tg_data["photos"]:
                         if p not in cur_photos:
                             cur_photos.append(p)

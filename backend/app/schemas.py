@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Literal
+from datetime import datetime, timezone
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.config import settings
 
 LeadStatus = Literal["new", "database", "sent", "rejected", "deal"]
 
@@ -38,10 +40,10 @@ class LeadOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    name: str
-    category: str
-    city: str
-    address: str
+    name: str = ""
+    category: str = ""
+    city: str = ""
+    address: str = ""
     phone: str | None = None
     website_url: str | None = None
     has_website: bool = False
@@ -63,8 +65,8 @@ class LeadOut(BaseModel):
     photos: list = Field(default_factory=list)
     logo_url: str | None = None
     enriched_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Enhanced Lead fields
     website_status: str = "no_website"
@@ -72,15 +74,146 @@ class LeadOut(BaseModel):
     growth_points: list[str] = Field(default_factory=list)
     first_touch_offer: str = ""
 
+    @field_validator("name", "category", "city", "address", mode="before")
+    @classmethod
+    def _coerce_strings(cls, v: Any) -> str:
+        if v is None:
+            return ""
+        return str(v)
+
+    @field_validator("photos", mode="before")
+    @classmethod
+    def _coerce_photos(cls, v: Any) -> list:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            if not v or v.lower() in ("null", "none"):
+                return []
+            try:
+                import json
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                pass
+            return [v] if v.startswith("http") else []
+        return []
+
+    @field_validator("social_links", mode="before")
+    @classmethod
+    def _coerce_social_links(cls, v: Any) -> dict:
+        if v is None:
+            return {}
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            if not v or v.lower() in ("null", "none", "{}"):
+                return {}
+            try:
+                import json
+                parsed = json.loads(v)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+        return {}
+
+    @field_validator("emails", "opening_hours", mode="before")
+    @classmethod
+    def _coerce_lists(cls, v: Any) -> list:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            if not v or v.lower() in ("null", "none", "[]"):
+                return []
+            try:
+                import json
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                pass
+            return [v]
+        return []
+
+    @field_validator("logo_url", "demo_url", mode="before")
+    @classmethod
+    def _coerce_urls(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        v = str(v).strip()
+        if not v or v.lower() in ("null", "none"):
+            return None
+        return v
+
+    @field_validator("reviews_count", mode="before")
+    @classmethod
+    def _coerce_reviews_count(cls, v: Any) -> int:
+        if v is None or v == "":
+            return 0
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return 0
+
+    @field_validator("has_website", mode="before")
+    @classmethod
+    def _coerce_has_website(cls, v: Any) -> bool:
+        if v is None:
+            return False
+        return bool(v)
+
+    @field_validator("rating", mode="before")
+    @classmethod
+    def _coerce_rating(cls, v: Any) -> float | None:
+        if v is None or v == "":
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _coerce_status(cls, v: Any) -> str:
+        if not v:
+            return "new"
+        return str(v)
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def _coerce_source(cls, v: Any) -> str:
+        if not v:
+            return "demo"
+        return str(v)
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def _coerce_datetime(cls, v: Any) -> datetime:
+        if v is None:
+            return datetime.now(timezone.utc)
+        return v
+
     @model_validator(mode="after")
     def _fill_computed_fields(self) -> "LeadOut":
-        self.status_label = STATUS_LABELS.get(self.status, self.status)
+        self.status_label = STATUS_LABELS.get(self.status or "new", self.status or "Новый")
 
         if self.demo_id and not self.demo_url:
-            base = settings.public_base_url.strip().rstrip("/")
-            if not base.startswith(("http://", "https://")):
-                base = f"https://{base}"
-            self.demo_url = f"{base}/demo/{self.demo_id}"
+            try:
+                base = getattr(settings, "public_base_url", "http://127.0.0.1:8000") or "http://127.0.0.1:8000"
+                base = base.strip().rstrip("/")
+                if not base.startswith(("http://", "https://")):
+                    base = f"https://{base}"
+                self.demo_url = f"{base}/demo/{self.demo_id}"
+            except Exception:
+                self.demo_url = f"/demo/{self.demo_id}"
 
         # 1. Website status (no_website, only_social, weak_website, has_website)
         socials = self.social_links or {}
@@ -119,9 +252,10 @@ class LeadOut(BaseModel):
             elif self.rating >= 3.0:
                 score += 0.3
 
-        if self.reviews_count > 10:
+        reviews = self.reviews_count or 0
+        if reviews > 10:
             score += 0.4
-        elif self.reviews_count > 0:
+        elif reviews > 0:
             score += 0.2
 
         self.lead_score = min(5.0, round(score, 1))
@@ -152,9 +286,11 @@ class LeadOut(BaseModel):
             ]
 
         # 4. First touch offer (Первый контакт)
-        rating_part = f"с отличным рейтингом {self.rating:.1f}★" if self.rating else "на картах"
+        lead_name = self.name or "компании"
+        lead_city = f" в г. {self.city}" if self.city else ""
+        rating_part = f" с отличным рейтингом {self.rating:.1f}★" if self.rating else " на картах"
         self.first_touch_offer = (
-            f"Здравствуйте! Обратил внимание на компанию «{self.name}» в г. {self.city} {rating_part}. "
+            f"Здравствуйте! Обратил внимание на компанию «{lead_name}»{lead_city}{rating_part}. "
             f"Заметил, что у вас сильная репутация, но потенциальным клиентам сложно быстро изучить услуги и цены онлайн. "
             f"Мы набросали визуальный концепт современного адаптивного сайта для вас. "
             f"Посмотрите с телефона, как это может выглядеть — если откликнется, сможем запустить за пару дней. "

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,8 @@ from app.services.demos import create_demo, demo_out, lead_to_dict, public_demo_
 from app.services.enrichment import enrich_leads
 from app.services.landing import build_outreach, generate_outreach_message
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/leads", tags=["leads"])
 
 
@@ -35,8 +38,38 @@ async def list_leads(
     stmt = apply_lead_filters(select(Lead), filters)
     total = await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = await session.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
-    items = [LeadOut.model_validate(row) for row in rows]
-    pages = (total + page_size - 1) // page_size
+    items: list[LeadOut] = []
+    for row in rows:
+        try:
+            items.append(LeadOut.model_validate(row))
+        except Exception as exc:
+            logger.warning("Error validating lead %s: %s", getattr(row, "id", None), exc)
+            try:
+                items.append(
+                    LeadOut(
+                        id=str(getattr(row, "id", "")),
+                        name=str(getattr(row, "name", "") or "Без названия"),
+                        category=str(getattr(row, "category", "") or ""),
+                        city=str(getattr(row, "city", "") or ""),
+                        address=str(getattr(row, "address", "") or ""),
+                        phone=getattr(row, "phone", None),
+                        website_url=getattr(row, "website_url", None),
+                        has_website=bool(getattr(row, "has_website", False)),
+                        rating=getattr(row, "rating", None),
+                        reviews_count=getattr(row, "reviews_count", 0) or 0,
+                        social_links=getattr(row, "social_links", {}) or {},
+                        emails=getattr(row, "emails", []) or [],
+                        opening_hours=getattr(row, "opening_hours", []) or [],
+                        photos=getattr(row, "photos", []) or [],
+                        logo_url=getattr(row, "logo_url", None),
+                        demo_id=getattr(row, "demo_id", None),
+                        status=getattr(row, "status", "new") or "new",
+                        source=getattr(row, "source", "demo") or "demo",
+                    )
+                )
+            except Exception as inner_exc:
+                logger.error("Failed creating fallback LeadOut for %s: %s", getattr(row, "id", None), inner_exc)
+    pages = (total + page_size - 1) // page_size if page_size else 1
     return LeadsPage(items=items, total=total, page=page, page_size=page_size, pages=pages)
 
 
@@ -45,7 +78,30 @@ async def get_lead(lead_id: str, session: AsyncSession = Depends(get_session)) -
     lead = await session.get(Lead, lead_id)
     if lead is None:
         raise HTTPException(status_code=404, detail="Лид не найден")
-    return LeadOut.model_validate(lead)
+    try:
+        return LeadOut.model_validate(lead)
+    except Exception as exc:
+        logger.warning("Error validating lead %s: %s", lead_id, exc)
+        return LeadOut(
+            id=str(lead.id),
+            name=str(lead.name or "Без названия"),
+            category=str(lead.category or ""),
+            city=str(lead.city or ""),
+            address=str(lead.address or ""),
+            phone=lead.phone,
+            website_url=lead.website_url,
+            has_website=bool(lead.has_website),
+            rating=lead.rating,
+            reviews_count=lead.reviews_count or 0,
+            social_links=lead.social_links or {},
+            emails=lead.emails or [],
+            opening_hours=lead.opening_hours or [],
+            photos=getattr(lead, "photos", []) or [],
+            logo_url=getattr(lead, "logo_url", None),
+            demo_id=lead.demo_id,
+            status=lead.status or "new",
+            source=lead.source or "demo",
+        )
 
 
 @router.patch("/{lead_id}", response_model=LeadOut)
