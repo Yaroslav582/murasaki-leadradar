@@ -73,15 +73,14 @@ DATABASE_URL = _normalize_url(settings.get_database_url())
 _is_sqlite = DATABASE_URL.startswith("sqlite")
 
 connect_args: dict = {}
-pool_kwargs: dict = {}
+from sqlalchemy.pool import NullPool
+pool_kwargs: dict = {"poolclass": NullPool}
 
 if _is_sqlite:
-    connect_args = {"check_same_thread": False}
+    connect_args = {"check_same_thread": False, "timeout": 30}
 else:
     # Supabase Transaction Pooler (port 6543) / asyncpg
     # statement_cache_size=0, ssl='require' and NullPool are strictly required
-    from sqlalchemy.pool import NullPool
-    pool_kwargs["poolclass"] = NullPool
     if "asyncpg" in DATABASE_URL:
         from uuid import uuid4
         connect_args = {
@@ -189,39 +188,35 @@ async def init_db() -> None:
     else:
         # SQLite migrations
         def _migrate_sqlite(sync_conn):
-            raw_conn = sync_conn.connection
-            cursor = raw_conn.cursor()
-
             # leads table
             try:
-                cursor.execute("PRAGMA table_info(leads)")
-                existing_lead_cols = {row[1] for row in cursor.fetchall()}
+                res = sync_conn.exec_driver_sql("PRAGMA table_info(leads)").fetchall()
+                existing_lead_cols = {row[1] for row in res}
                 if existing_lead_cols:
                     if "photos" not in existing_lead_cols:
                         try:
-                            cursor.execute("ALTER TABLE leads ADD COLUMN photos JSON DEFAULT '[]'")
+                            sync_conn.exec_driver_sql("ALTER TABLE leads ADD COLUMN photos JSON DEFAULT '[]'")
                             logger.info("Added 'photos' column to SQLite leads table")
                         except Exception as e:
                             logger.debug("Notice adding photos: %s", e)
                     if "logo_url" not in existing_lead_cols:
                         try:
-                            cursor.execute("ALTER TABLE leads ADD COLUMN logo_url VARCHAR(500)")
+                            sync_conn.exec_driver_sql("ALTER TABLE leads ADD COLUMN logo_url VARCHAR(500)")
                             logger.info("Added 'logo_url' column to SQLite leads table")
                         except Exception as e:
                             logger.debug("Notice adding logo_url: %s", e)
                     try:
-                        cursor.execute("UPDATE leads SET photos = '[]' WHERE photos IS NULL")
+                        sync_conn.exec_driver_sql("UPDATE leads SET photos = '[]' WHERE photos IS NULL")
                     except Exception:
                         pass
-                    raw_conn.commit()
             except Exception as exc:
                 logger.warning("SQLite leads migration error: %s", exc)
 
             # secondary tables
             try:
                 # telegram_chat_targets
-                cursor.execute("PRAGMA table_info(telegram_chat_targets)")
-                existing_cols = {row[1] for row in cursor.fetchall()}
+                res = sync_conn.exec_driver_sql("PRAGMA table_info(telegram_chat_targets)").fetchall()
+                existing_cols = {row[1] for row in res}
                 if existing_cols:
                     new_cols = [
                         ("cooldown_minutes", "INTEGER DEFAULT 120"),
@@ -231,11 +226,11 @@ async def init_db() -> None:
                     ]
                     for col_name, col_def in new_cols:
                         if col_name not in existing_cols:
-                            cursor.execute(f"ALTER TABLE telegram_chat_targets ADD COLUMN {col_name} {col_def}")
+                            sync_conn.exec_driver_sql(f"ALTER TABLE telegram_chat_targets ADD COLUMN {col_name} {col_def}")
 
                 # telegram_orders
-                cursor.execute("PRAGMA table_info(telegram_orders)")
-                existing_order_cols = {row[1] for row in cursor.fetchall()}
+                res = sync_conn.exec_driver_sql("PRAGMA table_info(telegram_orders)").fetchall()
+                existing_order_cols = {row[1] for row in res}
                 if existing_order_cols:
                     new_order_cols = [
                         ("source", "VARCHAR(32) DEFAULT 'telegram'"),
@@ -243,11 +238,11 @@ async def init_db() -> None:
                     ]
                     for col_name, col_def in new_order_cols:
                         if col_name not in existing_order_cols:
-                            cursor.execute(f"ALTER TABLE telegram_orders ADD COLUMN {col_name} {col_def}")
+                            sync_conn.exec_driver_sql(f"ALTER TABLE telegram_orders ADD COLUMN {col_name} {col_def}")
 
                 # users
-                cursor.execute("PRAGMA table_info(users)")
-                existing_user_cols = {row[1] for row in cursor.fetchall()}
+                res = sync_conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()
+                existing_user_cols = {row[1] for row in res}
                 if existing_user_cols:
                     new_user_cols = [
                         ("credits_balance", "INTEGER DEFAULT 50"),
@@ -256,11 +251,11 @@ async def init_db() -> None:
                     ]
                     for col_name, col_def in new_user_cols:
                         if col_name not in existing_user_cols:
-                            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+                            sync_conn.exec_driver_sql(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
 
                 # tg_accounts
-                cursor.execute("PRAGMA table_info(tg_accounts)")
-                existing_acc_cols = {row[1] for row in cursor.fetchall()}
+                res = sync_conn.exec_driver_sql("PRAGMA table_info(tg_accounts)").fetchall()
+                existing_acc_cols = {row[1] for row in res}
                 if existing_acc_cols:
                     new_acc_cols = [
                         ("session_string", "TEXT"),
@@ -270,20 +265,18 @@ async def init_db() -> None:
                     ]
                     for col_name, col_def in new_acc_cols:
                         if col_name not in existing_acc_cols:
-                            cursor.execute(f"ALTER TABLE tg_accounts ADD COLUMN {col_name} {col_def}")
+                            sync_conn.exec_driver_sql(f"ALTER TABLE tg_accounts ADD COLUMN {col_name} {col_def}")
 
                 # dialogs
-                cursor.execute("PRAGMA table_info(dialogs)")
-                existing_dlg_cols = {row[1] for row in cursor.fetchall()}
+                res = sync_conn.exec_driver_sql("PRAGMA table_info(dialogs)").fetchall()
+                existing_dlg_cols = {row[1] for row in res}
                 if existing_dlg_cols:
                     new_dlg_cols = [
                         ("ai_auto_reply_enabled", "BOOLEAN DEFAULT 0"),
                     ]
                     for col_name, col_def in new_dlg_cols:
                         if col_name not in existing_dlg_cols:
-                            cursor.execute(f"ALTER TABLE dialogs ADD COLUMN {col_name} {col_def}")
-
-                raw_conn.commit()
+                            sync_conn.exec_driver_sql(f"ALTER TABLE dialogs ADD COLUMN {col_name} {col_def}")
             except Exception as exc:
                 logger.debug("SQLite secondary migration notice: %s", exc)
 

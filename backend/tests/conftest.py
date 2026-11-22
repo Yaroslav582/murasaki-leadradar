@@ -18,23 +18,25 @@ from sqlalchemy import delete  # noqa: E402
 
 from app.db import SessionLocal, init_db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import DemoSite, Lead, ParseJob  # noqa: E402
+from app.models import DemoSite, Lead, ParseJob, User  # noqa: E402
+
+
+_db_initialized = False
 
 
 @pytest.fixture(autouse=True)
 async def prepared_db():
-    await init_db()
+    global _db_initialized
+    if not _db_initialized:
+        await init_db()
+        _db_initialized = True
     async with SessionLocal() as session:
         await session.execute(delete(DemoSite))
         await session.execute(delete(Lead))
         await session.execute(delete(ParseJob))
+        await session.execute(delete(User))
         await session.commit()
     yield
-    if TEST_DB.exists():
-        try:
-            TEST_DB.unlink()
-        except PermissionError:
-            pass
 
 
 @pytest.fixture

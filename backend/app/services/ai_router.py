@@ -619,70 +619,228 @@ async def sort_business_photos(
 ) -> dict[str, Any]:
     """
     Intelligently sorts and categorizes lead photos for landing pages using Vision AI models from VISION_MODELS_CHAIN.
-    Returns: {"hero": str | None, "gallery": list[str], "logo": str | None, "rejected": list[str]}
-    Gracefully falls back to heuristic curation if Vision models fail or are unconfigured.
+    Distributes photos into 3 key categories:
+      - hero_product: close-up shots of works, products, food, procedures (used for hero screen and portfolio gallery)
+      - interior: premises, facade, atmosphere, indoor design
+      - trash: screenshots of chats, price lists with text, documents, blurry/unfitting photos (discarded)
     """
     valid_photos = [p for p in photo_urls if isinstance(p, str) and p.startswith("http")]
     if not valid_photos:
-        return {"hero": None, "gallery": [], "logo": None, "rejected": []}
+        return {
+            "hero_product": [],
+            "interior": [],
+            "trash": [],
+            "hero": None,
+            "gallery": [],
+            "logo": None,
+            "rejected": [],
+        }
 
     if len(valid_photos) == 1:
-        return {"hero": valid_photos[0], "gallery": [valid_photos[0]], "logo": None, "rejected": []}
+        single = valid_photos[0]
+        return {
+            "hero_product": [single],
+            "interior": [],
+            "trash": [],
+            "hero": single,
+            "gallery": [single],
+            "logo": None,
+            "rejected": [],
+        }
 
     prompt = (
         f"Ты — профессиональный арт-директор и UI/UX дизайнер современных конверсионных сайтов.\n"
         f"Проанализируй предоставленные фотографии компании «{business_name or 'Бизнес'}» (сфера: {business_category or 'Сфера услуг'}).\n\n"
-        "Твоя задача — рассортировать их по категориям для посадочной страницы:\n"
-        "1. 'hero': 1 самый качественный, эффектный и привлекательный кадр для первого экрана "
-        "(красивый фасад, стильный интерьер, флагманский продукт или рабочий процесс специалиста).\n"
-        "2. 'gallery': список до 6 качественных фотографий для блока галереи/портфолио "
-        "(разные ракурсы, детали интерьера, примеры работ, оборудование).\n"
-        "3. 'logo': URL фотографии, если на ней изображен чистый логотип компании или брендовая вывеска (иначе null).\n"
-        "4. 'rejected': список URL размытых, слишком темных, нерелевантных фото или скриншотов чеков/документов.\n\n"
+        "Твоя задача — рассортировать переданные фотографии строго по 3 категориям:\n"
+        "1. 'hero_product': крупные планы работ, товаров, блюд, процедур, готовых результатов "
+        "(идеально для главного экрана и галереи работ).\n"
+        "2. 'interior': помещение, фасад, ресепшн, зона ожидания, общая атмосфера и оборудование.\n"
+        "3. 'trash': скриншоты переписок, прайс-листы с текстом, чеки, размытые, некачественные или нерелевантные фото (не показываем на сайте).\n\n"
         "СТРОГИЕ ПРАВИЛА:\n"
-        "- Используй ТОЛЬКО переданные ссылки. Не придумывай чужие URL.\n"
-        "- Верни СТРОГО валидный JSON без лишних пояснений:\n"
-        '{"hero": "url", "gallery": ["url1", "url2"], "logo": null, "rejected": []}'
+        "- Используй ТОЛЬКО переданные URL, строго без выдумывания сторонних ссылок.\n"
+        "- Верни СТРОГО валидный JSON без дополнительного текста:\n"
+        '{\n'
+        '  "hero_product": ["url1", "url2"],\n'
+        '  "interior": ["url3", "url4"],\n'
+        '  "trash": ["url_trash"]\n'
+        '}'
     )
 
     try:
         raw_json = await ask_ai_vision(
             prompt=prompt,
-            image_urls=valid_photos[:10],
+            image_urls=valid_photos[:12],
             system_prompt="Отвечай строго в формате JSON без markdown разметки и пояснений.",
             max_tokens=1000,
             temperature=0.2,
             expect_json=True,
         )
         parsed = extract_json_payload(raw_json)
-        if isinstance(parsed, dict) and "hero" in parsed and "gallery" in parsed:
-            hero = parsed.get("hero") if parsed.get("hero") in valid_photos else valid_photos[0]
-            raw_gallery = parsed.get("gallery") or []
-            gallery = [p for p in raw_gallery if p in valid_photos and p != hero][:6]
+        if isinstance(parsed, dict) and ("hero_product" in parsed or "hero" in parsed or "interior" in parsed):
+            raw_hp = parsed.get("hero_product") or []
+            if not raw_hp and parsed.get("hero"):
+                raw_hp = [parsed["hero"]] + (parsed.get("gallery") or [])
+
+            raw_int = parsed.get("interior") or []
+            raw_trash = parsed.get("trash") or parsed.get("rejected") or []
+
+            hero_product = [p for p in raw_hp if p in valid_photos]
+            interior = [p for p in raw_int if p in valid_photos and p not in hero_product]
+            trash = [p for p in raw_trash if p in valid_photos]
+
+            # If classification was empty, populate from remaining valid photos
+            unassigned = [p for p in valid_photos if p not in hero_product and p not in interior and p not in trash]
+            if not hero_product and unassigned:
+                hero_product.append(unassigned.pop(0))
+            if not interior and unassigned:
+                interior.extend(unassigned)
+
+            hero = hero_product[0] if hero_product else (interior[0] if interior else valid_photos[0])
+            gallery = (hero_product[1:] + interior)[:6]
             if not gallery:
-                gallery = [p for p in valid_photos if p != hero][:4] or [hero]
+                gallery = [hero]
 
-            logo = parsed.get("logo") if parsed.get("logo") in valid_photos else None
-            rejected = [p for p in (parsed.get("rejected") or []) if p in valid_photos]
-
-            logger.info("Vision photo sorting succeeded: hero=%s, gallery_count=%d", hero, len(gallery))
+            logger.info("Vision photo sorting succeeded: hero_product=%d, interior=%d, trash=%d", len(hero_product), len(interior), len(trash))
             return {
+                "hero_product": hero_product,
+                "interior": interior,
+                "trash": trash,
                 "hero": hero,
                 "gallery": gallery,
-                "logo": logo,
-                "rejected": rejected,
+                "logo": parsed.get("logo") if parsed.get("logo") in valid_photos else None,
+                "rejected": trash,
             }
     except Exception as exc:
         logger.warning("Vision photo sorting unavailable or failed (%s). Using deterministic heuristic fallback.", exc)
 
     # Deterministic heuristic fallback
     hero = valid_photos[0]
-    remaining = [p for p in valid_photos[1:7] if p != hero]
+    gallery = [p for p in valid_photos[1:7] if p != hero]
     return {
+        "hero_product": [hero] + gallery[:2],
+        "interior": gallery[2:],
+        "trash": [],
         "hero": hero,
-        "gallery": remaining if remaining else [hero],
+        "gallery": gallery if gallery else [hero],
         "logo": None,
         "rejected": [],
+    }
+
+
+async def generate_demo_json(
+    lead_dict: dict[str, Any],
+    hero_photos: list[str],
+    interior_photos: list[str],
+) -> dict[str, Any]:
+    """
+    Generates structured JSON content for a business landing page using TEXT_MODELS_CHAIN.
+    Returns:
+    {
+        "template_id": "editorial_light" | "dark_industrial" | "warm_appetite" | "clean_trust",
+        "hero_title": str,
+        "hero_subtitle": str,
+        "usp_list": list[dict[str, str]], # [{"title": "...", "desc": "..."}, ...]
+        "services": list[dict[str, str]], # [{"name": "...", "price": "...", "desc": "..."}, ...]
+        "faq": list[dict[str, str]],      # [{"question": "...", "answer": "..."}, ...]
+    }
+    """
+    name = lead_dict.get("name") or "Компания"
+    category = lead_dict.get("category") or "Сфера услуг"
+    city = lead_dict.get("city") or "Россия"
+    address = lead_dict.get("address") or ""
+    rating = lead_dict.get("rating") or 4.9
+    reviews_count = lead_dict.get("reviews_count") or 15
+
+    # Determine default template_id by niche
+    cat_lower = category.lower()
+    if any(k in cat_lower for k in ("бьюти", "красот", "маникюр", "педикюр", "волос", "парикмахер", "косметол", "цветы", "одежд", "спа")):
+        suggested_template = "editorial_light"
+    elif any(k in cat_lower for k in ("авто", "сервис", "шиномонтаж", "детейлинг", "мойка", "кузов", "сто", "барбер", "спорт", "стройк", "ремонт авто")):
+        suggested_template = "dark_industrial"
+    elif any(k in cat_lower for k in ("ресторан", "кафе", "кофейн", "пекарн", "доставка еды", "пицц", "суши", "бургер", "бар", "кухн", "кондитер")):
+        suggested_template = "warm_appetite"
+    else:
+        suggested_template = "clean_trust"
+
+    system_prompt = (
+        "Ты — топовый B2B/B2C маркетолог и UX-копирайтер продающих лендингов.\n"
+        "Твоя задача — составить продающие тексты и структуру для сайта конкретного бизнеса.\n"
+        "ПРАВИЛА:\n"
+        "1. Пиши живо, конкретно, с акцентом на выгоды клиента, без заезженных штампов ('динамично развивающаяся компания').\n"
+        "2. Цены указывай реалистичные в рублях ('от 2 500 ₽').\n"
+        "3. Выбери template_id строго из: ['editorial_light', 'dark_industrial', 'warm_appetite', 'clean_trust'].\n"
+        "4. Верни СТРОГО валидный JSON следующей структуры, без markdown-обёртки и без комментариев:\n"
+        "{\n"
+        f'  "template_id": "{suggested_template}",\n'
+        '  "hero_title": "Сильный цепляющий заголовок с оффером",\n'
+        '  "hero_subtitle": "Понятный подзаголовок с конкретной выгодой и снятием возражений",\n'
+        '  "usp_list": [\n'
+        '    {"title": "Преимущество 1", "desc": "Короткое пояснение"},\n'
+        '    {"title": "Преимущество 2", "desc": "Короткое пояснение"},\n'
+        '    {"title": "Преимущество 3", "desc": "Короткое пояснение"}\n'
+        '  ],\n'
+        '  "services": [\n'
+        '    {"name": "Услуга 1", "price": "от 2 000 ₽", "desc": "Что входит в услугу"},\n'
+        '    {"name": "Услуга 2", "price": "от 3 500 ₽", "desc": "Что входит в услугу"},\n'
+        '    {"name": "Услуга 3", "price": "от 5 000 ₽", "desc": "Что входит в услугу"},\n'
+        '    {"name": "Услуга 4", "price": "по запросу", "desc": "Что входит в услугу"}\n'
+        '  ],\n'
+        '  "faq": [\n'
+        '    {"question": "Частый вопрос клиента?", "answer": "Четкий и убедительный ответ."},\n'
+        '    {"question": "Как записаться или оформить заказ?", "answer": "Четкий и убедительный ответ."}\n'
+        '  ]\n'
+        "}"
+    )
+
+    user_prompt = (
+        f"Компания: «{name}»\n"
+        f"Сфера бизнеса: {category}\n"
+        f"Город: {city}\n"
+        f"Адрес: {address or 'Центр города'}\n"
+        f"Рейтинг: {rating}★ ({reviews_count} отзывов на картах)\n\n"
+        f"Рекомендуемый шаблон: {suggested_template}\n\n"
+        "Сгенерируй продающий JSON для лендинга:"
+    )
+
+    try:
+        raw_res = await ask_ai(
+            user_prompt,
+            system_prompt=system_prompt,
+            task_type="smart",
+            max_tokens=1600,
+            temperature=0.6,
+            expect_json=True,
+        )
+        parsed = extract_json_payload(raw_res)
+        if isinstance(parsed, dict) and "hero_title" in parsed and "services" in parsed:
+            # Ensure valid template_id
+            t_id = parsed.get("template_id")
+            if t_id not in ("editorial_light", "dark_industrial", "warm_appetite", "clean_trust"):
+                parsed["template_id"] = suggested_template
+            return parsed
+    except Exception as exc:
+        logger.warning("AI landing JSON generation notice: %s. Using deterministic niche profile.", exc)
+
+    # High-quality deterministic fallback JSON
+    return {
+        "template_id": suggested_template,
+        "hero_title": f"Премиальный сервис и качество для вас в {city}",
+        "hero_subtitle": "Быстрая онлайн-запись за 1 минуту без ожидания звонков и очередей",
+        "usp_list": [
+            {"title": "Опытные специалисты", "desc": "Команда проверенных мастеров со стажем более 5 лет."},
+            {"title": "Честная смета", "desc": "Фиксированная стоимость до начала оказания услуг без скрытых доплат."},
+            {"title": "Гарантия на результат", "desc": "100% ответственность за качество и заботливый клиентский сервис."},
+        ],
+        "services": [
+            {"name": "Базовый комплекс услуг", "price": "от 2 500 ₽", "desc": "Оптимальное решение для быстрого и качественного результата."},
+            {"name": "Премиум обслуживание", "price": "от 4 900 ₽", "desc": "Полный спектр процедур с персонализированным подходом."},
+            {"name": "Экспресс-услуга", "price": "от 1 800 ₽", "desc": "Экономия вашего времени при сохранении высшего качества."},
+            {"name": "Индивидуальный проект", "price": "по согласованию", "desc": "Комплексное ведение задачи под ключ с гарантией."},
+        ],
+        "faq": [
+            {"question": "Нужно ли записываться заранее?", "answer": "Да, рекомендуем записаться онлайн за 1-2 дня, чтобы выбрать удобный временной слот."},
+            {"question": "Как к вам добраться?", "answer": f"Мы находимся по адресу: {address or city}. Удобный подъезд и парковка."},
+        ],
     }
 
 

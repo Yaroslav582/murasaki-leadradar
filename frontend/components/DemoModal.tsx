@@ -108,6 +108,27 @@ export default function DemoModal({
     }
   };
 
+  const cleanExtractedHtml = (raw: string): string => {
+    let cleanCode = raw.trim();
+    // 1. Strip markdown fences ```html ... ```
+    cleanCode = cleanCode.replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/i, "").trim();
+
+    // 2. Cut out any conversational preamble/postscript and isolate <!DOCTYPE html> ... </html>
+    const lower = cleanCode.toLowerCase();
+    const startIdx = lower.indexOf("<!doctype html");
+    const htmlIdx = lower.indexOf("<html");
+    const effectiveStart = startIdx !== -1 ? startIdx : htmlIdx;
+    if (effectiveStart !== -1) {
+      const endIdx = lower.lastIndexOf("</html>");
+      if (endIdx !== -1) {
+        cleanCode = cleanCode.slice(effectiveStart, endIdx + 7);
+      } else {
+        cleanCode = cleanCode.slice(effectiveStart) + "\n</html>";
+      }
+    }
+    return cleanCode;
+  };
+
   const handleApplyCustomHtml = async () => {
     const raw = customHtmlInput.trim();
     if (!raw) {
@@ -116,10 +137,7 @@ export default function DemoModal({
     }
     setCustomSaving(true);
     try {
-      let cleanCode = raw;
-      if (cleanCode.startsWith("```")) {
-        cleanCode = cleanCode.replace(/^```[a-z]*\n?/i, "").replace(/```$/, "").trim();
-      }
+      const cleanCode = cleanExtractedHtml(raw);
 
       const updated = await api.saveCustomDemo(lead.id, {
         html: cleanCode,
@@ -137,6 +155,16 @@ export default function DemoModal({
       showToast(error instanceof Error ? error.message : "Ошибка применения кода", "error");
     } finally {
       setCustomSaving(false);
+    }
+  };
+
+  const handleCustomPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = e.clipboardData.getData("text");
+    if (pasted.includes("```") || pasted.toLowerCase().includes("<!doctype html")) {
+      e.preventDefault();
+      const cleaned = cleanExtractedHtml(pasted);
+      setCustomHtmlInput(cleaned);
+      showToast("Код автоматически очищен от markdown-обёрток!", "info");
     }
   };
 
@@ -418,6 +446,7 @@ export default function DemoModal({
                   <textarea
                     value={customHtmlInput}
                     onChange={(e) => setCustomHtmlInput(e.target.value)}
+                    onPaste={handleCustomPaste}
                     placeholder="Вставьте сюда сгенерированный HTML код (<!DOCTYPE html>...)"
                     className="input flex-1 min-h-[220px] font-mono text-[11px] leading-relaxed resize-none"
                     spellCheck={false}

@@ -11,6 +11,7 @@ from app.db import SessionLocal
 from app.models import DemoSite, Lead, new_id
 from app.schemas import DemoOut
 from app.services.landing import build_outreach, generate_landing_html, generate_outreach_message
+from app.services.media_collector import collect_media
 
 logger = logging.getLogger(__name__)
 
@@ -50,55 +51,50 @@ def demo_out(demo: DemoSite) -> DemoOut:
 
 
 async def create_demo(session: AsyncSession, lead: Lead) -> DemoSite:
-    # Auto-fetch TG photos if missing and TG channel exists
-    cur_photos = list(getattr(lead, "photos", []) or [])
-    logo = getattr(lead, "logo_url", None)
-    socials = getattr(lead, "social_links", {}) or {}
-    if (not cur_photos or not logo) and isinstance(socials, dict):
-        tg_url = socials.get("telegram")
-        if tg_url:
-            try:
-                from app.services.telegram_channel_scraper import scrape_telegram_channel
-                tg_data = await scrape_telegram_channel(tg_url)
-                if tg_data.get("avatar_url") and not logo:
-                    lead.logo_url = tg_data["avatar_url"]
-                if tg_data.get("photos"):
-                    for p in tg_data["photos"]:
-                        if p not in cur_photos:
-                            cur_photos.append(p)
-                    lead.photos = cur_photos[:10]
-            except Exception:
-                pass
+    lead_dict = lead_to_dict(lead)
 
-    # Vision AI sorting for real lead photos if multiple photos exist
-    if len(cur_photos) > 1:
+    # 1. Cascading media collection (Yandex Maps + TG Channel + TG Profile + Persistence + Niche fallback)
+    try:
+        media_res = await collect_media(lead_dict, max_items=12)
+        collected_photos = media_res.get("photos") or []
+        if media_res.get("logo_url") and not lead.logo_url:
+            lead.logo_url = media_res["logo_url"]
+    except Exception as exc:
+        logger.warning("Media collection notice for %s: %s", lead.name, exc)
+        collected_photos = list(getattr(lead, "photos", []) or [])
+
+    # 2. Vision AI sorting (distributes into hero_product, interior, trash)
+    if len(collected_photos) > 1:
         try:
             from app.services.ai_router import sort_business_photos
             sorted_photos = await asyncio.wait_for(
                 sort_business_photos(
-                    cur_photos,
+                    collected_photos,
                     business_category=lead.category or "",
                     business_name=lead.name or "",
                 ),
-                timeout=6.0,
+                timeout=7.0,
             )
-            if sorted_photos.get("hero"):
-                lead.photos = [sorted_photos["hero"]] + [
-                    p for p in sorted_photos.get("gallery", []) if p != sorted_photos["hero"]
-                ]
+            hp = sorted_photos.get("hero_product") or []
+            interior = sorted_photos.get("interior") or []
+            ordered_photos = hp + [p for p in interior if p not in hp]
+            lead.photos = ordered_photos if ordered_photos else collected_photos
             if sorted_photos.get("logo") and not lead.logo_url:
                 lead.logo_url = sorted_photos["logo"]
         except Exception as exc:
             logger.debug("Vision AI photo sort notice in create_demo: %s", exc)
+            lead.photos = collected_photos
+    else:
+        lead.photos = collected_photos
 
     data = lead_to_dict(lead)
     demo_id = new_id()
 
-    # Generate HTML and outreach message BEFORE holding any DB locks
+    # 3. Generate HTML via structured AI JSON + Jinja2 niche templates
     html, _engine = await generate_landing_html(data)
     message = await generate_outreach_message(data, public_demo_url(demo_id))
 
-    # Save to database in a fresh, isolated transaction (protects against idle connection drops)
+    # 4. Save to database in a fresh, isolated transaction (protects against idle connection drops)
     async with SessionLocal() as db:
         demo = DemoSite(
             id=demo_id,

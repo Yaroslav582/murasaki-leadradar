@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import api_router
@@ -156,6 +158,12 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
+
+# Static files mount (for uploads, avatars, persisted media)
+_static_dir = Path(__file__).resolve().parent / "static"
+_static_dir.mkdir(parents=True, exist_ok=True)
+(_static_dir / "uploads" / "media").mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 
 @app.get("/health")

@@ -1,15 +1,76 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import html
 import json
+import logging
 import re
+from pathlib import Path
 from string import Template
 from typing import Any
 from urllib.parse import quote
 
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
 from app.config import settings
 from app.services.ai_router import ask_ai
+
+logger = logging.getLogger(__name__)
+
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates" / "demos"
+jinja_env = Environment(
+    loader=FileSystemLoader(str(TEMPLATES_DIR)),
+    autoescape=select_autoescape(["html", "xml"]),
+)
+
+
+def format_tel_href(phone: str | None) -> str:
+    """Strictly formats any phone number into tel:+79991234567, never about:invalid."""
+    if not phone:
+        return ""
+    digits = re.sub(r"\D", "", str(phone))
+    if not digits:
+        return ""
+    if len(digits) == 11 and digits.startswith("8"):
+        digits = "7" + digits[1:]
+    elif len(digits) == 10:
+        digits = "7" + digits
+    return f"tel:+{digits}"
+
+
+MURASAKI_BADGE_SNIPPET = """
+<!-- Murasaki LeadRadar Official Concept Badge -->
+<div class="fixed top-3 inset-x-3 z-50 mx-auto max-w-md pointer-events-none">
+  <div class="pointer-events-auto flex items-center justify-between gap-2.5 rounded-2xl border border-black/10 bg-white/95 px-3.5 py-2 shadow-xl backdrop-blur-md">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="relative flex h-2 w-2">
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+      </span>
+      <p class="truncate text-xs font-semibold text-slate-800">
+        Персональный демо-концепт для {business_name}
+      </p>
+    </div>
+    <a href="https://t.me/Murasaki_website" target="_blank" rel="noopener" class="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-[#229ED9] px-2.5 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-[#1C88BD]">
+      <span>Написать</span> →
+    </a>
+  </div>
+</div>
+"""
+
+
+def inject_murasaki_badge(html_text: str, business_name: str = "") -> str:
+    """Ensures the Murasaki LeadRadar demo badge is injected into HTML before </body>."""
+    if not html_text:
+        return html_text
+    if "Murasaki_website" in html_text:
+        return html_text
+    badge = MURASAKI_BADGE_SNIPPET.replace("{business_name}", html.escape(business_name or "бизнеса"))
+    body_idx = html_text.lower().rfind("</body>")
+    if body_idx != -1:
+        return html_text[:body_idx] + badge + "\n" + html_text[body_idx:]
+    return html_text + "\n" + badge
 
 CITY_PREPOSITIONAL = {
     "Москва": "Москве",
@@ -1073,46 +1134,103 @@ CTA-ссылки:
 )
 
 
+def detect_template_id(category: str | None) -> str:
+    """Select the best matching Jinja2 template based on business category."""
+    cat = (category or "").lower()
+    if any(k in cat for k in ("бьюти", "красот", "маникюр", "педикюр", "волос", "парикмахер", "косметол", "цветы", "одежд", "спа", "ногти", "брови")):
+        return "editorial_light"
+    if any(k in cat for k in ("авто", "сервис", "шиномонтаж", "детейлинг", "мойка", "кузов", "сто", "барбер", "спорт", "стройк", "ремонт авто")):
+        return "dark_industrial"
+    if any(k in cat for k in ("ресторан", "кафе", "кофейн", "пекарн", "доставка еды", "пицц", "суши", "бургер", "бар", "кухн", "кондитер")):
+        return "warm_appetite"
+    return "clean_trust"
+
+
+def render_jinja_demo(
+    template_id: str,
+    business_dict: dict[str, Any],
+    content_json: dict[str, Any],
+    hero_image: str,
+    gallery_photos: list[str],
+) -> str:
+    """Renders one of the 4 Jinja2 templates with business data and structured AI JSON."""
+    template_name = f"{template_id}.html"
+    try:
+        tmpl = jinja_env.get_template(template_name)
+    except Exception:
+        tmpl = jinja_env.get_template("clean_trust.html")
+
+    phone_raw = business_dict.get("phone")
+    tel_href = format_tel_href(phone_raw)
+    socials = business_dict.get("social_links") or {}
+    primary_cta = socials.get("whatsapp") or socials.get("telegram") or tel_href or "#"
+    city = business_dict.get("city") or "Россия"
+    city_in = _city_in(city)
+
+    rendered = tmpl.render(
+        business=business_dict,
+        content=content_json,
+        hero_image=hero_image,
+        gallery_photos=gallery_photos,
+        tel_href=tel_href,
+        primary_cta_href=primary_cta,
+        map_url=business_dict.get("yandex_map_url") or f"https://yandex.ru/maps/?text={quote(business_dict.get('name', '') + ' ' + city)}",
+        city_in=city_in,
+    )
+    return inject_murasaki_badge(rendered, business_dict.get("name") or "")
+
+
 async def generate_landing_html(lead: dict) -> tuple[str, str]:
-    """Generates an HTML landing page via AI or high-grade deterministic fallback template."""
+    """
+    Generates an HTML landing page via structured AI JSON + 4 dedicated Jinja2 templates:
+      - editorial_light: Beauty, flowers, fashion, aesthetics
+      - dark_industrial: Auto services, detailing, barbershops, construction
+      - warm_appetite: Restaurants, cafes, bakeries, food delivery
+      - clean_trust: Medicine, legal, corporate B2B, services
+    """
+    from app.services.media_collector import get_niche_fallback
+
     category = lead.get("category") or "Бизнес"
-    company = {
-        "name": lead.get("name"),
-        "category": category,
-        "city": lead.get("city"),
-        "address": lead.get("address"),
-        "phone": lead.get("phone"),
-        "rating": lead.get("rating"),
-        "reviews_count": lead.get("reviews_count"),
-        "opening_hours": lead.get("opening_hours"),
-        "social_links": lead.get("social_links"),
-        "photos": lead.get("photos") or [],
-        "logo_url": lead.get("logo_url"),
-    }
-    socials = lead.get("social_links") or {}
-    phone = _phone_digits(lead.get("phone"))
+    niche_fallback = get_niche_fallback(category)
+    photos = list(lead.get("photos") or [])
+    hero_img = photos[0] if photos else niche_fallback.get("hero")
+    gallery_imgs = photos[1:7] if len(photos) > 1 else niche_fallback.get("gallery", [])
 
-    if settings.llm_provider and settings.llm_provider.lower() not in ("mock", "template", "none"):
-        prompt = LANDING_PROMPT.safe_substitute(
-            company=json.dumps(company, ensure_ascii=False, indent=2),
-            whatsapp_link=socials.get("whatsapp") or (f"https://wa.me/{phone}" if phone else "нет"),
-            telegram_link=socials.get("telegram") or "нет",
-            phone_link=f"tel:{phone}" if phone else "нет",
-            category=category,
-            name=lead.get("name") or "компания",
+    # 1. Generate structured JSON from LLM
+    try:
+        from app.services.ai_router import generate_demo_json
+        content_json = await asyncio.wait_for(
+            generate_demo_json(
+                lead_dict=lead,
+                hero_photos=[hero_img] if hero_img else [],
+                interior_photos=gallery_imgs,
+            ),
+            timeout=8.0,
         )
-        try:
-            raw = await asyncio.wait_for(
-                ask_ai(prompt, system_prompt=LANDING_SYSTEM, task_type="code", max_tokens=2200, temperature=0.7),
-                timeout=6.0,
-            )
-            parsed = _extract_html(raw)
-            if parsed:
-                return parsed, "llm"
-        except Exception:
-            pass
+        template_id = content_json.get("template_id") or detect_template_id(category)
+        html_code = render_jinja_demo(
+            template_id=template_id,
+            business_dict=lead,
+            content_json=content_json,
+            hero_image=hero_img or "",
+            gallery_photos=gallery_imgs,
+        )
+        return html_code, "jinja2_llm"
+    except Exception as exc:
+        logger.warning("LLM landing JSON failed: %s, falling back to deterministic Jinja2 render", exc)
 
-    return build_fallback_landing(lead), "template"
+    # 2. Deterministic Jinja2 render fallback
+    template_id = detect_template_id(category)
+    from app.services.ai_router import generate_demo_json
+    fallback_json = await generate_demo_json(lead, [hero_img] if hero_img else [], gallery_imgs)
+    html_code = render_jinja_demo(
+        template_id=template_id,
+        business_dict=lead,
+        content_json=fallback_json,
+        hero_image=hero_img or "",
+        gallery_photos=gallery_imgs,
+    )
+    return html_code, "jinja2_template"
 
 
 OUTREACH_SYSTEM = (

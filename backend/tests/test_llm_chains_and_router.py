@@ -186,3 +186,4 @@ def test_router_stats_endpoint() -> None:
     assert "vision_models_chain" in stats
     assert len(stats["text_models_chain"]) == 12
     assert len(stats["vision_models_chain"]) == 5
+

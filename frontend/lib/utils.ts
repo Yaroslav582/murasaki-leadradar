@@ -438,6 +438,8 @@ export function generatePromptForLead(lead: {
   reviews_count?: number;
   opening_hours?: string[];
   social_links?: Record<string, string | undefined>;
+  photos?: string[];
+  logo_url?: string | null;
 }): string {
   const hours = (lead.opening_hours ?? []).join(", ") || "Ежедневно 10:00–21:00";
   const socials = Object.entries(lead.social_links ?? {})
@@ -445,28 +447,70 @@ export function generatePromptForLead(lead: {
     .map(([k, v]) => `${k}: ${v}`)
     .join(", ") || "нет";
 
-  return `Создай премиальный одностраничный конверсионный лендинг (landing page) для компании:
-- Название: ${lead.name}
-- Сфера/ниша: ${lead.category}
+  const rawPhone = lead.phone || "";
+  const phoneDigits = rawPhone.replace(/\D/g, "");
+  let cleanPhoneHref = "";
+  if (phoneDigits.length === 11 && phoneDigits.startsWith("8")) {
+    cleanPhoneHref = `tel:+7${phoneDigits.slice(1)}`;
+  } else if (phoneDigits.length === 10) {
+    cleanPhoneHref = `tel:+7${phoneDigits}`;
+  } else if (phoneDigits.length >= 10) {
+    cleanPhoneHref = `tel:+${phoneDigits}`;
+  }
+
+  // Determine niche aesthetic style recommendation
+  const cat = (lead.category || "").toLowerCase();
+  let styleRecommendation = "";
+  if (cat.includes("бьюти") || cat.includes("красот") || cat.includes("маникюр") || cat.includes("волос") || cat.includes("цвет") || cat.includes("одежд")) {
+    styleRecommendation = `Стиль «Editorial Light»: молочный/бежевый фон (#FAF8F5), утонченные шрифты с засечками (Playfair Display / Cormorant), мягкие скругления 24px, шалфейные акценты.`;
+  } else if (cat.includes("авто") || cat.includes("сервис") || cat.includes("шиномонтаж") || cat.includes("детейлинг") || cat.includes("спорт") || cat.includes("строй")) {
+    styleRecommendation = `Стиль «Dark Industrial»: графитовый тёмный фон (#111215), контрастный оранжевый или кислотный акцент (#FF6B00), гротескные шрифты (Unbounded / Manrope), строгие углы 4-6px.`;
+  } else if (cat.includes("ресторан") || cat.includes("кафе") || cat.includes("пекарн") || cat.includes("еда") || cat.includes("кофе") || cat.includes("бар")) {
+    styleRecommendation = `Стиль «Warm Appetite»: теплая палитра (#FAF6F0), терракотовые акценты (#C85A32), акцент на аппетитные фото блюд и удобное меню.`;
+  } else {
+    styleRecommendation = `Стиль «Clean Trust»: деловой минимализм, белый/светло-серый фон (#F8FAFC), темно-синий/индиго акцент (#1E3A8A), акцент на цифрах, лицензиях и гарантиях.`;
+  }
+
+  const photos = lead.photos || [];
+  const heroPhoto = photos[0] || lead.logo_url || "https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=1200&q=80";
+  const galleryPhotos = photos.slice(1, 5);
+  const galleryList = galleryPhotos.length > 0
+    ? galleryPhotos.map((url, i) => `   - Фото ${i + 1}: ${url}`).join("\n")
+    : "   - (Используй тематические фото с Unsplash)";
+
+  return `Создай премиальный конверсионный мобильный лендинг (mobile-first, max-w-md mx-auto) для компании:
+- Название компании: ${lead.name}
+- Ниша бизнеса: ${lead.category}
 - Город: ${lead.city}
 - Адрес: ${lead.address || "Центр города"}
-- Телефон: ${lead.phone || "Уточняется"}
-- Рейтинг: ${lead.rating ? lead.rating.toFixed(1) + "★" : "5.0★"} (${lead.reviews_count || 15} отзывов на картах)
-- Часы работы: ${hours}
-- Соцсети: ${socials}
+- Телефон для связи: ${rawPhone || "Уточняется"} (${cleanPhoneHref || "кнопка tel:"})
+- Рейтинг доверия: ${lead.rating ? lead.rating.toFixed(1) + "★" : "4.9★"} (${lead.reviews_count || 15} отзывов на картах)
+- Режим работы: ${hours}
+- Соцсети и мессенджеры: ${socials}
 
-Технические требования:
-1. Валидный, самодостаточный HTML5 с CDN Tailwind CSS (<script src="https://cdn.tailwindcss.com"></script>).
-2. Темный современный дизайн (графитово-серый фон #0D0E12, карточки #181920 с тонкими рамками, яркие акценты).
-3. Mobile-first адаптивность: безупречный вид на смартфонах и десктопе.
-4. Секции лендинга:
-   - Шапка: логотип/название, город, кнопка звонка / WhatsApp.
-   - Hero-блок: броский оффер под нишу, подзаголовок с выгодой, бейдж рейтинга, кнопка «Записаться / Оставить заявку».
-   - Каталог популярных услуг с ценами в рублях.
-   - 3 ключевых преимущества компании.
-   - 2-3 реальных отзыва клиентов с оценкой 5 звёзд.
-   - Контакты, адрес и интерактивные кнопки прямого звонка (tel:) и мессенджера (wa.me).
-5. Не используй внешние картинки, требующие API. Используй качественные SVG-иконки или стильные эмодзи-плашки.
+РЕКОМЕНДУЕМЫЙ ДИЗАЙН-КОД:
+${styleRecommendation}
 
-Верни ТОЛЬКО готовый HTML-код (от <!DOCTYPE html> до </html>) без пояснительного текста.`;
+РЕАЛЬНЫЕ ФОТО БИЗНЕСА:
+- Главное фото первого экрана (hero_product): ${heroPhoto}
+- Фотографии для галереи и услуг (interior / product):
+${galleryList}
+
+СТРОЖАЙШИЙ ЗАПРЕТ:
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать свои сторонние ссылки на изображения! Используй ИСКЛЮЧИТЕЛЬНО указанные выше URL в тегах <img> (обязательно с защитным атрибутом onerror="this.onerror=null; this.src='${heroPhoto}';").
+
+ТЕХНИЧЕСКИЕ ТРЕБОВАНИЯ К ВЕРСТКЕ:
+1. Валидный, автономный HTML5 с CDN Tailwind CSS (<script src="https://cdn.tailwindcss.com"></script>) и Google Fonts.
+2. Кнопка звонка строго с валидной ссылкой href="${cleanPhoneHref || "tel:+79990000000"}" (ни в коем случае не about:invalid).
+3. Секции лендинга:
+   - Hero-экран: логотип/бейдж ниши, броский заголовок с УТП, подзаголовок, бейдж рейтинга, фото, главная кнопка действия.
+   - 3 ключевых преимущества компании с понятным описанием.
+   - Каталог популярных услуг с ценами в рублях (4 карточки).
+   - Галерея из переданных фото.
+   - Частые вопросы (FAQ) — 2-3 вопроса и ответа.
+   - Контакты, адрес и кнопка звонка.
+   - Фиксированная нижняя панель (sticky bottom bar) с кнопкой быстрой записи.
+   - В самом верху или перед </body> обязательно добавь плавающую плашку: «Персональный демо-концепт для ${lead.name} • Связаться с разработчиком в Telegram (https://t.me/Murasaki_website)».
+
+Верни ТОЛЬКО чистый готовый HTML-код (от <!DOCTYPE html> до </html>) без вступительного текста, без пояснений и без markdown-разметки.`;
 }

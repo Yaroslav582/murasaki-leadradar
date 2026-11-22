@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Query
+import re
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -184,18 +185,37 @@ async def generate_demo(
     if lead is None:
         raise HTTPException(status_code=404, detail="Лид не найден")
 
-    # Spend 5 credits for AI demo generation
+    # 1. Pre-check credits balance before running generation
     user = await get_or_create_user(session)
-    await check_and_spend(
-        session=session,
-        user_id=user.id,
-        amount=settings.credits_per_demo,
-        module_name="ai_demo",
-        description=f"Генерация AI-демо сайта для {lead.name}",
-    )
-    await session.commit()
+    if user.credits_balance < settings.credits_per_demo:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Недостаточно кредитов ({user.credits_balance} cr). Требуется {settings.credits_per_demo} cr.",
+        )
 
-    demo = await create_demo(session, lead)
+    # 2. Transactional safety: generate demo first
+    try:
+        demo = await create_demo(session, lead)
+    except Exception as exc:
+        logger.error("Failed to generate demo for lead %s: %s", lead_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка генерации демо-сайта: {exc}. Кредиты не списаны.",
+        )
+
+    # 3. Spend credits strictly AFTER successful creation and persistence
+    try:
+        await check_and_spend(
+            session=session,
+            user_id=user.id,
+            amount=settings.credits_per_demo,
+            module_name="ai_demo",
+            description=f"Генерация AI-демо сайта для {lead.name}",
+        )
+        await session.commit()
+    except Exception as spend_err:
+        logger.warning("Credit deduction notice for user %s: %s", user.id, spend_err)
+
     return demo_out(demo)
 
 
@@ -210,12 +230,30 @@ async def save_custom_demo(
     if lead is None:
         raise HTTPException(status_code=404, detail="Лид не найден")
 
+    # Clean incoming custom HTML from markdown fences and surrounding chat preambles
+    clean_html = (payload.html or "").strip()
+    clean_html = re.sub(r"^```(?:html)?\s*", "", clean_html, flags=re.I)
+    clean_html = re.sub(r"\s*```$", "", clean_html)
+    start_tag = clean_html.lower().find("<!doctype html")
+    if start_tag == -1:
+        start_tag = clean_html.lower().find("<html")
+    if start_tag != -1:
+        end_tag = clean_html.lower().rfind("</html>")
+        if end_tag != -1:
+            clean_html = clean_html[start_tag : end_tag + len("</html>")]
+        else:
+            clean_html = clean_html[start_tag:] + "\n</html>"
+
+    # Enforce Murasaki LeadRadar floating badge before </body>
+    from app.services.landing import inject_murasaki_badge
+    final_html = inject_murasaki_badge(clean_html, lead.name or "бизнеса")
+
     demo = None
     if lead.demo_id:
         demo = await session.get(DemoSite, lead.demo_id)
 
     if demo:
-        demo.html = payload.html
+        demo.html = final_html
         if payload.message:
             demo.message = payload.message
         if payload.title:
@@ -226,7 +264,7 @@ async def save_custom_demo(
         demo = DemoSite(
             lead_id=lead.id,
             title=payload.title or f"Демо для {lead.name}",
-            html=payload.html,
+            html=final_html,
             message=payload.message or "",
             published=True,
         )
