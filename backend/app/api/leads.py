@@ -193,6 +193,7 @@ async def generate_demo(
         module_name="ai_demo",
         description=f"Генерация AI-демо сайта для {lead.name}",
     )
+    await session.commit()
 
     demo = await create_demo(session, lead)
     return demo_out(demo)

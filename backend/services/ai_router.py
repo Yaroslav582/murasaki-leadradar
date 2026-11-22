@@ -1,22 +1,39 @@
 """
 Proxy module exposing app.services.ai_router as services.ai_router
 """
+from app.config import DEFAULT_TEXT_MODELS_CHAIN, DEFAULT_VISION_MODELS_CHAIN
 from app.services.ai_router import (
-    ask_ai,
-    get_ai_router_stats,
-    get_task_chain,
-    rate_limiter,
     AIRateLimiter,
     AIQuotaExceededError,
     AllProvidersFailedError,
+    ask_ai,
+    ask_ai_json,
+    ask_ai_vision,
+    extract_json_payload,
+    get_ai_router_stats,
+    get_task_chain,
+    get_text_models_chain,
+    get_vision_models_chain,
+    parse_model_chain,
+    rate_limiter,
+    sort_business_photos,
 )
 
 __all__ = [
-    "ask_ai",
-    "get_ai_router_stats",
-    "get_task_chain",
-    "rate_limiter",
+    "DEFAULT_TEXT_MODELS_CHAIN",
+    "DEFAULT_VISION_MODELS_CHAIN",
     "AIRateLimiter",
     "AIQuotaExceededError",
     "AllProvidersFailedError",
+    "ask_ai",
+    "ask_ai_json",
+    "ask_ai_vision",
+    "extract_json_payload",
+    "get_ai_router_stats",
+    "get_task_chain",
+    "get_text_models_chain",
+    "get_vision_models_chain",
+    "parse_model_chain",
+    "rate_limiter",
+    "sort_business_photos",
 ]

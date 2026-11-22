@@ -1092,7 +1092,7 @@ async def generate_landing_html(lead: dict) -> tuple[str, str]:
     socials = lead.get("social_links") or {}
     phone = _phone_digits(lead.get("phone"))
 
-    if settings.llm_provider and settings.llm_provider.lower() != "mock":
+    if settings.llm_provider and settings.llm_provider.lower() not in ("mock", "template", "none"):
         prompt = LANDING_PROMPT.safe_substitute(
             company=json.dumps(company, ensure_ascii=False, indent=2),
             whatsapp_link=socials.get("whatsapp") or (f"https://wa.me/{phone}" if phone else "нет"),
@@ -1102,7 +1102,10 @@ async def generate_landing_html(lead: dict) -> tuple[str, str]:
             name=lead.get("name") or "компания",
         )
         try:
-            raw = await ask_ai(prompt, system_prompt=LANDING_SYSTEM, task_type="code", max_tokens=4000, temperature=0.7)
+            raw = await asyncio.wait_for(
+                ask_ai(prompt, system_prompt=LANDING_SYSTEM, task_type="code", max_tokens=2200, temperature=0.7),
+                timeout=6.0,
+            )
             parsed = _extract_html(raw)
             if parsed:
                 return parsed, "llm"
@@ -1174,7 +1177,7 @@ def build_outreach(lead: dict, demo_url: str) -> str:
 
 
 async def generate_outreach_message(lead: dict, demo_url: str) -> str:
-    if settings.llm_provider and settings.llm_provider.lower() != "mock":
+    if settings.llm_provider and settings.llm_provider.lower() not in ("mock", "template", "none"):
         name = lead.get("name") or "ваша компания"
         category = lead.get("category") or "Бизнес"
         city = lead.get("city") or "Россия"
@@ -1187,7 +1190,10 @@ async def generate_outreach_message(lead: dict, demo_url: str) -> str:
             demo_url=demo_url,
         )
         try:
-            raw = await ask_ai(prompt, system_prompt=OUTREACH_SYSTEM, task_type="fast", max_tokens=300, temperature=0.7)
+            raw = await asyncio.wait_for(
+                ask_ai(prompt, system_prompt=OUTREACH_SYSTEM, task_type="fast", max_tokens=300, temperature=0.7),
+                timeout=4.0,
+            )
             cleaned = raw.strip().strip('"').strip("'")
             if cleaned and len(cleaned) > 50:
                 return cleaned

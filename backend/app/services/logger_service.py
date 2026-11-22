@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any
 
 from app.db import SessionLocal
@@ -38,6 +39,8 @@ def log_event_bg(
     details: dict[str, Any] | None = None,
 ) -> None:
     """Non-blocking background helper for logging to Supabase."""
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return
     try:
         loop = asyncio.get_running_loop()
         loop.create_task(log_system_event(module, message, level, details))

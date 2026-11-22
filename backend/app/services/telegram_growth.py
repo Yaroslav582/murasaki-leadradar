@@ -730,7 +730,7 @@ async def generate_ai_blog_post(
     # 3. Fallback selection with strict anti-duplicate guarantee
     available_fallbacks = [fb for fb in FALLBACK_BLOG_POSTS if fb["id"] not in recent_ids]
     if not available_fallbacks:
-        # All 15 were used: select the least recently used one (LRU)
+        # All were used: select the least recently used ones or shuffle
         hist_ids = [h.get("id") for h in history]
         def lru_key(fb: dict[str, Any]) -> int:
             try:
@@ -739,7 +739,9 @@ async def generate_ai_blog_post(
                 return -1
         available_fallbacks = sorted(FALLBACK_BLOG_POSTS, key=lru_key)
 
-    chosen = available_fallbacks[0]
+    # Pick randomly from the top candidates instead of always picking [0]
+    candidate_pool = available_fallbacks[:max(1, min(len(available_fallbacks), 3))]
+    chosen = random.choice(candidate_pool)
     fallback_title = chosen["title"]
     fallback_text = chosen["text"].format(portfolio=url)
 

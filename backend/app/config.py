@@ -28,6 +28,30 @@ def read_secret_fallback(key: str, default: str | None = None) -> str | None:
     return default
 
 
+DEFAULT_TEXT_MODELS_CHAIN = (
+    "groq:openai/gpt-oss-120b,"
+    "groq:qwen/qwen3.8-27b,"
+    "openrouter:baidu/ernie-5.5-flash-preview:free,"
+    "openrouter:nvidia/nemotron-3.5-lightning:free,"
+    "openrouter:nvidia/nemotron-3-ultra:free,"
+    "openrouter:cohere/north-mini-code:free,"
+    "groq:openai/gpt-oss-20b,"
+    "openrouter:perplexity/decider-v1.3:free,"
+    "gemini:gemini-3.8-flash,"
+    "gemini:gemini-3.6-flash,"
+    "gemini:gemini-4-hydrogen,"
+    "gemini:gemini-3.5-flash-lite"
+)
+
+DEFAULT_VISION_MODELS_CHAIN = (
+    "openrouter:nvidia/nemotron-3.5-super-vl:free,"
+    "openrouter:inclusionai/ling-3.2-flash:free,"
+    "openrouter:thinkingmachines/inkling-2-small:free,"
+    "gemini:gemini-3.5-flash-lite,"
+    "gemini:gemini-3.8-flash"
+)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
@@ -49,7 +73,12 @@ class Settings(BaseSettings):
     use_celery: bool = False
     seed_on_start: bool = True
 
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    cors_origins: str = (
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "https://frontend-mocha-three-gfa8fzsldf.vercel.app,"
+        "https://murasaki-portfolio.vercel.app,"
+        "https://web.telegram.org"
+    )
     public_base_url: str = "http://127.0.0.1:8000"
 
     google_places_api_key: str | None = None
@@ -73,6 +102,8 @@ class Settings(BaseSettings):
     mxr_base_url: str | None = "https://mxr.one/v1"
     ai_proxy_url: str | None = None
     max_daily_llm_calls: int = 400
+    text_models_chain: str = DEFAULT_TEXT_MODELS_CHAIN
+    vision_models_chain: str = DEFAULT_VISION_MODELS_CHAIN
 
     http_timeout: float = 12.0
     enrichment_concurrency: int = 8
@@ -141,6 +172,10 @@ class Settings(BaseSettings):
             self.openrouter_api_key = read_secret_fallback("OPENROUTER_API_KEY")
         if not self.mxr_api_key:
             self.mxr_api_key = read_secret_fallback("MXR_API_KEY")
+        if not self.text_models_chain:
+            self.text_models_chain = read_secret_fallback("TEXT_MODELS_CHAIN", DEFAULT_TEXT_MODELS_CHAIN)
+        if not self.vision_models_chain:
+            self.vision_models_chain = read_secret_fallback("VISION_MODELS_CHAIN", DEFAULT_VISION_MODELS_CHAIN)
         if not self.database_url:
             self.database_url = read_secret_fallback("DATABASE_URL")
         max_calls = read_secret_fallback("MAX_DAILY_LLM_CALLS")

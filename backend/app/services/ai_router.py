@@ -1,47 +1,34 @@
 """
 Unified AI routing and multi-provider fallback engine for Murasaki LeadRadar.
 Uses AsyncOpenAI with OpenAI-compatible endpoints across:
-1. Google AI Studio / Gemini (https://generativelanguage.googleapis.com/v1beta/openai/)
-2. Groq (https://api.groq.com/openai/v1)
-3. OpenRouter (https://openrouter.ai/api/v1)
-4. MXR / OpenAI-compatible paid provider (Last-resort paid reserve)
+1. Groq (https://api.groq.com/openai/v1)
+2. OpenRouter (https://openrouter.ai/api/v1)
+3. Google AI Studio / Gemini (https://generativelanguage.googleapis.com/v1beta/openai/)
+4. MXR / OpenAI-compatible paid provider (Last-resort reserve)
 
-Chains configured per task_type:
-- "fast":
-  1. Groq -> openai/gpt-oss-20b (fallback: llama-3.1-8b-instant)
-  2. Google AI Studio -> gemini-3.5-flash-lite (fallback: gemini-2.5-flash-lite)
-  3. Groq -> qwen/qwen3.8-27b (fallback: llama-3.3-70b-versatile)
-  4. OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.1-8b-instruct:free)
-  5. MXR -> reserve model (from .env)
-
-- "smart":
-  1. Groq -> qwen/qwen3.8-27b (fallback: llama-3.3-70b-versatile)
-  2. Google AI Studio -> gemini-3.8-flash (fallback: gemini-2.5-flash)
-  3. Google AI Studio -> gemini-3.6-flash (fallback: gemini-2.0-flash-lite)
-  4. Groq -> openai/gpt-oss-120b (fallback: llama-3.3-70b-versatile)
-  5. OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.3-70b-instruct:free)
-  6. MXR -> reserve model (from .env)
-
-- "code":
-  1. Google AI Studio -> gemini-4-hydrogen (fallback: gemini-3.8-flash)
-  2. Google AI Studio -> gemini-3.8-flash (fallback: gemini-2.5-flash)
-  3. Groq -> openai/gpt-oss-120b (fallback: llama-3.3-70b-versatile)
-  4. OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.3-70b-instruct:free)
-  5. MXR -> reserve model (from .env)
+Chains configured via environment variables:
+- TEXT_MODELS_CHAIN: Ordered list of provider:model_id for text, copy, code and landing JSON generation.
+- VISION_MODELS_CHAIN: Ordered list of provider:model_id for multimodal image analysis & photo sorting.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 from openai import AsyncOpenAI
 
-from app.config import settings
+from app.config import (
+    DEFAULT_TEXT_MODELS_CHAIN,
+    DEFAULT_VISION_MODELS_CHAIN,
+    settings,
+)
 from app.services.logger_service import log_event_bg
 
 logger = logging.getLogger(__name__)
@@ -176,7 +163,7 @@ def get_openai_client(
     return client
 
 
-# ── Provider Chain Definitions ────────────────────────────────────────────────
+# ── Provider Resolution & Chain Parsers ───────────────────────────────────────
 def _read_secret(key: str) -> str:
     """Reads secret from environment, or from Render Secret Files (/etc/secrets/<key>)."""
     val = os.getenv(key)
@@ -197,7 +184,9 @@ def _read_secret(key: str) -> str:
 
 def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
     """Resolves credentials and base URL for a provider ID. Returns None if unconfigured."""
-    if provider_id == "groq":
+    p = provider_id.strip().lower()
+
+    if p == "groq":
         key = (settings.groq_api_key or _read_secret("GROQ_API_KEY")).strip()
         if not key:
             return None
@@ -208,7 +197,7 @@ def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
             "extra_headers": None,
         }
 
-    if provider_id == "gemini":
+    if p in ("gemini", "google"):
         key = (settings.gemini_api_key or _read_secret("GEMINI_API_KEY")).strip()
         if not key:
             return None
@@ -219,7 +208,7 @@ def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
             "extra_headers": None,
         }
 
-    if provider_id == "openrouter":
+    if p == "openrouter":
         key = (settings.openrouter_api_key or _read_secret("OPENROUTER_API_KEY")).strip()
         if not key:
             return None
@@ -233,7 +222,7 @@ def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
             },
         }
 
-    if provider_id == "mxr":
+    if p in ("mxr", "openai"):
         key = (
             settings.mxr_api_key
             or _read_secret("MXR_API_KEY")
@@ -259,99 +248,129 @@ def _get_provider_config(provider_id: str) -> dict[str, Any] | None:
     return None
 
 
-def get_task_chain(task_type: str) -> list[tuple[str, list[str]]]:
+def parse_model_chain(raw_chain: str | None) -> list[tuple[str, str]]:
     """
-    Returns ordered steps for task_type: list of (provider_id, [model_candidates]).
-
-    1. fast:
-       - Groq -> openai/gpt-oss-20b (fallback: llama-3.1-8b-instant)
-       - Google AI Studio -> gemini-3.5-flash-lite (fallback: gemini-2.5-flash-lite)
-       - Groq -> qwen/qwen3.8-27b (fallback: llama-3.3-70b-versatile)
-       - OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.1-8b-instruct:free)
-       - MXR -> current reserve model
-
-    2. smart:
-       - Groq -> qwen/qwen3.8-27b (fallback: llama-3.3-70b-versatile)
-       - Google AI Studio -> gemini-3.8-flash (fallback: gemini-2.5-flash)
-       - Google AI Studio -> gemini-3.6-flash (fallback: gemini-2.0-flash-lite)
-       - Groq -> openai/gpt-oss-120b (fallback: llama-3.3-70b-versatile)
-       - OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.3-70b-instruct:free)
-       - MXR -> current reserve model
-
-    3. code:
-       - Google AI Studio -> gemini-4-hydrogen (fallback: gemini-3.8-flash)
-       - Google AI Studio -> gemini-3.8-flash (fallback: gemini-2.5-flash)
-       - Groq -> openai/gpt-oss-120b (fallback: llama-3.3-70b-versatile)
-       - OpenRouter -> openrouter/free (fallback: meta-llama/llama-3.3-70b-instruct:free)
-       - MXR -> current reserve model
+    Parses comma-separated 'provider:model_id' strings into a structured list of (provider, model_id).
+    Splits strictly on the first colon to preserve model tags like ':free'.
     """
-    reserve_model = settings.openai_model or "gpt-6-sol"
+    if not raw_chain or not raw_chain.strip():
+        return []
 
-    if task_type == "fast":
-        return [
-            ("groq", ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "gemma2-9b-it"]),
-            ("gemini", ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"]),
-            ("openrouter", ["meta-llama/llama-3.1-8b-instruct:free", "openrouter/free"]),
-            ("mxr", [reserve_model, "gpt-4o-mini"]),
-        ]
-
-    if task_type == "smart":
-        return [
-            ("groq", ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "llama-3.1-8b-instant"]),
-            ("gemini", ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]),
-            ("openrouter", ["meta-llama/llama-3.3-70b-instruct:free", "openrouter/free"]),
-            ("mxr", [reserve_model, "gpt-4o-mini"]),
-        ]
-
-    if task_type == "code":
-        return [
-            ("gemini", ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]),
-            ("groq", ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"]),
-            ("openrouter", ["meta-llama/llama-3.3-70b-instruct:free", "openrouter/free"]),
-            ("mxr", [reserve_model, "gpt-4o-mini"]),
-        ]
-
-    return [
-        ("groq", ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]),
-        ("gemini", ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]),
-        ("openrouter", ["meta-llama/llama-3.1-8b-instruct:free", "openrouter/free"]),
-        ("mxr", [reserve_model, "gpt-4o-mini"]),
-    ]
+    results: list[tuple[str, str]] = []
+    tokens = [t.strip() for t in raw_chain.split(",") if t.strip()]
+    for token in tokens:
+        if ":" in token:
+            prov, model_id = token.split(":", 1)
+            prov = prov.strip().lower()
+            model_id = model_id.strip()
+            if prov and model_id:
+                results.append((prov, model_id))
+    return results
 
 
-# ── Core AI Router Function ───────────────────────────────────────────────────
+def get_text_models_chain() -> list[tuple[str, str]]:
+    """Returns the parsed ordered list of text models from TEXT_MODELS_CHAIN in .env."""
+    raw = (
+        getattr(settings, "text_models_chain", None)
+        or os.getenv("TEXT_MODELS_CHAIN")
+        or DEFAULT_TEXT_MODELS_CHAIN
+    )
+    chain = parse_model_chain(raw)
+    return chain if chain else parse_model_chain(DEFAULT_TEXT_MODELS_CHAIN)
+
+
+def get_vision_models_chain() -> list[tuple[str, str]]:
+    """Returns the parsed ordered list of multimodal vision models from VISION_MODELS_CHAIN in .env."""
+    raw = (
+        getattr(settings, "vision_models_chain", None)
+        or os.getenv("VISION_MODELS_CHAIN")
+        or DEFAULT_VISION_MODELS_CHAIN
+    )
+    chain = parse_model_chain(raw)
+    return chain if chain else parse_model_chain(DEFAULT_VISION_MODELS_CHAIN)
+
+
+def get_task_chain(task_type: str = "text") -> list[tuple[str, str]]:
+    """Unified helper returning the ordered model chain for a task."""
+    if task_type == "vision":
+        return get_vision_models_chain()
+    return get_text_models_chain()
+
+
+# ── JSON Extraction Helper ────────────────────────────────────────────────────
+def extract_json_payload(text: str) -> dict[str, Any] | list[Any] | None:
+    """Extracts and parses JSON object or array from LLM response text."""
+    if not text or not text.strip():
+        return None
+    cleaned = text.strip()
+
+    # 1. Direct JSON parse
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        pass
+
+    # 2. Markdown fenced code block ```json ... ```
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, re.IGNORECASE)
+    if match:
+        try:
+            return json.loads(match.group(1).strip())
+        except Exception:
+            pass
+
+    # 3. Outer braces {...}
+    first_brace = cleaned.find("{")
+    last_brace = cleaned.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        try:
+            return json.loads(cleaned[first_brace : last_brace + 1])
+        except Exception:
+            pass
+
+    # 4. Outer brackets [...]
+    first_bracket = cleaned.find("[")
+    last_bracket = cleaned.rfind("]")
+    if first_bracket != -1 and last_bracket > first_bracket:
+        try:
+            return json.loads(cleaned[first_bracket : last_bracket + 1])
+        except Exception:
+            pass
+
+    return None
+
+
+# ── Core Text & JSON AI Router Function ───────────────────────────────────────
 async def ask_ai(
     prompt: str,
     system_prompt: str = "",
-    task_type: str = "fast",
+    task_type: str = "text",
     max_tokens: int | None = None,
     temperature: float = 0.7,
+    expect_json: bool = False,
 ) -> str:
     """
-    Unified entry point for all AI calls across Murasaki LeadRadar.
-    Automatically handles rate limiting (max 400 calls/day), model selection,
-    per-task timeouts (15s fast/smart, 45s code), and instant fallback across models.
-
-    :param prompt: User prompt or main task description
-    :param system_prompt: System role instructions
-    :param task_type: "fast" | "smart" | "code"
-    :param max_tokens: Max tokens to generate (defaults: fast=200, smart=500, code=4000)
-    :param temperature: Generation temperature (0.7 default)
-    :return: Generated text response
+    Unified entry point for text, copy, code and JSON generation across Murasaki LeadRadar.
+    Reads TEXT_MODELS_CHAIN from .env and tries models strictly in order.
+    Automatically handles rate limiting, timeouts, and transparent fallbacks on:
+    - HTTP 429 RateLimit
+    - Timeout (12s / 18s)
+    - 5xx Server Errors & 400/404 decommission notices
+    - Invalid JSON when expect_json=True
     """
     # 1. Check daily rate limiter (max 400 calls per day)
     await rate_limiter.check_and_increment()
 
     # 2. Determine default tokens & timeouts
+    is_code_or_json = task_type in ("code", "json") or expect_json
     if max_tokens is None:
-        if task_type == "code":
-            max_tokens = 4000
+        if is_code_or_json:
+            max_tokens = 2200
         elif task_type == "smart":
-            max_tokens = 500
+            max_tokens = 800
         else:
-            max_tokens = 200
+            max_tokens = 400
 
-    timeout = 45.0 if task_type == "code" else 15.0
+    timeout = 18.0 if is_code_or_json else 12.0
 
     # 3. Construct messages payload
     messages = []
@@ -359,13 +378,13 @@ async def ask_ai(
         messages.append({"role": "system", "content": system_prompt.strip()})
     messages.append({"role": "user", "content": prompt.strip()})
 
-    chain = get_task_chain(task_type)
+    chain = get_text_models_chain()
     errors_encountered: list[str] = []
 
-    for provider_id, model_candidates in chain:
+    for provider_id, model_id in chain:
         prov_cfg = _get_provider_config(provider_id)
         if not prov_cfg:
-            # Skip unconfigured provider without delay
+            logger.debug("AI Router: Skipping %s [%s] (provider not configured with API key)", provider_id, model_id)
             continue
 
         client = get_openai_client(
@@ -376,46 +395,89 @@ async def ask_ai(
             extra_headers=prov_cfg["extra_headers"],
         )
 
-        for model in model_candidates:
-            try:
+        try:
+            logger.info(
+                "AI Router: Trying %s [model=%s, task=%s, timeout=%ss]...",
+                prov_cfg["name"], model_id, task_type, timeout
+            )
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model_id,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+                timeout=timeout,
+            )
+
+            if response.choices and response.choices[0].message:
+                content = response.choices[0].message.content or ""
+                trimmed = content.strip()
+                if not trimmed:
+                    err_msg = f"{prov_cfg['name']} ({model_id}) returned empty response"
+                    logger.warning("AI Router fallback: %s -> switching to next model in chain", err_msg)
+                    errors_encountered.append(err_msg)
+                    continue
+
+                if expect_json or task_type == "json":
+                    parsed = extract_json_payload(trimmed)
+                    if parsed is None:
+                        err_msg = f"{prov_cfg['name']} ({model_id}) returned invalid JSON payload"
+                        logger.warning("AI Router fallback: %s -> switching to next model in chain", err_msg)
+                        errors_encountered.append(err_msg)
+                        log_event_bg("ai_router", err_msg, level="WARNING", details={"model": model_id, "reason": "invalid_json"})
+                        continue
+
                 logger.info(
-                    "AI Router: Trying %s [model=%s, task=%s, timeout=%ss]...",
-                    prov_cfg["name"], model, task_type, timeout
+                    "AI Router: %s [%s] successfully answered task '%s' (%d chars)",
+                    prov_cfg["name"], model_id, task_type, len(trimmed)
                 )
-                response = await asyncio.wait_for(
-                    client.chat.completions.create(
-                        model=model,
-                        messages=messages,
-                        max_tokens=max_tokens,
-                        temperature=temperature,
-                    ),
-                    timeout=timeout,
-                )
+                return trimmed
 
-                if response.choices and response.choices[0].message:
-                    content = response.choices[0].message.content or ""
-                    if content.strip():
-                        logger.info(
-                            "AI Router: %s [%s] successfully answered task '%s' (%d chars)",
-                            prov_cfg["name"], model, task_type, len(content)
-                        )
-                        return content.strip()
+        except asyncio.TimeoutError:
+            err_msg = f"{prov_cfg['name']} ({model_id}) timed out after {timeout}s"
+            logger.warning("AI Router fallback: %s -> switching to next model in chain", err_msg)
+            errors_encountered.append(err_msg)
+            log_event_bg("ai_router", err_msg, level="WARNING", details={"task_type": task_type, "model": model_id, "reason": "timeout"})
+            continue
 
-            except asyncio.TimeoutError:
-                err_msg = f"{prov_cfg['name']} ({model}) timed out after {timeout}s"
-                logger.warning("AI Router fallback: %s -> switching to next model in list", err_msg)
-                errors_encountered.append(err_msg)
-                log_event_bg("ai_router", err_msg, level="WARNING", details={"task_type": task_type, "model": model, "reason": "timeout"})
-                # Proceed to next model or provider immediately
-                continue
+        except Exception as exc:
+            err_msg = f"{prov_cfg['name']} ({model_id}) error: {type(exc).__name__}: {exc}"
+            logger.warning("AI Router fallback: %s -> switching to next model in chain", err_msg)
+            errors_encountered.append(err_msg)
+            log_event_bg("ai_router", err_msg, level="WARNING", details={"task_type": task_type, "model": model_id, "error": str(exc)})
+            continue
 
-            except Exception as exc:
-                err_msg = f"{prov_cfg['name']} ({model}) error: {type(exc).__name__}: {exc}"
-                logger.warning("AI Router fallback: %s -> switching to next model in list", err_msg)
-                errors_encountered.append(err_msg)
-                log_event_bg("ai_router", err_msg, level="WARNING", details={"task_type": task_type, "model": model, "error": str(exc)})
-                # Proceed to next model or provider immediately
-                continue
+    # Last resort fallback: MXR reserve model if configured and not already exhausted
+    mxr_cfg = _get_provider_config("mxr")
+    if mxr_cfg and not any(p == "mxr" for p, _ in chain):
+        reserve_model = settings.openai_model or "gpt-6-astra"
+        try:
+            logger.info("AI Router: Attempting last-resort reserve %s [%s]...", mxr_cfg["name"], reserve_model)
+            client = get_openai_client(
+                provider_name="mxr",
+                base_url=mxr_cfg["base_url"],
+                api_key=mxr_cfg["api_key"],
+                timeout=timeout,
+            )
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=reserve_model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+                timeout=timeout,
+            )
+            if response.choices and response.choices[0].message:
+                content = response.choices[0].message.content or ""
+                if content.strip():
+                    logger.info("AI Router: Last-resort %s [%s] succeeded (%d chars)", mxr_cfg["name"], reserve_model, len(content))
+                    return content.strip()
+        except Exception as exc:
+            err_msg = f"Last-resort {mxr_cfg['name']} ({reserve_model}) error: {exc}"
+            logger.warning("AI Router: %s", err_msg)
+            errors_encountered.append(err_msg)
 
     all_errs = "; ".join(errors_encountered) if errors_encountered else "Все провайдеры в цепочке отключены или не настроены"
     logger.error("AI Router: All providers failed for task '%s'. Errors: %s", task_type, all_errs)
@@ -423,14 +485,215 @@ async def ask_ai(
     raise AllProvidersFailedError(f"Нейросети временно недоступны: {all_errs}")
 
 
+async def ask_ai_json(
+    prompt: str,
+    system_prompt: str = "",
+    task_type: str = "json",
+    max_tokens: int | None = None,
+    temperature: float = 0.2,
+) -> dict[str, Any] | list[Any]:
+    """Convenience helper executing ask_ai with expect_json=True and returning the parsed dict/list."""
+    raw = await ask_ai(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        task_type=task_type,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        expect_json=True,
+    )
+    parsed = extract_json_payload(raw)
+    if parsed is None:
+        raise ValueError(f"Failed to parse JSON payload from response: {raw[:200]}")
+    return parsed
+
+
+# ── Vision & Photo Sorting Engine ─────────────────────────────────────────────
+async def ask_ai_vision(
+    prompt: str,
+    image_urls: list[str],
+    system_prompt: str = "",
+    max_tokens: int = 1500,
+    temperature: float = 0.2,
+    expect_json: bool = False,
+) -> str:
+    """
+    Unified entry point for multimodal Vision calls across Murasaki LeadRadar.
+    Reads VISION_MODELS_CHAIN from .env and tries models strictly in order.
+    Automatically handles rate limiting, timeouts, and transparent fallbacks.
+    """
+    await rate_limiter.check_and_increment()
+
+    timeout = 20.0
+    valid_images = [u.strip() for u in image_urls if u and isinstance(u, str) and u.strip().startswith("http")]
+
+    # Build multimodal OpenAI messages payload
+    user_content: list[dict[str, Any]] = [{"type": "text", "text": prompt.strip()}]
+    for u in valid_images:
+        user_content.append({"type": "image_url", "image_url": {"url": u}})
+
+    messages: list[dict[str, Any]] = []
+    if system_prompt and system_prompt.strip():
+        messages.append({"role": "system", "content": system_prompt.strip()})
+    messages.append({"role": "user", "content": user_content})
+
+    chain = get_vision_models_chain()
+    errors_encountered: list[str] = []
+
+    for provider_id, model_id in chain:
+        prov_cfg = _get_provider_config(provider_id)
+        if not prov_cfg:
+            logger.debug("AI Router Vision: Skipping %s [%s] (provider not configured with API key)", provider_id, model_id)
+            continue
+
+        client = get_openai_client(
+            provider_name=provider_id,
+            base_url=prov_cfg["base_url"],
+            api_key=prov_cfg["api_key"],
+            timeout=timeout,
+            extra_headers=prov_cfg["extra_headers"],
+        )
+
+        try:
+            logger.info(
+                "AI Router Vision: Trying %s [model=%s, images=%d, timeout=%ss]...",
+                prov_cfg["name"], model_id, len(valid_images), timeout
+            )
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model_id,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+                timeout=timeout,
+            )
+
+            if response.choices and response.choices[0].message:
+                content = response.choices[0].message.content or ""
+                trimmed = content.strip()
+                if not trimmed:
+                    err_msg = f"{prov_cfg['name']} ({model_id}) returned empty vision response"
+                    logger.warning("AI Router Vision fallback: %s -> switching to next model in chain", err_msg)
+                    errors_encountered.append(err_msg)
+                    continue
+
+                if expect_json:
+                    parsed = extract_json_payload(trimmed)
+                    if parsed is None:
+                        err_msg = f"{prov_cfg['name']} ({model_id}) returned invalid JSON payload for vision task"
+                        logger.warning("AI Router Vision fallback: %s -> switching to next model in chain", err_msg)
+                        errors_encountered.append(err_msg)
+                        log_event_bg("ai_router", err_msg, level="WARNING", details={"model": model_id, "reason": "invalid_json"})
+                        continue
+
+                logger.info(
+                    "AI Router Vision: %s [%s] successfully processed %d images (%d chars)",
+                    prov_cfg["name"], model_id, len(valid_images), len(trimmed)
+                )
+                return trimmed
+
+        except asyncio.TimeoutError:
+            err_msg = f"{prov_cfg['name']} ({model_id}) timed out after {timeout}s"
+            logger.warning("AI Router Vision fallback: %s -> switching to next model in chain", err_msg)
+            errors_encountered.append(err_msg)
+            log_event_bg("ai_router", err_msg, level="WARNING", details={"task_type": "vision", "model": model_id, "reason": "timeout"})
+            continue
+
+        except Exception as exc:
+            err_msg = f"{prov_cfg['name']} ({model_id}) error: {type(exc).__name__}: {exc}"
+            logger.warning("AI Router Vision fallback: %s -> switching to next model in chain", err_msg)
+            errors_encountered.append(err_msg)
+            log_event_bg("ai_router", err_msg, level="WARNING", details={"task_type": "vision", "model": model_id, "error": str(exc)})
+            continue
+
+    all_errs = "; ".join(errors_encountered) if errors_encountered else "Все Vision-провайдеры отключены или не настроены"
+    logger.error("AI Router Vision: All vision providers failed. Errors: %s", all_errs)
+    log_event_bg("ai_router", "All vision providers failed", level="ERROR", details={"errors": errors_encountered})
+    raise AllProvidersFailedError(f"Vision-нейросети временно недоступны: {all_errs}")
+
+
+async def sort_business_photos(
+    photo_urls: list[str],
+    business_category: str = "",
+    business_name: str = "",
+) -> dict[str, Any]:
+    """
+    Intelligently sorts and categorizes lead photos for landing pages using Vision AI models from VISION_MODELS_CHAIN.
+    Returns: {"hero": str | None, "gallery": list[str], "logo": str | None, "rejected": list[str]}
+    Gracefully falls back to heuristic curation if Vision models fail or are unconfigured.
+    """
+    valid_photos = [p for p in photo_urls if isinstance(p, str) and p.startswith("http")]
+    if not valid_photos:
+        return {"hero": None, "gallery": [], "logo": None, "rejected": []}
+
+    if len(valid_photos) == 1:
+        return {"hero": valid_photos[0], "gallery": [valid_photos[0]], "logo": None, "rejected": []}
+
+    prompt = (
+        f"Ты — профессиональный арт-директор и UI/UX дизайнер современных конверсионных сайтов.\n"
+        f"Проанализируй предоставленные фотографии компании «{business_name or 'Бизнес'}» (сфера: {business_category or 'Сфера услуг'}).\n\n"
+        "Твоя задача — рассортировать их по категориям для посадочной страницы:\n"
+        "1. 'hero': 1 самый качественный, эффектный и привлекательный кадр для первого экрана "
+        "(красивый фасад, стильный интерьер, флагманский продукт или рабочий процесс специалиста).\n"
+        "2. 'gallery': список до 6 качественных фотографий для блока галереи/портфолио "
+        "(разные ракурсы, детали интерьера, примеры работ, оборудование).\n"
+        "3. 'logo': URL фотографии, если на ней изображен чистый логотип компании или брендовая вывеска (иначе null).\n"
+        "4. 'rejected': список URL размытых, слишком темных, нерелевантных фото или скриншотов чеков/документов.\n\n"
+        "СТРОГИЕ ПРАВИЛА:\n"
+        "- Используй ТОЛЬКО переданные ссылки. Не придумывай чужие URL.\n"
+        "- Верни СТРОГО валидный JSON без лишних пояснений:\n"
+        '{"hero": "url", "gallery": ["url1", "url2"], "logo": null, "rejected": []}'
+    )
+
+    try:
+        raw_json = await ask_ai_vision(
+            prompt=prompt,
+            image_urls=valid_photos[:10],
+            system_prompt="Отвечай строго в формате JSON без markdown разметки и пояснений.",
+            max_tokens=1000,
+            temperature=0.2,
+            expect_json=True,
+        )
+        parsed = extract_json_payload(raw_json)
+        if isinstance(parsed, dict) and "hero" in parsed and "gallery" in parsed:
+            hero = parsed.get("hero") if parsed.get("hero") in valid_photos else valid_photos[0]
+            raw_gallery = parsed.get("gallery") or []
+            gallery = [p for p in raw_gallery if p in valid_photos and p != hero][:6]
+            if not gallery:
+                gallery = [p for p in valid_photos if p != hero][:4] or [hero]
+
+            logo = parsed.get("logo") if parsed.get("logo") in valid_photos else None
+            rejected = [p for p in (parsed.get("rejected") or []) if p in valid_photos]
+
+            logger.info("Vision photo sorting succeeded: hero=%s, gallery_count=%d", hero, len(gallery))
+            return {
+                "hero": hero,
+                "gallery": gallery,
+                "logo": logo,
+                "rejected": rejected,
+            }
+    except Exception as exc:
+        logger.warning("Vision photo sorting unavailable or failed (%s). Using deterministic heuristic fallback.", exc)
+
+    # Deterministic heuristic fallback
+    hero = valid_photos[0]
+    remaining = [p for p in valid_photos[1:7] if p != hero]
+    return {
+        "hero": hero,
+        "gallery": remaining if remaining else [hero],
+        "logo": None,
+        "rejected": [],
+    }
+
+
 # ── Diagnostics & Provider Status ─────────────────────────────────────────────
 def get_ai_router_stats() -> dict[str, Any]:
     """Returns active rate limiter usage and configured provider statuses."""
     stats = rate_limiter.get_stats()
     stats["providers"] = {
-        "gemini": bool(settings.gemini_api_key or os.getenv("GEMINI_API_KEY")),
         "groq": bool(settings.groq_api_key or os.getenv("GROQ_API_KEY")),
         "openrouter": bool(settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY")),
+        "gemini": bool(settings.gemini_api_key or os.getenv("GEMINI_API_KEY")),
         "mxr": bool(
             settings.mxr_api_key
             or os.getenv("MXR_API_KEY")
@@ -438,5 +701,7 @@ def get_ai_router_stats() -> dict[str, Any]:
             or os.getenv("OPENAI_API_KEY")
         ),
     }
+    stats["text_models_chain"] = [f"{p}:{m}" for p, m in get_text_models_chain()]
+    stats["vision_models_chain"] = [f"{p}:{m}" for p, m in get_vision_models_chain()]
     stats["proxy_configured"] = bool(_get_proxy_url())
     return stats
