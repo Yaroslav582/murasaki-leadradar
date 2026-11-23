@@ -11,8 +11,11 @@ RUN pip install -r requirements.txt
 
 COPY app ./app
 COPY data ./data
+COPY services ./services
+COPY tgstat_collector.py ./
+COPY safe_joiner.py ./
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/app/static/uploads/media
 
 EXPOSE 8000 10000
 

@@ -11,8 +11,11 @@ RUN pip install -r requirements.txt
 
 COPY backend/app ./app
 COPY backend/data ./data
+COPY backend/services ./services
+COPY backend/tgstat_collector.py ./
+COPY backend/safe_joiner.py ./
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/app/static/uploads/media
 
 EXPOSE 8000 10000
 
