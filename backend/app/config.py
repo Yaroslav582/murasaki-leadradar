@@ -119,6 +119,7 @@ class Settings(BaseSettings):
     tgstat_token: str | None = None
     telegram_bot_token: str | None = "9286221746:AAFZapvWPAsJS1llwaydBUiyngF3RPlVyRI"
     telegram_bot_username: str | None = "murasaki_radar_1438_bot"
+    web_app_url: str = "https://frontend-mocha-three-gfa8fzsldf.vercel.app"
     telegram_api_id: int | None = None
     telegram_api_hash: str | None = None
     telegram_phone: str | None = None

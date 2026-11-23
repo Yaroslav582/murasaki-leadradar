@@ -17,3 +17,4 @@ openai>=1.50.0
 jinja2>=3.1.4
 aiofiles>=24.1.0
 PySocks>=1.7.1
+

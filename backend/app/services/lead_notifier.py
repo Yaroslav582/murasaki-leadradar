@@ -26,7 +26,7 @@ from app.models import AppSetting, Lead, TelegramOrder, utcnow
 
 logger = logging.getLogger(__name__)
 
-WEB_APP_URL = "https://frontend-mocha-three-gfa8fzsldf.vercel.app"
+WEB_APP_URL = getattr(settings, "web_app_url", "https://frontend-mocha-three-gfa8fzsldf.vercel.app")
 
 
 def clean_handle(raw: str | None) -> str:
