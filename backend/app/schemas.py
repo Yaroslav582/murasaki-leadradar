@@ -392,8 +392,13 @@ class DemoOut(BaseModel):
     message: str
     published: bool
     public_url: str = ""
+    style: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class DemoGenerateRequest(BaseModel):
+    style: str | None = None
 
 
 class DemoUpdate(BaseModel):

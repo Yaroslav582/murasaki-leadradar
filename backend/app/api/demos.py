@@ -12,6 +12,13 @@ from app.services.demos import demo_out
 router = APIRouter(prefix="/demos", tags=["demos"])
 
 
+@router.get("/styles")
+async def list_demo_styles():
+    """Returns available design systems and styles inspired by VoltAgent/awesome-design-md."""
+    from app.services.design_systems import get_all_styles
+    return {"styles": get_all_styles()}
+
+
 @router.get("/{demo_id}", response_model=DemoOut)
 async def get_demo(demo_id: str, session: AsyncSession = Depends(get_session)) -> DemoOut:
     demo = await session.get(DemoSite, demo_id)

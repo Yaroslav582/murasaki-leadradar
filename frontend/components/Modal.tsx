@@ -7,11 +7,13 @@ export default function Modal({
   onClose,
   children,
   className = "",
+  zIndex = "z-[90]",
 }: {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
   className?: string;
+  zIndex?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -30,7 +32,7 @@ export default function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 sm:p-6">
+    <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 sm:p-6`}>
       <div className="absolute inset-0 bg-black/75 backdrop-blur-sm animate-fadeIn" onClick={onClose} />
       <div className={`relative w-full animate-slideUp ${className}`}>{children}</div>
     </div>

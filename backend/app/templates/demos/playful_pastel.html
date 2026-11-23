@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ business.name }} — {{ business.category }} {{ city_in }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #FFF4F6;
+    color: #38141F;
+  }
+  .playful-heading {
+    font-family: 'Comfortaa', cursive, sans-serif;
+  }
+</style>
+</head>
+<body class="antialiased selection:bg-[#FFE4E8] selection:text-[#E11D48]">
+
+<!-- Floating Top Demo Badge -->
+<div class="fixed top-3 inset-x-3 z-50 mx-auto max-w-md pointer-events-none">
+  <div class="pointer-events-auto flex items-center justify-between gap-2.5 rounded-full border border-[#FCD5DF] bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur-md">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="relative flex h-2.5 w-2.5">
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+      </span>
+      <p class="truncate text-xs font-bold text-[#38141F]">
+        Демо для {{ business.name }}
+      </p>
+    </div>
+    <a href="https://t.me/Murasaki_website" target="_blank" rel="noopener" class="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-[#E11D48] px-3 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-[#BE123C]">
+      <span>Написать</span> →
+    </a>
+  </div>
+</div>
+
+<div class="mx-auto min-h-screen max-w-md bg-[#FFF4F6] shadow-xl pt-12 pb-24 border-x border-[#FCD5DF]">
+
+  <!-- HERO SECTION -->
+  <section class="px-5 pt-4 pb-6">
+    <div class="inline-flex items-center gap-2 rounded-full border border-[#FCD5DF] bg-white px-3.5 py-1 text-xs font-bold text-[#75394A]">
+      <span class="h-2 w-2 rounded-full bg-[#E11D48]"></span>
+      {{ business.category }} · {{ business.city }}
+    </div>
+
+    <h1 class="playful-heading mt-4 text-2xl font-bold text-[#38141F] leading-snug">
+      {{ content.hero_title }}
+    </h1>
+
+    <p class="mt-2 text-xs leading-relaxed text-[#75394A] font-medium">
+      {{ content.hero_subtitle }}
+    </p>
+
+    <!-- Playful Hero Image -->
+    <div class="relative mt-5 overflow-hidden rounded-[2rem] border-2 border-white bg-white aspect-[16/10] shadow-[0_8px_24px_rgba(225,29,72,0.1)]">
+      <img src="{{ hero_image }}" alt="{{ business.name }}" class="h-full w-full object-cover" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1551024709-8f23befc6f87?auto=format&fit=crop&w=1200&q=80';">
+      <div class="absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-[#38141F] backdrop-blur-sm shadow-sm">
+        <span class="text-amber-500">★ {{ business.rating }}</span>
+        <span class="text-rose-200">•</span>
+        <span>{{ business.reviews_count }} отзывов</span>
+      </div>
+    </div>
+
+    <!-- Quick CTAs -->
+    <div class="mt-5 space-y-2.5">
+      <a href="{{ primary_cta_href }}" target="_blank" rel="noopener" class="flex h-12 w-full items-center justify-center rounded-full bg-[#E11D48] px-6 text-xs font-bold uppercase tracking-wider text-white shadow-[0_4px_18px_rgba(225,29,72,0.3)] transition hover:bg-[#BE123C]">
+        Заказать / Записаться прямо сейчас
+      </a>
+      <div class="grid grid-cols-2 gap-2">
+        {% if tel_href %}
+        <a href="{{ tel_href }}" class="flex h-11 items-center justify-center gap-1.5 rounded-full border border-[#FCD5DF] bg-white text-xs font-bold text-[#38141F] transition hover:bg-[#FFE4E8]">
+          <span>📞 Позвонить</span>
+        </a>
+        {% endif %}
+        {% if map_url %}
+        <a href="{{ map_url }}" target="_blank" rel="noopener" class="flex h-11 items-center justify-center gap-1.5 rounded-full border border-[#FCD5DF] bg-white text-xs font-bold text-[#38141F] transition hover:bg-[#FFE4E8]">
+          <span>📍 Маршрут</span>
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <!-- HIGHLIGHTS -->
+  <section class="border-y border-[#FCD5DF] bg-white px-5 py-7">
+    <p class="text-[10px] font-bold uppercase tracking-wider text-[#E11D48]">Наши радости</p>
+    <h2 class="playful-heading mt-1 text-lg font-bold text-[#38141F]">Почему нас любят</h2>
+    <div class="mt-4 grid grid-cols-1 gap-2.5">
+      {% for usp in content.usp_list %}
+      <div class="flex items-start gap-3 rounded-2xl border border-[#FCD5DF]/80 bg-[#FFF4F6] p-3.5">
+        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E11D48]/10 text-sm">🍓</span>
+        <div>
+          <h3 class="text-xs font-bold text-[#38141F]">{{ usp.title }}</h3>
+          <p class="mt-0.5 text-[11px] text-[#75394A] leading-normal">{{ usp.desc }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- PRODUCTS / SERVICES -->
+  <section class="px-5 py-7">
+    <p class="text-[10px] font-bold uppercase tracking-wider text-[#E11D48]">Ассортимент</p>
+    <h2 class="playful-heading mt-1 text-lg font-bold text-[#38141F]">Вкусные хиты и новинки</h2>
+    <div class="mt-4 space-y-2.5">
+      {% for service in content.services %}
+      <div class="rounded-2xl border border-[#FCD5DF] bg-white p-4 shadow-xs transition hover:border-[#E11D48]/50">
+        <div class="flex items-baseline justify-between gap-2">
+          <h3 class="text-xs font-bold text-[#38141F]">{{ service.name }}</h3>
+          <span class="shrink-0 rounded-full bg-[#FFE4E8] px-2.5 py-0.5 text-xs font-extrabold text-[#E11D48]">{{ service.price }}</span>
+        </div>
+        {% if service.desc %}
+        <p class="mt-1 text-[11px] text-[#75394A]">{{ service.desc }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- GALLERY -->
+  {% if gallery_photos %}
+  <section class="border-t border-[#FCD5DF] bg-white px-5 py-7">
+    <p class="text-[10px] font-bold uppercase tracking-wider text-[#E11D48]">Галерея</p>
+    <h2 class="playful-heading mt-1 text-lg font-bold text-[#38141F]">Яркие фото</h2>
+    <div class="mt-4 grid grid-cols-2 gap-2.5">
+      {% for photo in gallery_photos %}
+      <div class="relative overflow-hidden rounded-2xl border border-[#FCD5DF] bg-[#FFF4F6] aspect-square">
+        <img src="{{ photo }}" alt="Фото" class="h-full w-full object-cover transition hover:scale-105" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1558961363-fa8fdf82db35?auto=format&fit=crop&w=800&q=80';">
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- FAQ -->
+  {% if content.faq %}
+  <section class="border-t border-[#FCD5DF] px-5 py-7">
+    <p class="text-[10px] font-bold uppercase tracking-wider text-[#E11D48]">Вопрос — Ответ</p>
+    <h2 class="playful-heading mt-1 text-lg font-bold text-[#38141F]">Частые вопросы</h2>
+    <div class="mt-4 space-y-2">
+      {% for item in content.faq %}
+      <div class="rounded-2xl border border-[#FCD5DF] bg-white p-4">
+        <p class="text-xs font-bold text-[#38141F]">{{ item.question }}</p>
+        <p class="mt-1 text-[11px] text-[#75394A] leading-relaxed">{{ item.answer }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- CONTACT & LOCATION -->
+  <section class="border-t border-[#FCD5DF] bg-white px-5 py-7">
+    <p class="text-[10px] font-bold uppercase tracking-wider text-[#E11D48]">Ждём в гости</p>
+    <h2 class="playful-heading mt-1 text-lg font-bold text-[#38141F]">{{ business.name }}</h2>
+
+    <div class="mt-4 space-y-2.5 text-xs text-[#75394A]">
+      {% if business.address %}
+      <div class="flex items-start gap-2">
+        <span>📍</span>
+        <span class="text-[#38141F] font-semibold">{{ business.address }}</span>
+      </div>
+      {% endif %}
+      {% if business.opening_hours %}
+      <div class="flex items-start gap-2">
+        <span>🕒</span>
+        <span>{{ business.opening_hours | join(', ') }}</span>
+      </div>
+      {% endif %}
+      {% if business.phone %}
+      <div class="flex items-start gap-2">
+        <span>📞</span>
+        <a href="{{ tel_href }}" class="font-bold text-[#E11D48] hover:underline">{{ business.phone }}</a>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if map_url %}
+    <div class="mt-4">
+      <a href="{{ map_url }}" target="_blank" rel="noopener" class="flex h-11 w-full items-center justify-center rounded-full border border-[#FCD5DF] bg-[#FFF4F6] text-xs font-bold text-[#38141F] transition hover:bg-[#FFE4E8]">
+        Маршрут на Яндекс Картах →
+      </a>
+    </div>
+    {% endif %}
+  </section>
+
+</div>
+
+<!-- STICKY BOTTOM BAR -->
+<div class="fixed bottom-0 inset-x-0 z-40 mx-auto max-w-md bg-white/95 border-t border-[#FCD5DF] px-4 py-2.5 backdrop-blur-md">
+  <div class="flex items-center justify-between gap-3">
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-xs font-bold text-[#38141F]">{{ business.name }}</p>
+      <p class="truncate text-[10px] text-[#75394A]">Доставка и заказ {{ city_in }}</p>
+    </div>
+    <a href="{{ primary_cta_href }}" target="_blank" rel="noopener" class="shrink-0 rounded-full bg-[#E11D48] px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#BE123C]">
+      Заказать
+    </a>
+  </div>
+</div>
+
+</body>
+</html>

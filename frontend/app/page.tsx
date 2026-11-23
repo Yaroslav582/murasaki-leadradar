@@ -30,6 +30,7 @@ import OutreachModal from "@/components/OutreachModal";
 import ParseModal from "@/components/ParseModal";
 import Sidebar from "@/components/Sidebar";
 import StatsRow from "@/components/StatsRow";
+import StyleSelectModal from "@/components/StyleSelectModal";
 import TelegramRadarView from "@/components/TelegramRadarView";
 import Topbar from "@/components/Topbar";
 import { initTelegramWebApp, triggerHaptic } from "@/lib/telegram";
@@ -84,6 +85,7 @@ export default function HomePage() {
   const exportRef = useRef<HTMLDivElement>(null);
   const [parseOpen, setParseOpen] = useState(false);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
+  const [styleSelectLead, setStyleSelectLead] = useState<Lead | null>(null);
   const [demoModal, setDemoModal] = useState<{ demo: Demo; lead: Lead } | null>(null);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
@@ -267,13 +269,20 @@ export default function HomePage() {
     }
   };
 
-  const handleGenerateDemo = async (lead: Lead) => {
+  const handleGenerateDemo = async (lead: Lead, styleId?: string) => {
+    // If no explicit style chosen yet, open the Style Selection modal
+    if (!styleId) {
+      setStyleSelectLead(lead);
+      return;
+    }
+
     setGeneratingId(lead.id);
     try {
-      const demo = await api.generateDemo(lead.id);
+      const demo = await api.generateDemo(lead.id, { style: styleId });
       const updated = { ...lead, demo_id: demo.id };
       setLeads((previous) => previous.map((item) => (item.id === lead.id ? { ...item, demo_id: demo.id } : item)));
       setDrawerLead((previous) => (previous?.id === lead.id ? updated : previous));
+      setStyleSelectLead(null);
       setDemoModal({ demo, lead: updated });
       void refreshMetaStats();
       showToast("Демо-лендинг готов", "success");
@@ -286,7 +295,7 @@ export default function HomePage() {
 
   const handleOpenDemo = async (lead: Lead) => {
     if (!lead.demo_id) {
-      await handleGenerateDemo(lead);
+      setStyleSelectLead(lead);
       return;
     }
     setGeneratingId(lead.id);
@@ -699,6 +708,17 @@ export default function HomePage() {
           onClose={() => setDemoModal(null)}
           onDemoUpdated={handleDemoUpdated}
           showToast={showToast}
+        />
+      ) : null}
+
+      {styleSelectLead ? (
+        <StyleSelectModal
+          lead={styleSelectLead}
+          generating={generatingId === styleSelectLead.id}
+          onClose={() => setStyleSelectLead(null)}
+          onSelectStyle={async (styleId) => {
+            await handleGenerateDemo(styleSelectLead, styleId);
+          }}
         />
       ) : null}
 

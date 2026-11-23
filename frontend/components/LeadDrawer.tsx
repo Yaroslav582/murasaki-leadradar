@@ -13,6 +13,7 @@ import {
   Mail,
   MapPin,
   MessageCircle,
+  Palette,
   Phone,
   RefreshCw,
   Send,
@@ -223,14 +224,36 @@ export default function LeadDrawer({
         <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
           {/* Кнопки быстрых действий */}
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => (lead.demo_id ? onOpenDemo(lead) : onGenerateDemo(lead))}
-              disabled={generating}
-              className="btn-primary flex-1 min-w-[170px]"
-            >
-              {generating ? <Spinner size={15} /> : <Sparkles size={15} />}
-              {lead.demo_id ? "Открыть демо-лендинг" : "Сгенерировать демо"}
-            </button>
+            {lead.demo_id ? (
+              <>
+                <button
+                  onClick={() => onOpenDemo(lead)}
+                  disabled={generating}
+                  className="btn-primary flex-1 min-w-[150px]"
+                >
+                  {generating ? <Spinner size={15} /> : <Sparkles size={15} />}
+                  Открыть демо-лендинг
+                </button>
+                <button
+                  onClick={() => onGenerateDemo(lead)}
+                  disabled={generating}
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-brand-500/30 bg-brand-500/10 px-3 text-xs font-semibold text-brand-300 transition hover:bg-brand-500/20 hover:text-white disabled:opacity-50"
+                  title="Выбрать другой стиль и сгенерировать демо"
+                >
+                  <Palette size={14} />
+                  Сменить стиль
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => onGenerateDemo(lead)}
+                disabled={generating}
+                className="btn-primary flex-1 min-w-[170px]"
+              >
+                {generating ? <Spinner size={15} /> : <Sparkles size={15} />}
+                Выбрать стиль и создать демо
+              </button>
+            )}
             {waDirectUrl && (
               <a
                 href={waDirectUrl}
@@ -273,6 +296,15 @@ export default function LeadDrawer({
                 {lead.enriched_at ? "Обновить" : "Обогатить"}
               </button>
             ) : null}
+          </div>
+
+          {/* Индикатор стилей awesome-design-md */}
+          <div className="flex items-center gap-2 rounded-xl border border-brand-500/20 bg-brand-500/[0.05] px-3 py-2 text-[11px] text-slate-300">
+            <Palette size={14} className="text-brand-400 shrink-0" />
+            <div className="flex-1">
+              <span className="font-semibold text-brand-200">6 дизайн-систем (awesome-design-md): </span>
+              <span className="text-slate-400">Неон, Тёплый кофе, Нео-брутализм, Пастель, Премиум, Минимализм</span>
+            </div>
           </div>
 
           {/* Блок «Что мешает (точки роста)» */}

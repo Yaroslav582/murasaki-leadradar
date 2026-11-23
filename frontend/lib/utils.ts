@@ -428,19 +428,22 @@ export function getWhatsAppUrl(
   return null;
 }
 
-export function generatePromptForLead(lead: {
-  name: string;
-  category: string;
-  city: string;
-  address?: string;
-  phone?: string | null;
-  rating?: number | null;
-  reviews_count?: number;
-  opening_hours?: string[];
-  social_links?: Record<string, string | undefined>;
-  photos?: string[];
-  logo_url?: string | null;
-}): string {
+export function generatePromptForLead(
+  lead: {
+    name: string;
+    category: string;
+    city: string;
+    address?: string;
+    phone?: string | null;
+    rating?: number | null;
+    reviews_count?: number;
+    opening_hours?: string[];
+    social_links?: Record<string, string | undefined>;
+    photos?: string[];
+    logo_url?: string | null;
+  },
+  styleId?: string,
+): string {
   const hours = (lead.opening_hours ?? []).join(", ") || "Ежедневно 10:00–21:00";
   const socials = Object.entries(lead.social_links ?? {})
     .filter(([_, v]) => Boolean(v))
@@ -458,17 +461,62 @@ export function generatePromptForLead(lead: {
     cleanPhoneHref = `tel:+${phoneDigits}`;
   }
 
-  // Determine niche aesthetic style recommendation
+  // Determine DESIGN.md style recommendation based on explicit styleId or niche category
   const cat = (lead.category || "").toLowerCase();
+  let selectedStyle = styleId;
+  if (!selectedStyle || selectedStyle === "auto") {
+    if (cat.includes("авто") || cat.includes("сервис") || cat.includes("детейлинг") || cat.includes("it") || cat.includes("спорт")) {
+      selectedStyle = "dark_cyber_neon";
+    } else if (cat.includes("кофе") || cat.includes("пекарн") || cat.includes("ресторан") || cat.includes("еда")) {
+      selectedStyle = "warm_artisan_coffee";
+    } else if (cat.includes("бьюти") || cat.includes("красот") || cat.includes("маникюр") || cat.includes("спа") || cat.includes("мода")) {
+      selectedStyle = "luxury_editorial";
+    } else if (cat.includes("дизайн") || cat.includes("digital") || cat.includes("тату") || cat.includes("агентств")) {
+      selectedStyle = "acid_neo_brutalism";
+    } else if (cat.includes("бабл-ти") || cat.includes("десерт") || cat.includes("торт") || cat.includes("детск") || cat.includes("зоо")) {
+      selectedStyle = "playful_pastel";
+    } else {
+      selectedStyle = "clean_swiss_trust";
+    }
+  }
+
   let styleRecommendation = "";
-  if (cat.includes("бьюти") || cat.includes("красот") || cat.includes("маникюр") || cat.includes("волос") || cat.includes("цвет") || cat.includes("одежд")) {
-    styleRecommendation = `Стиль «Editorial Light»: молочный/бежевый фон (#FAF8F5), утонченные шрифты с засечками (Playfair Display / Cormorant), мягкие скругления 24px, шалфейные акценты.`;
-  } else if (cat.includes("авто") || cat.includes("сервис") || cat.includes("шиномонтаж") || cat.includes("детейлинг") || cat.includes("спорт") || cat.includes("строй")) {
-    styleRecommendation = `Стиль «Dark Industrial»: графитовый тёмный фон (#111215), контрастный оранжевый или кислотный акцент (#FF6B00), гротескные шрифты (Unbounded / Manrope), строгие углы 4-6px.`;
-  } else if (cat.includes("ресторан") || cat.includes("кафе") || cat.includes("пекарн") || cat.includes("еда") || cat.includes("кофе") || cat.includes("бар")) {
-    styleRecommendation = `Стиль «Warm Appetite»: теплая палитра (#FAF6F0), терракотовые акценты (#C85A32), акцент на аппетитные фото блюд и удобное меню.`;
+  if (selectedStyle === "dark_cyber_neon") {
+    styleRecommendation = `[DESIGN.md: Dark Cyber Neon (VoltAgent/awesome-design-md)]
+- Фон: глубокий графитовый холст (#08090C), карточки (#12141C), граница (#232738).
+- Акценты: неоновый оранжевый (#FF4500) с мягким свечением и бирюзовые сигналы (#00F2FE).
+- Шрифты Google Fonts: 'Unbounded' (жирные заглавные заголовки) + 'Inter' (основной текст).
+- Элементы: темные стекловидные плашки, телеметрические бейджи метрик (120+, 4.9★), скругления 12-14px.`;
+  } else if (selectedStyle === "warm_artisan_coffee") {
+    styleRecommendation = `[DESIGN.md: Warm Artisan Coffee (VoltAgent/awesome-design-md)]
+- Фон: уютный пергамент (#FAF6F0), белые карточки (#FFFFFF), граница (#EADBCE).
+- Акценты: теплый терракотовый (#C85A32), янтарный (#D97706), эспрессо-чернила (#281D17).
+- Шрифты Google Fonts: 'Playfair Display' / 'Lora' (антиквенные заголовки) + 'Plus Jakarta Sans'.
+- Элементы: тактильная текстура свежей выпечки и кофе, мягкие скругления 20px, уютная атмосфера.`;
+  } else if (selectedStyle === "luxury_editorial") {
+    styleRecommendation = `[DESIGN.md: Luxury Editorial (VoltAgent/awesome-design-md)]
+- Фон: алебастровый камень (#F7F5F0), белые карточки (#FFFFFF), граница (#E8E2D6).
+- Акценты: глубокий графит (#18181B), шалфейный зеленый (#3E5848), золотистое шампанское (#C5A880).
+- Шрифты Google Fonts: 'Cormorant Garamond' / 'Playfair Display' (высокая эстетика) + 'Inter'.
+- Элементы: вытянутые pill-бейджи (rounded-full), просторные воздушные отступы, журнальная верстка.`;
+  } else if (selectedStyle === "acid_neo_brutalism") {
+    styleRecommendation = `[DESIGN.md: Acid Neo-Brutalism (VoltAgent/awesome-design-md)]
+- Фон: плотный черный (#0D0E12), контрастные блоки (#161822), граница (#2A2E3D).
+- Акценты: электрический кислотно-лаймовый (#D4FF00), огненный оранжевый (#FF4800).
+- Шрифты Google Fonts: 'Syne' (массивный акцидентный гротеск) + 'Space Grotesk' / 'JetBrains Mono'.
+- Элементы: жесткие тени 4px (#D4FF00), стикерные бейджи //, резкие углы 4-6px, дерзкая геометрия.`;
+  } else if (selectedStyle === "playful_pastel") {
+    styleRecommendation = `[DESIGN.md: Playful Pastel & Sweet (VoltAgent/awesome-design-md)]
+- Фон: нежный ягодный холст (#FFF4F6), белые карточки (#FFFFFF), граница (#FCD5DF).
+- Акценты: спелая земляника (#E11D48), лавандовый (#8B5CF6), матча (#10B981).
+- Шрифты Google Fonts: 'Comfortaa' / 'Nunito' (округлые дружелюбные формы) + 'Plus Jakarta Sans'.
+- Элементы: супер-скругленные pill-формы (rounded-full / rounded-3xl), сочные фруктовые бейджи.`;
   } else {
-    styleRecommendation = `Стиль «Clean Trust»: деловой минимализм, белый/светло-серый фон (#F8FAFC), темно-синий/индиго акцент (#1E3A8A), акцент на цифрах, лицензиях и гарантиях.`;
+    styleRecommendation = `[DESIGN.md: Clean Swiss Trust (VoltAgent/awesome-design-md)]
+- Фон: прохладный белый/светло-серый (#F8FAFC / #FFFFFF), граница (#E2E8F0).
+- Акценты: королевский сапфировый (#2563EB), темно-синий (#0F172A), изумрудный (#10B981).
+- Шрифты Google Fonts: 'Inter' (швейцарская выверенная сетка) + 'Plus Jakarta Sans'.
+- Элементы: блоки доверия, фактоиды, 100% гарантия, четкие лицензии, скругления 10-12px.`;
   }
 
   const photos = lead.photos || [];

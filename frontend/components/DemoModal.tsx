@@ -10,6 +10,7 @@ import {
   Globe2,
   MessageSquare,
   Monitor,
+  Palette,
   RefreshCw,
   Save,
   Smartphone,
@@ -21,6 +22,7 @@ import { API_URL, api } from "@/lib/api";
 import type { Demo, Lead } from "@/lib/types";
 import { generatePromptForLead, getFirstTouchOffer } from "@/lib/utils";
 import Modal from "./Modal";
+import StyleSelectModal, { BUILTIN_STYLES, detectNicheStyle } from "./StyleSelectModal";
 import type { ToastVariant } from "./ui";
 import { Spinner } from "./ui";
 
@@ -49,10 +51,19 @@ export default function DemoModal({
   const [customSaving, setCustomSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
+  const initialStyle = (demo as any).style || detectNicheStyle(lead.category);
+  const [activeStyleId, setActiveStyleId] = useState<string>(initialStyle);
+  const [promptStyleId, setPromptStyleId] = useState<string>(initialStyle);
+  const [styleModalOpen, setStyleModalOpen] = useState(false);
+
   useEffect(() => {
     setCurrent(demo);
     setMessage(demo.message);
     setHtml(demo.html);
+    if ((demo as any).style) {
+      setActiveStyleId((demo as any).style);
+      setPromptStyleId((demo as any).style);
+    }
     setReloadKey((value) => value + 1);
   }, [demo]);
 
@@ -168,16 +179,20 @@ export default function DemoModal({
     }
   };
 
-  const handleRegenerate = async () => {
+  const handleRegenerate = async (specificStyle?: string) => {
+    const targetStyle = specificStyle || activeStyleId;
     setRegenerating(true);
     try {
-      const fresh = await api.generateDemo(lead.id);
+      const fresh = await api.generateDemo(lead.id, { style: targetStyle });
       setCurrent(fresh);
       setMessage(fresh.message);
       setHtml(fresh.html);
+      setActiveStyleId(targetStyle);
+      setPromptStyleId(targetStyle);
       setReloadKey((k) => k + 1);
       onDemoUpdated(fresh);
-      showToast("Новое демо сгенерировано", "success");
+      setStyleModalOpen(false);
+      showToast("Новое демо успешно сгенерировано", "success");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Не удалось сгенерировать демо", "error");
     } finally {
@@ -239,12 +254,26 @@ export default function DemoModal({
             </button>
           </div>
 
+          {/* Смена стиля */}
+          <button
+            onClick={() => setStyleModalOpen(true)}
+            disabled={regenerating}
+            className="flex items-center gap-1.5 rounded-xl border border-brand-500/40 bg-brand-500/15 px-2.5 py-1.5 text-xs font-semibold text-brand-200 transition hover:bg-brand-500/25 hover:text-white"
+            title="Сменить стиль дизайна (DESIGN.md)"
+          >
+            <Palette size={13} className="text-brand-400" />
+            <span className="text-slate-400">Стиль:</span>
+            <span className="font-bold text-white">
+              {BUILTIN_STYLES.find((s) => s.id === activeStyleId)?.name_ru || "Швейцарский"}
+            </span>
+          </button>
+
           <div className="flex items-center gap-2">
             <button
-              onClick={handleRegenerate}
+              onClick={() => setStyleModalOpen(true)}
               disabled={regenerating}
               className="btn-ghost"
-              title="Сгенерировать заново через AI (5 кредитов)"
+              title="Выбрать стиль и перегенерировать через AI (5 кредитов)"
             >
               {regenerating ? <Spinner size={14} /> : <RefreshCw size={14} />}
               <span className="hidden sm:inline">Перегенерировать (5 кр)</span>
@@ -428,15 +457,39 @@ export default function DemoModal({
                   </ol>
                 </div>
 
-                <div className="flex items-center gap-2">
+                {/* Выбор стиля для промпта */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+                    <Palette size={12} className="text-brand-400" />
+                    Дизайн-код стиля (VoltAgent DESIGN.md):
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {BUILTIN_STYLES.map((st) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() => setPromptStyleId(st.id)}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                          promptStyleId === st.id
+                            ? "bg-brand-500 text-white shadow-sm ring-1 ring-brand-400"
+                            : "bg-white/[0.05] text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {st.name_ru}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
                   <button
-                    onClick={() => handleCopy(generatePromptForLead(lead))}
+                    onClick={() => handleCopy(generatePromptForLead(lead, promptStyleId))}
                     className="inline-flex h-9 items-center gap-2 rounded-xl border border-brand-500/30 bg-[rgba(139,92,246,0.14)] px-3 text-xs font-semibold text-[#C4B5FD] transition hover:bg-[rgba(139,92,246,0.24)]"
                   >
                     <Copy size={13} />
-                    Скопировать промпт с данными лида
+                    Скопировать промпт в стиле «{BUILTIN_STYLES.find((s) => s.id === promptStyleId)?.name_ru}»
                   </button>
-                  <span className="text-[11px] text-slate-500">Название, город, телефон, рейтинг, услуги</span>
+                  <span className="text-[11px] text-slate-500">Включает токены DESIGN.md</span>
                 </div>
 
                 <div className="flex-1 flex flex-col gap-1.5">
@@ -505,6 +558,17 @@ export default function DemoModal({
           </div>
         </div>
       </div>
+
+      {styleModalOpen && (
+        <StyleSelectModal
+          lead={lead}
+          generating={regenerating}
+          onClose={() => setStyleModalOpen(false)}
+          onSelectStyle={async (styleId) => {
+            await handleRegenerate(styleId);
+          }}
+        />
+      )}
     </Modal>
   );
 }

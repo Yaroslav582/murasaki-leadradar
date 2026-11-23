@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ business.name }} — {{ business.category }} {{ city_in }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Unbounded:wght@600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #08090C;
+    color: #F8FAFC;
+  }
+  .cyber-heading {
+    font-family: 'Unbounded', sans-serif;
+    letter-spacing: -0.02em;
+  }
+</style>
+</head>
+<body class="antialiased selection:bg-[#FF4500] selection:text-black">
+
+<!-- Floating Top Demo Badge -->
+<div class="fixed top-3 inset-x-3 z-50 mx-auto max-w-md pointer-events-none">
+  <div class="pointer-events-auto flex items-center justify-between gap-2.5 rounded-xl border border-[#232738] bg-[#12141C]/95 px-3.5 py-2 shadow-2xl backdrop-blur-md">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="relative flex h-2 w-2">
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FF4500] opacity-75"></span>
+        <span class="relative inline-flex rounded-full h-2 w-2 bg-[#FF4500]"></span>
+      </span>
+      <p class="truncate text-xs font-bold text-white tracking-wide">
+        ДЕМО ДЛЯ {{ business.name }}
+      </p>
+    </div>
+    <a href="https://t.me/Murasaki_website" target="_blank" rel="noopener" class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-[#FF4500] px-2.5 py-1 text-[11px] font-extrabold text-black uppercase tracking-wider transition hover:bg-[#E03E00]">
+      <span>Связь</span> →
+    </a>
+  </div>
+</div>
+
+<div class="mx-auto min-h-screen max-w-md bg-[#08090C] shadow-2xl pt-12 pb-24 border-x border-[#1E2230]">
+
+  <!-- HERO SECTION -->
+  <section class="px-5 pt-4 pb-6">
+    <div class="inline-flex items-center gap-2 rounded-lg border border-[#232738] bg-[#12141C] px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#FF4500]">
+      <span class="h-1.5 w-1.5 rounded-full bg-[#FF4500]"></span>
+      {{ business.category }} · {{ business.city }}
+    </div>
+
+    <h1 class="cyber-heading mt-4 text-2xl font-black text-white leading-tight uppercase">
+      {{ content.hero_title }}
+    </h1>
+
+    <p class="mt-2.5 text-xs font-medium leading-relaxed text-slate-400">
+      {{ content.hero_subtitle }}
+    </p>
+
+    <!-- Cyber Hero Image -->
+    <div class="relative mt-5 overflow-hidden rounded-xl border border-[#232738] bg-[#12141C] aspect-[16/10] shadow-[0_8px_32px_rgba(0,0,0,0.65)]">
+      <img src="{{ hero_image }}" alt="{{ business.name }}" class="h-full w-full object-cover" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80';">
+      <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent"></div>
+      <div class="absolute bottom-3 left-3 flex items-center gap-2 rounded-lg bg-black/85 px-2.5 py-1 border border-white/10 text-xs font-bold text-white backdrop-blur-sm">
+        <span class="text-amber-400">★ {{ business.rating }}</span>
+        <span class="text-slate-500">|</span>
+        <span>{{ business.reviews_count }} отзывов</span>
+      </div>
+    </div>
+
+    <!-- Quick CTAs -->
+    <div class="mt-5 space-y-2.5">
+      <a href="{{ primary_cta_href }}" target="_blank" rel="noopener" class="flex h-12 w-full items-center justify-center rounded-xl bg-[#FF4500] px-6 text-xs font-black uppercase tracking-wider text-black shadow-[0_4px_24px_rgba(255,69,0,0.4)] transition hover:bg-[#E03E00]">
+        Записаться / Оставить заявку
+      </a>
+      <div class="grid grid-cols-2 gap-2">
+        {% if tel_href %}
+        <a href="{{ tel_href }}" class="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-[#232738] bg-[#12141C] text-xs font-bold text-white transition hover:bg-[#1A1D28]">
+          <span>📞 Позвонить</span>
+        </a>
+        {% endif %}
+        {% if map_url %}
+        <a href="{{ map_url }}" target="_blank" rel="noopener" class="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-[#232738] bg-[#12141C] text-xs font-bold text-white transition hover:bg-[#1A1D28]">
+          <span>📍 Маршрут</span>
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <!-- ADVANTAGES / TELEMETRY -->
+  <section class="border-y border-[#1E2230] bg-[#0E1017] px-5 py-7">
+    <p class="text-[10px] font-black uppercase tracking-widest text-[#FF4500]">Стандарты и гарантии</p>
+    <h2 class="cyber-heading mt-1 text-lg font-black text-white uppercase">Почему выбирают нас</h2>
+    <div class="mt-4 grid grid-cols-1 gap-2.5">
+      {% for usp in content.usp_list %}
+      <div class="flex items-start gap-3 rounded-xl border border-[#232738] bg-[#12141C] p-3.5 shadow-sm">
+        <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#FF4500]/15 text-xs font-black text-[#FF4500]">0{{ loop.index }}</span>
+        <div>
+          <h3 class="text-xs font-bold text-white uppercase tracking-wide">{{ usp.title }}</h3>
+          <p class="mt-0.5 text-[11px] text-slate-400 leading-normal">{{ usp.desc }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- SERVICES & PRICING -->
+  <section class="px-5 py-7">
+    <p class="text-[10px] font-black uppercase tracking-widest text-[#FF4500]">Услуги и стоимость</p>
+    <h2 class="cyber-heading mt-1 text-lg font-black text-white uppercase">Популярные направления</h2>
+    <div class="mt-4 space-y-2.5">
+      {% for service in content.services %}
+      <div class="rounded-xl border border-[#232738] bg-[#12141C] p-3.5 transition hover:border-[#FF4500]/40">
+        <div class="flex items-baseline justify-between gap-2">
+          <h3 class="text-xs font-bold text-white">{{ service.name }}</h3>
+          <span class="shrink-0 text-xs font-black text-[#FF4500]">{{ service.price }}</span>
+        </div>
+        {% if service.desc %}
+        <p class="mt-1 text-[11px] text-slate-400">{{ service.desc }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- GALLERY -->
+  {% if gallery_photos %}
+  <section class="border-t border-[#1E2230] bg-[#0E1017] px-5 py-7">
+    <p class="text-[10px] font-black uppercase tracking-widest text-[#FF4500]">Галерея</p>
+    <h2 class="cyber-heading mt-1 text-lg font-black text-white uppercase">Фото наших работ</h2>
+    <div class="mt-4 grid grid-cols-2 gap-2">
+      {% for photo in gallery_photos %}
+      <div class="relative overflow-hidden rounded-xl border border-[#232738] bg-[#12141C] aspect-square">
+        <img src="{{ photo }}" alt="Работа" class="h-full w-full object-cover transition hover:scale-105" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1517524008697-84bbe3c3fd98?auto=format&fit=crop&w=800&q=80';">
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- FAQ -->
+  {% if content.faq %}
+  <section class="border-t border-[#1E2230] px-5 py-7">
+    <p class="text-[10px] font-black uppercase tracking-widest text-[#FF4500]">Вопрос — Ответ</p>
+    <h2 class="cyber-heading mt-1 text-lg font-black text-white uppercase">Частые вопросы</h2>
+    <div class="mt-4 space-y-2">
+      {% for item in content.faq %}
+      <div class="rounded-xl border border-[#232738] bg-[#12141C] p-3.5">
+        <p class="text-xs font-bold text-white">{{ item.question }}</p>
+        <p class="mt-1.5 text-[11px] text-slate-400 leading-relaxed">{{ item.answer }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- CONTACT & LOCATION -->
+  <section class="border-t border-[#1E2230] bg-[#0E1017] px-5 py-7">
+    <p class="text-[10px] font-black uppercase tracking-widest text-[#FF4500]">Локация и контакты</p>
+    <h2 class="cyber-heading mt-1 text-lg font-black text-white uppercase">{{ business.name }}</h2>
+
+    <div class="mt-4 space-y-2.5 text-xs text-slate-300">
+      {% if business.address %}
+      <div class="flex items-start gap-2">
+        <span class="text-slate-500">📍</span>
+        <span>{{ business.address }}</span>
+      </div>
+      {% endif %}
+      {% if business.opening_hours %}
+      <div class="flex items-start gap-2">
+        <span class="text-slate-500">🕒</span>
+        <span>{{ business.opening_hours | join(', ') }}</span>
+      </div>
+      {% endif %}
+      {% if business.phone %}
+      <div class="flex items-start gap-2">
+        <span class="text-slate-500">📞</span>
+        <a href="{{ tel_href }}" class="font-bold text-[#FF4500] hover:underline">{{ business.phone }}</a>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if map_url %}
+    <div class="mt-4">
+      <a href="{{ map_url }}" target="_blank" rel="noopener" class="flex h-11 w-full items-center justify-center rounded-xl border border-[#232738] bg-[#12141C] text-xs font-bold text-white transition hover:bg-[#1A1D28]">
+        Открыть на Яндекс Картах →
+      </a>
+    </div>
+    {% endif %}
+  </section>
+
+</div>
+
+<!-- STICKY BOTTOM BAR -->
+<div class="fixed bottom-0 inset-x-0 z-40 mx-auto max-w-md bg-[#12141C]/95 border-t border-[#232738] px-4 py-2.5 backdrop-blur-md">
+  <div class="flex items-center justify-between gap-3">
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-xs font-bold text-white">{{ business.name }}</p>
+      <p class="truncate text-[10px] text-slate-400">Быстрая запись {{ city_in }}</p>
+    </div>
+    <a href="{{ primary_cta_href }}" target="_blank" rel="noopener" class="shrink-0 rounded-lg bg-[#FF4500] px-4 py-2 text-xs font-black uppercase tracking-wider text-black shadow-[0_2px_12px_rgba(255,69,0,0.35)] transition hover:bg-[#E03E00]">
+      Записаться
+    </a>
+  </div>
+</div>
+
+</body>
+</html>

@@ -67,6 +67,26 @@ export interface Meta {
   with_phone: number;
 }
 
+export interface DesignStyle {
+  id: string;
+  name: string;
+  name_ru: string;
+  description: string;
+  tags: string[];
+  preview_colors: {
+    bg: string;
+    card: string;
+    accent: string;
+    text: string;
+    subtext?: string;
+    badge_bg?: string;
+  };
+  font_heading: string;
+  font_body: string;
+  recommended_niches: string[];
+  design_md?: string;
+}
+
 export interface Demo {
   id: string;
   lead_id: string;
@@ -75,6 +95,7 @@ export interface Demo {
   message: string;
   published: boolean;
   public_url: string;
+  style?: string | null;
   created_at: string;
   updated_at: string;
 }

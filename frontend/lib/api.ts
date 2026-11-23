@@ -7,6 +7,7 @@ import type {
   CreditTransaction,
   Demo,
   DemoUpdate,
+  DesignStyle,
   Dialog,
   Lead,
   LeadFilters,
@@ -137,8 +138,16 @@ export const api = {
     return request<Lead>(`/api/leads/${id}/enrich`, { method: "POST" });
   },
 
-  generateDemo(id: string) {
-    return request<Demo>(`/api/leads/${id}/demo`, { method: "POST" });
+  generateDemo(id: string, options?: { style?: string }) {
+    const q = options?.style ? `?style=${encodeURIComponent(options.style)}` : "";
+    return request<Demo>(`/api/leads/${id}/demo${q}`, {
+      method: "POST",
+      body: options?.style ? JSON.stringify({ style: options.style }) : undefined,
+    });
+  },
+
+  getStyles() {
+    return request<{ styles: DesignStyle[] }>("/api/demos/styles");
   },
 
   getLeadDemo(id: string) {

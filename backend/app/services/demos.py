@@ -47,10 +47,12 @@ def public_demo_url(demo_id: str) -> str:
 def demo_out(demo: DemoSite) -> DemoOut:
     data = DemoOut.model_validate(demo)
     data.public_url = public_demo_url(demo.id)
+    if hasattr(demo, "style"):
+        data.style = getattr(demo, "style", None)
     return data
 
 
-async def create_demo(session: AsyncSession, lead: Lead) -> DemoSite:
+async def create_demo(session: AsyncSession, lead: Lead, style: str | None = None) -> DemoSite:
     lead_dict = lead_to_dict(lead)
 
     # 1. Cascading media collection (Yandex Maps + TG Channel + TG Profile + Persistence + Niche fallback)
@@ -90,8 +92,11 @@ async def create_demo(session: AsyncSession, lead: Lead) -> DemoSite:
     data = lead_to_dict(lead)
     demo_id = new_id()
 
+    from app.services.design_systems import resolve_style_id
+    effective_style = resolve_style_id(style, lead.category)
+
     # 3. Generate HTML via structured AI JSON + Jinja2 niche templates
-    html, _engine = await generate_landing_html(data)
+    html, _engine = await generate_landing_html(data, style_id=effective_style)
     message = await generate_outreach_message(data, public_demo_url(demo_id))
 
     # 4. Save to database in a fresh, isolated transaction (protects against idle connection drops)
@@ -103,6 +108,7 @@ async def create_demo(session: AsyncSession, lead: Lead) -> DemoSite:
             html=html,
             message=message,
             published=True,
+            style=effective_style,
         )
         db.add(demo)
         target_lead = await db.get(Lead, lead.id)

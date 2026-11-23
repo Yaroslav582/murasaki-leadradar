@@ -731,19 +731,14 @@ async def generate_demo_json(
     lead_dict: dict[str, Any],
     hero_photos: list[str],
     interior_photos: list[str],
+    requested_style: str | None = None,
 ) -> dict[str, Any]:
     """
     Generates structured JSON content for a business landing page using TEXT_MODELS_CHAIN.
-    Returns:
-    {
-        "template_id": "editorial_light" | "dark_industrial" | "warm_appetite" | "clean_trust",
-        "hero_title": str,
-        "hero_subtitle": str,
-        "usp_list": list[dict[str, str]], # [{"title": "...", "desc": "..."}, ...]
-        "services": list[dict[str, str]], # [{"name": "...", "price": "...", "desc": "..."}, ...]
-        "faq": list[dict[str, str]],      # [{"question": "...", "answer": "..."}, ...]
-    }
+    Enforces DESIGN.md tokens and design language from VoltAgent/awesome-design-md.
     """
+    from app.services.design_systems import build_llm_design_context, resolve_style_id
+
     name = lead_dict.get("name") or "Компания"
     category = lead_dict.get("category") or "Сфера услуг"
     city = lead_dict.get("city") or "Россия"
@@ -751,24 +746,26 @@ async def generate_demo_json(
     rating = lead_dict.get("rating") or 4.9
     reviews_count = lead_dict.get("reviews_count") or 15
 
-    # Determine default template_id by niche
-    cat_lower = category.lower()
-    if any(k in cat_lower for k in ("бьюти", "красот", "маникюр", "педикюр", "волос", "парикмахер", "косметол", "цветы", "одежд", "спа")):
-        suggested_template = "editorial_light"
-    elif any(k in cat_lower for k in ("авто", "сервис", "шиномонтаж", "детейлинг", "мойка", "кузов", "сто", "барбер", "спорт", "стройк", "ремонт авто")):
-        suggested_template = "dark_industrial"
-    elif any(k in cat_lower for k in ("ресторан", "кафе", "кофейн", "пекарн", "доставка еды", "пицц", "суши", "бургер", "бар", "кухн", "кондитер")):
-        suggested_template = "warm_appetite"
-    else:
-        suggested_template = "clean_trust"
+    # Determine canonical style and template_id
+    effective_style = resolve_style_id(requested_style, category)
+    suggested_template = effective_style
+    design_context = build_llm_design_context(effective_style, category)
+
+    valid_templates = (
+        "dark_cyber_neon", "warm_artisan_coffee", "luxury_editorial",
+        "acid_neo_brutalism", "clean_swiss_trust", "playful_pastel",
+        "editorial_light", "dark_industrial", "warm_appetite", "clean_trust",
+    )
 
     system_prompt = (
         "Ты — топовый B2B/B2C маркетолог и UX-копирайтер продающих лендингов.\n"
-        "Твоя задача — составить продающие тексты и структуру для сайта конкретного бизнеса.\n"
+        "Твоя задача — составить продающие тексты и структуру для сайта конкретного бизнеса, "
+        "строго соблюдая выбранную дизайн-систему DESIGN.md (VoltAgent/awesome-design-md).\n\n"
+        f"{design_context}\n\n"
         "ПРАВИЛА:\n"
         "1. Пиши живо, конкретно, с акцентом на выгоды клиента, без заезженных штампов ('динамично развивающаяся компания').\n"
         "2. Цены указывай реалистичные в рублях ('от 2 500 ₽').\n"
-        "3. Выбери template_id строго из: ['editorial_light', 'dark_industrial', 'warm_appetite', 'clean_trust'].\n"
+        f"3. Выбери template_id строго: '{suggested_template}'.\n"
         "4. Верни СТРОГО валидный JSON следующей структуры, без markdown-обёртки и без комментариев:\n"
         "{\n"
         f'  "template_id": "{suggested_template}",\n'
@@ -798,7 +795,7 @@ async def generate_demo_json(
         f"Город: {city}\n"
         f"Адрес: {address or 'Центр города'}\n"
         f"Рейтинг: {rating}★ ({reviews_count} отзывов на картах)\n\n"
-        f"Рекомендуемый шаблон: {suggested_template}\n\n"
+        f"Выбранный стиль сайта (DESIGN.md): {effective_style}\n\n"
         "Сгенерируй продающий JSON для лендинга:"
     )
 
@@ -815,7 +812,7 @@ async def generate_demo_json(
         if isinstance(parsed, dict) and "hero_title" in parsed and "services" in parsed:
             # Ensure valid template_id
             t_id = parsed.get("template_id")
-            if t_id not in ("editorial_light", "dark_industrial", "warm_appetite", "clean_trust"):
+            if t_id not in valid_templates:
                 parsed["template_id"] = suggested_template
             return parsed
     except Exception as exc:

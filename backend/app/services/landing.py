@@ -1134,16 +1134,24 @@ CTA-ссылки:
 )
 
 
-def detect_template_id(category: str | None) -> str:
-    """Select the best matching Jinja2 template based on business category."""
+def detect_template_id(category: str | None, style_id: str | None = None) -> str:
+    """Select the best matching Jinja2 template based on business category or requested style."""
+    if style_id:
+        from app.services.design_systems import resolve_style_id
+        return resolve_style_id(style_id, category)
+
     cat = (category or "").lower()
     if any(k in cat for k in ("бьюти", "красот", "маникюр", "педикюр", "волос", "парикмахер", "косметол", "цветы", "одежд", "спа", "ногти", "брови")):
-        return "editorial_light"
+        return "luxury_editorial"
     if any(k in cat for k in ("авто", "сервис", "шиномонтаж", "детейлинг", "мойка", "кузов", "сто", "барбер", "спорт", "стройк", "ремонт авто")):
-        return "dark_industrial"
+        return "dark_cyber_neon"
     if any(k in cat for k in ("ресторан", "кафе", "кофейн", "пекарн", "доставка еды", "пицц", "суши", "бургер", "бар", "кухн", "кондитер")):
-        return "warm_appetite"
-    return "clean_trust"
+        return "warm_artisan_coffee"
+    if any(k in cat for k in ("бабл-ти", "мороженое", "десерт", "торт", "детск", "груминг")):
+        return "playful_pastel"
+    if any(k in cat for k in ("дизайн", "digital", "агентств", "тату")):
+        return "acid_neo_brutalism"
+    return "clean_swiss_trust"
 
 
 def render_jinja_demo(
@@ -1153,12 +1161,19 @@ def render_jinja_demo(
     hero_image: str,
     gallery_photos: list[str],
 ) -> str:
-    """Renders one of the 4 Jinja2 templates with business data and structured AI JSON."""
-    template_name = f"{template_id}.html"
+    """Renders one of the Jinja2 templates with business data and structured AI JSON."""
+    from app.services.design_systems import STYLE_ALIASES
+
+    # Resolve aliases if legacy name used
+    canonical_id = STYLE_ALIASES.get(template_id, template_id)
+    template_name = f"{canonical_id}.html"
     try:
         tmpl = jinja_env.get_template(template_name)
     except Exception:
-        tmpl = jinja_env.get_template("clean_trust.html")
+        try:
+            tmpl = jinja_env.get_template(f"{template_id}.html")
+        except Exception:
+            tmpl = jinja_env.get_template("clean_swiss_trust.html")
 
     phone_raw = business_dict.get("phone")
     tel_href = format_tel_href(phone_raw)
@@ -1180,17 +1195,22 @@ def render_jinja_demo(
     return inject_murasaki_badge(rendered, business_dict.get("name") or "")
 
 
-async def generate_landing_html(lead: dict) -> tuple[str, str]:
+async def generate_landing_html(lead: dict, style_id: str | None = None) -> tuple[str, str]:
     """
-    Generates an HTML landing page via structured AI JSON + 4 dedicated Jinja2 templates:
-      - editorial_light: Beauty, flowers, fashion, aesthetics
-      - dark_industrial: Auto services, detailing, barbershops, construction
-      - warm_appetite: Restaurants, cafes, bakeries, food delivery
-      - clean_trust: Medicine, legal, corporate B2B, services
+    Generates an HTML landing page via structured AI JSON + dedicated Jinja2 templates
+    powered by VoltAgent/awesome-design-md design systems:
+      - dark_cyber_neon: Automotive, tech, AI, gaming, barbershops
+      - warm_artisan_coffee: Cafes, bakeries, craft restaurants, specialty food
+      - luxury_editorial: Beauty, aesthetic cosmetics, fashion, architecture
+      - acid_neo_brutalism: Digital agencies, streetwear, tattoo, creative
+      - clean_swiss_trust: Medicine, law, corporate B2B, real estate
+      - playful_pastel: Bubble tea, desserts, kids centers, grooming
     """
+    from app.services.design_systems import resolve_style_id
     from app.services.media_collector import get_niche_fallback
 
     category = lead.get("category") or "Бизнес"
+    effective_style = resolve_style_id(style_id, category)
     niche_fallback = get_niche_fallback(category)
     photos = list(lead.get("photos") or [])
     hero_img = photos[0] if photos else niche_fallback.get("hero")
@@ -1204,10 +1224,11 @@ async def generate_landing_html(lead: dict) -> tuple[str, str]:
                 lead_dict=lead,
                 hero_photos=[hero_img] if hero_img else [],
                 interior_photos=gallery_imgs,
+                requested_style=effective_style,
             ),
             timeout=8.0,
         )
-        template_id = content_json.get("template_id") or detect_template_id(category)
+        template_id = content_json.get("template_id") or effective_style
         html_code = render_jinja_demo(
             template_id=template_id,
             business_dict=lead,
@@ -1220,9 +1241,14 @@ async def generate_landing_html(lead: dict) -> tuple[str, str]:
         logger.warning("LLM landing JSON failed: %s, falling back to deterministic Jinja2 render", exc)
 
     # 2. Deterministic Jinja2 render fallback
-    template_id = detect_template_id(category)
+    template_id = effective_style
     from app.services.ai_router import generate_demo_json
-    fallback_json = await generate_demo_json(lead, [hero_img] if hero_img else [], gallery_imgs)
+    fallback_json = await generate_demo_json(
+        lead,
+        [hero_img] if hero_img else [],
+        gallery_imgs,
+        requested_style=effective_style,
+    )
     html_code = render_jinja_demo(
         template_id=template_id,
         business_dict=lead,

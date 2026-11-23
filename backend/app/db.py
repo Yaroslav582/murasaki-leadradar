@@ -170,6 +170,7 @@ async def init_db() -> None:
             "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS daily_actions_reset_at TIMESTAMPTZ;",
             "ALTER TABLE proxies ADD COLUMN IF NOT EXISTS user_id BIGINT;",
             "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS ai_auto_reply_enabled BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS style VARCHAR(64);",
             "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source VARCHAR(32) DEFAULT 'telegram';",
             "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source_url VARCHAR(500);",
             "ALTER TABLE telegram_chat_targets ADD COLUMN IF NOT EXISTS cooldown_minutes INTEGER DEFAULT 120;",
@@ -277,6 +278,12 @@ async def init_db() -> None:
                     for col_name, col_def in new_dlg_cols:
                         if col_name not in existing_dlg_cols:
                             sync_conn.exec_driver_sql(f"ALTER TABLE dialogs ADD COLUMN {col_name} {col_def}")
+
+                # demo_sites
+                res = sync_conn.exec_driver_sql("PRAGMA table_info(demo_sites)").fetchall()
+                existing_demo_cols = {row[1] for row in res}
+                if existing_demo_cols and "style" not in existing_demo_cols:
+                    sync_conn.exec_driver_sql("ALTER TABLE demo_sites ADD COLUMN style VARCHAR(64)")
             except Exception as exc:
                 logger.debug("SQLite secondary migration notice: %s", exc)
 

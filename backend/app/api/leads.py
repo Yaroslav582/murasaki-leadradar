@@ -13,6 +13,7 @@ from app.models import DemoSite, Lead, utcnow
 from app.schemas import (
     BulkStatusUpdate,
     CustomDemoCreate,
+    DemoGenerateRequest,
     DemoOut,
     LeadOut,
     LeadsPage,
@@ -179,11 +180,15 @@ async def enrich_single(
 @router.post("/{lead_id}/demo", response_model=DemoOut)
 async def generate_demo(
     lead_id: str,
+    payload: DemoGenerateRequest | None = None,
+    style: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
 ) -> DemoOut:
     lead = await session.get(Lead, lead_id)
     if lead is None:
         raise HTTPException(status_code=404, detail="Лид не найден")
+
+    chosen_style = (payload.style if payload and payload.style else None) or style
 
     # 1. Pre-check credits balance before running generation
     user = await get_or_create_user(session)
@@ -195,7 +200,7 @@ async def generate_demo(
 
     # 2. Transactional safety: generate demo first
     try:
-        demo = await create_demo(session, lead)
+        demo = await create_demo(session, lead, style=chosen_style)
     except Exception as exc:
         logger.error("Failed to generate demo for lead %s: %s", lead_id, exc)
         raise HTTPException(
