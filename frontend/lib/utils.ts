@@ -1,4 +1,5 @@
 import type { LeadStatus } from "./types";
+import { BUILTIN_STYLES, detectNicheStyle } from "@/components/StyleSelectModal";
 
 export const STATUS_META: Record<
   LeadStatus,
@@ -461,63 +462,16 @@ export function generatePromptForLead(
     cleanPhoneHref = `tel:+${phoneDigits}`;
   }
 
-  // Determine DESIGN.md style recommendation based on explicit styleId or niche category
-  const cat = (lead.category || "").toLowerCase();
-  let selectedStyle = styleId;
-  if (!selectedStyle || selectedStyle === "auto") {
-    if (cat.includes("авто") || cat.includes("сервис") || cat.includes("детейлинг") || cat.includes("it") || cat.includes("спорт")) {
-      selectedStyle = "dark_cyber_neon";
-    } else if (cat.includes("кофе") || cat.includes("пекарн") || cat.includes("ресторан") || cat.includes("еда")) {
-      selectedStyle = "warm_artisan_coffee";
-    } else if (cat.includes("бьюти") || cat.includes("красот") || cat.includes("маникюр") || cat.includes("спа") || cat.includes("мода")) {
-      selectedStyle = "luxury_editorial";
-    } else if (cat.includes("дизайн") || cat.includes("digital") || cat.includes("тату") || cat.includes("агентств")) {
-      selectedStyle = "acid_neo_brutalism";
-    } else if (cat.includes("бабл-ти") || cat.includes("десерт") || cat.includes("торт") || cat.includes("детск") || cat.includes("зоо")) {
-      selectedStyle = "playful_pastel";
-    } else {
-      selectedStyle = "clean_swiss_trust";
-    }
-  }
+  // Determine DESIGN.md style recommendation dynamically across all 20 styles
+  const selectedStyleId = styleId && styleId !== "auto" ? styleId : detectNicheStyle(lead.category);
+  const foundStyle = BUILTIN_STYLES.find((s) => s.id === selectedStyleId) || BUILTIN_STYLES[4];
+  const colors = foundStyle.preview_colors;
 
-  let styleRecommendation = "";
-  if (selectedStyle === "dark_cyber_neon") {
-    styleRecommendation = `[DESIGN.md: Dark Cyber Neon (VoltAgent/awesome-design-md)]
-- Фон: глубокий графитовый холст (#08090C), карточки (#12141C), граница (#232738).
-- Акценты: неоновый оранжевый (#FF4500) с мягким свечением и бирюзовые сигналы (#00F2FE).
-- Шрифты Google Fonts: 'Unbounded' (жирные заглавные заголовки) + 'Inter' (основной текст).
-- Элементы: темные стекловидные плашки, телеметрические бейджи метрик (120+, 4.9★), скругления 12-14px.`;
-  } else if (selectedStyle === "warm_artisan_coffee") {
-    styleRecommendation = `[DESIGN.md: Warm Artisan Coffee (VoltAgent/awesome-design-md)]
-- Фон: уютный пергамент (#FAF6F0), белые карточки (#FFFFFF), граница (#EADBCE).
-- Акценты: теплый терракотовый (#C85A32), янтарный (#D97706), эспрессо-чернила (#281D17).
-- Шрифты Google Fonts: 'Playfair Display' / 'Lora' (антиквенные заголовки) + 'Plus Jakarta Sans'.
-- Элементы: тактильная текстура свежей выпечки и кофе, мягкие скругления 20px, уютная атмосфера.`;
-  } else if (selectedStyle === "luxury_editorial") {
-    styleRecommendation = `[DESIGN.md: Luxury Editorial (VoltAgent/awesome-design-md)]
-- Фон: алебастровый камень (#F7F5F0), белые карточки (#FFFFFF), граница (#E8E2D6).
-- Акценты: глубокий графит (#18181B), шалфейный зеленый (#3E5848), золотистое шампанское (#C5A880).
-- Шрифты Google Fonts: 'Cormorant Garamond' / 'Playfair Display' (высокая эстетика) + 'Inter'.
-- Элементы: вытянутые pill-бейджи (rounded-full), просторные воздушные отступы, журнальная верстка.`;
-  } else if (selectedStyle === "acid_neo_brutalism") {
-    styleRecommendation = `[DESIGN.md: Acid Neo-Brutalism (VoltAgent/awesome-design-md)]
-- Фон: плотный черный (#0D0E12), контрастные блоки (#161822), граница (#2A2E3D).
-- Акценты: электрический кислотно-лаймовый (#D4FF00), огненный оранжевый (#FF4800).
-- Шрифты Google Fonts: 'Syne' (массивный акцидентный гротеск) + 'Space Grotesk' / 'JetBrains Mono'.
-- Элементы: жесткие тени 4px (#D4FF00), стикерные бейджи //, резкие углы 4-6px, дерзкая геометрия.`;
-  } else if (selectedStyle === "playful_pastel") {
-    styleRecommendation = `[DESIGN.md: Playful Pastel & Sweet (VoltAgent/awesome-design-md)]
-- Фон: нежный ягодный холст (#FFF4F6), белые карточки (#FFFFFF), граница (#FCD5DF).
-- Акценты: спелая земляника (#E11D48), лавандовый (#8B5CF6), матча (#10B981).
-- Шрифты Google Fonts: 'Comfortaa' / 'Nunito' (округлые дружелюбные формы) + 'Plus Jakarta Sans'.
-- Элементы: супер-скругленные pill-формы (rounded-full / rounded-3xl), сочные фруктовые бейджи.`;
-  } else {
-    styleRecommendation = `[DESIGN.md: Clean Swiss Trust (VoltAgent/awesome-design-md)]
-- Фон: прохладный белый/светло-серый (#F8FAFC / #FFFFFF), граница (#E2E8F0).
-- Акценты: королевский сапфировый (#2563EB), темно-синий (#0F172A), изумрудный (#10B981).
-- Шрифты Google Fonts: 'Inter' (швейцарская выверенная сетка) + 'Plus Jakarta Sans'.
-- Элементы: блоки доверия, фактоиды, 100% гарантия, четкие лицензии, скругления 10-12px.`;
-  }
+  const styleRecommendation = `[DESIGN.md: ${foundStyle.name} (${foundStyle.name_ru}) - VoltAgent/awesome-design-md]
+- Фон (Canvas): ${colors.bg}, карточки (Surface): ${colors.card}.
+- Акцент (CTA): ${colors.accent}. Заголовки: ${colors.text}, подзаголовки: ${colors.subtext || colors.text}.
+- Шрифты Google Fonts: '${foundStyle.font_heading}' (заголовки) + '${foundStyle.font_body}' (основной текст).
+- Атмосфера: ${foundStyle.description}`;
 
   const photos = lead.photos || [];
   const heroPhoto = photos[0] || lead.logo_url || "https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=1200&q=80";

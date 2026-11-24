@@ -461,9 +461,9 @@ export default function DemoModal({
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
                     <Palette size={12} className="text-brand-400" />
-                    Дизайн-код стиля (VoltAgent DESIGN.md):
+                    Дизайн-код стиля (20 стилей AWESOME-DESIGN-MD):
                   </label>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1 scrollbar-thin">
                     {BUILTIN_STYLES.map((st) => (
                       <button
                         key={st.id}

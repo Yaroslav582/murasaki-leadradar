@@ -85,6 +85,7 @@ export interface DesignStyle {
   font_body: string;
   recommended_niches: string[];
   design_md?: string;
+  tone?: "dark" | "light" | "vibrant";
 }
 
 export interface Demo {

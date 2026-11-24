@@ -302,8 +302,8 @@ export default function LeadDrawer({
           <div className="flex items-center gap-2 rounded-xl border border-brand-500/20 bg-brand-500/[0.05] px-3 py-2 text-[11px] text-slate-300">
             <Palette size={14} className="text-brand-400 shrink-0" />
             <div className="flex-1">
-              <span className="font-semibold text-brand-200">6 дизайн-систем (awesome-design-md): </span>
-              <span className="text-slate-400">Неон, Тёплый кофе, Нео-брутализм, Пастель, Премиум, Минимализм</span>
+              <span className="font-semibold text-brand-200">20 дизайн-систем (AWESOME-DESIGN-MD): </span>
+              <span className="text-slate-400">Тёмные, Светлые и Яркие шаблоны с автоподбором под нишу</span>
             </div>
           </div>
 
