@@ -495,6 +495,102 @@ STYLES_CATALOG: dict[str, dict[str, Any]] = {
         "template_file": "obsidian_gold_luxury.html",
         "legacy_template_alias": "luxury_editorial",
     },
+    "matte_graphite_titanium": {
+        "id": "matte_graphite_titanium",
+        "name": "Matte Graphite & Titanium",
+        "name_ru": "Матовый графит и титан",
+        "description": "Эстетика премиальной матовой техники (Apple Space Grey, Leica, Bang & Olufsen): матовый графит (#18191D), приглушенный титановый сатин (#94A3B8) и сверхточный минимализм.",
+        "tags": ["Премиум-техника", "Аудио", "Авто-ателье", "Hi-End", "Инженерия", "Минимализм"],
+        "tone": "graphite",
+        "preview_colors": {
+            "bg": "#18191D",
+            "card": "#22242B",
+            "accent": "#94A3B8",
+            "text": "#F1F5F9",
+            "subtext": "#94A3B8",
+            "badge_bg": "#2C2F38",
+        },
+        "font_css": '<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">',
+        "font_heading": "'Manrope', sans-serif",
+        "font_body": "'Inter', system-ui, sans-serif",
+        "recommended_niches": [
+            "аудио", "hi-fi", "элитн", "титан", "электроник", "звук", "студийн", "инжиниринг", "хай-тек"
+        ],
+        "template_file": "matte_graphite_titanium.html",
+        "legacy_template_alias": "dark_cyber_neon",
+    },
+    "monochrome_slate_studio": {
+        "id": "monochrome_slate_studio",
+        "name": "Monochrome Slate Studio",
+        "name_ru": "Монохромная фото-студия",
+        "description": "Строгий 100% монохром без цвета: антрацит (#111215), глубокий сланец (#1A1B20), кино-типографика Space Grotesk и фокус на черно-белой фотографии.",
+        "tags": ["Фотостудии", "Видеопродакшн", "Арт-галереи", "Модели", "Режиссура", "Выставки"],
+        "tone": "graphite",
+        "preview_colors": {
+            "bg": "#111215",
+            "card": "#1A1B20",
+            "accent": "#F8FAFC",
+            "text": "#FFFFFF",
+            "subtext": "#9CA3AF",
+            "badge_bg": "#25272E",
+        },
+        "font_css": '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">',
+        "font_heading": "'Space Grotesk', sans-serif",
+        "font_body": "'Inter', system-ui, sans-serif",
+        "recommended_niches": [
+            "фото", "фотограф", "видео", "продакшн", "модел", "галере", "съемк", "кино", "арт"
+        ],
+        "template_file": "monochrome_slate_studio.html",
+        "legacy_template_alias": "acid_neo_brutalism",
+    },
+    "cool_grey_concrete": {
+        "id": "cool_grey_concrete",
+        "name": "Cool Grey Concrete",
+        "name_ru": "Серый бетон и минимализм",
+        "description": "Текстурированный серый бетон (#282A30), прохладный сланец (#333740), лаконичные ледяные акценты (#38BDF8) и монументальная архитектурная геометрия Syne.",
+        "tags": ["Керамогранит", "Фасады", "Премиум-ремонт", "Ландшафт", "Лофт", "Материалы"],
+        "tone": "graphite",
+        "preview_colors": {
+            "bg": "#282A30",
+            "card": "#333740",
+            "accent": "#38BDF8",
+            "text": "#F8FAFC",
+            "subtext": "#CBD5E1",
+            "badge_bg": "#404552",
+        },
+        "font_css": '<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">',
+        "font_heading": "'Syne', sans-serif",
+        "font_body": "'Inter', system-ui, sans-serif",
+        "recommended_niches": [
+            "керамогранит", "фасад", "плитк", "бетон", "ландшафт", "камень", "гранит", "стяжк", "полы"
+        ],
+        "template_file": "cool_grey_concrete.html",
+        "legacy_template_alias": "industrial_heavy_steel",
+    },
+    "deep_slate_fintech": {
+        "id": "deep_slate_fintech",
+        "name": "Deep Slate Consulting",
+        "name_ru": "Глубокий сланец и консалтинг",
+        "description": "Солидная палитра темного сланца и стали: глубокий серо-синий гранит (#0F172A, #1E293B), статусная геометрия Plus Jakarta Sans и выверенная аналитика.",
+        "tags": ["Консалтинг", "Инвестиции", "Финансы", "Аудит", "Бизнес-брокеры", "Аналитика"],
+        "tone": "graphite",
+        "preview_colors": {
+            "bg": "#0F172A",
+            "card": "#1E293B",
+            "accent": "#60A5FA",
+            "text": "#F8FAFC",
+            "subtext": "#94A3B8",
+            "badge_bg": "#334155",
+        },
+        "font_css": '<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">',
+        "font_heading": "'Plus Jakarta Sans', sans-serif",
+        "font_body": "'Inter', system-ui, sans-serif",
+        "recommended_niches": [
+            "консалтинг", "инвестици", "финанс", "брокер", "бизнес", "оценк", "актив", "капитал", "фонд"
+        ],
+        "template_file": "deep_slate_fintech.html",
+        "legacy_template_alias": "clean_swiss_trust",
+    },
 }
 
 # Alias mapping for backwards compatibility
@@ -538,83 +634,99 @@ def detect_style_by_category(category: str | None) -> str:
     """Smart heuristic to recommend the best matching design style from all 20 styles."""
     cat = (category or "").lower()
 
-    # 1. Specialized Nightlife / Hookah / Club
+    # 1. Photography & Monochrome film/video studio
+    if any(k in cat for k in ("фото", "фотограф", "видео", "продакшн", "модел", "съемк", "киностуд", "арт-галере")):
+        return "monochrome_slate_studio"
+
+    # 2. Consulting, Finance & Investment
+    if any(k in cat for k in ("консалтинг", "инвестици", "финанс", "брокер", "оценк", "капитал", "фонд", "аудит")):
+        return "deep_slate_fintech"
+
+    # 3. Architectural Concrete, Porcelain & Facades
+    if any(k in cat for k in ("керамогранит", "фасад", "плитк", "камень", "гранит", "стяжк", "полы")):
+        return "cool_grey_concrete"
+
+    # 4. Hi-End Audio, Titanium & Acoustic Labs
+    if any(k in cat for k in ("аудио", "hi-fi", "звук", "акустик", "хай-тек")):
+        return "matte_graphite_titanium"
+
+    # 5. Specialized Nightlife / Hookah / Club
     if any(k in cat for k in ("кальян", "лаунж", "lounge", "караоке", "hookah", "ночн", "коктейл")):
         return "midnight_velvet_lounge"
 
-    # 2. Asian / Sushi / Ramen street food
+    # 6. Asian / Sushi / Ramen street food
     if any(k in cat for k in ("суши", "ролл", "рамен", "азиатск", "японск", "вок", "лапш", "том ям", "гёдза")):
         return "tokyo_neo_izakaya"
 
-    # 3. Burgers / Pizza / Grill / BBQ
+    # 7. Burgers / Pizza / Grill / BBQ
     if any(k in cat for k in ("бургер", "пицц", "гриль", "барбекю", "стейк", "шашлык", "мясо", "хот-дог", "пивн")):
         return "bold_diner_grill"
 
-    # 4. Barber / Tattoo / Leather craft
+    # 8. Barber / Tattoo / Leather craft
     if any(k in cat for k in ("барбер", "барбершоп", "тату", "кожгалантере", "брить")):
         return "vintage_barber_leather"
 
-    # 5. Sports / Fitness / Combat / Gym
+    # 9. Sports / Fitness / Combat / Gym
     if any(k in cat for k in ("фитнес", "кроссфит", "единоборств", "бокс", "тренажер", "спортзал", "gym", "тренер", "бассейн", "борьб")):
         return "kinetic_sport_volt"
 
-    # 6. Pets & Vet care
+    # 10. Pets & Vet care
     if any(k in cat for k in ("ветклиник", "ветеринар", "груминг", "зоо", "питом", "собак", "кошек", "зоомагазин", "кинолог")):
         return "friendly_pet_care"
 
-    # 7. Jewelry & Luxury / VIP
+    # 11. Jewelry & Luxury / VIP
     if any(k in cat for k in ("ювелир", "золот", "бриллиант", "vip", "часы", "украшени", "ломбард")):
         return "obsidian_gold_luxury"
 
-    # 8. Glamping & Nature tours
+    # 12. Glamping & Nature tours
     if any(k in cat for k in ("глэмпинг", "база отдых", "тур", "поход", "кемпинг", "экскурси", "шале", "домик в лес", "сплав")):
         return "nature_camp_glamping"
 
-    # 9. Flowers & Organic Botanical
+    # 13. Flowers & Organic Botanical
     if any(k in cat for k in ("цветы", "флорист", "букет", "эко-лав", "органик", "йог", "сад", "растени", "веган", "трав")):
         return "organic_botanical_sage"
 
-    # 10. Education / Courses / Driving school
+    # 14. Education / Courses / Driving school
     if any(k in cat for k in ("автошкол", "курс", "языков", "школ", "обучени", "репетитор", "академи", "английск", "подготовк")):
         return "modern_edtech_campus"
 
-    # 11. Gadget & Tech repair
+    # 15. Gadget & Tech repair
     if any(k in cat for k in ("ремонт телефон", "ремонт техник", "apple", "ноутбук", "смартфон", "компьютерн", "электроник")):
         return "clean_tech_lab"
 
-    # 12. Auto, Detailing & Cyber
+    # 16. Auto, Detailing & Cyber
     if any(k in cat for k in ("авто", "сервис", "шиномонтаж", "детейлинг", "мойка", "кузов", "сто", "кибер", "gadget", "it-")):
         return "dark_cyber_neon"
 
-    # 13. Heavy Steel & Construction
+    # 17. Heavy Steel & Construction
     if any(k in cat for k in ("стройк", "строитель", "спецтехник", "металл", "бетон", "производств", "кран", "экскаватор", "кровл", "жби", "строймонтаж")):
         return "industrial_heavy_steel"
 
-    # 14. Architecture & Loft Furniture
-    if any(k in cat for k in ("интерьер", "мебел", "дизайн интерьер", "архитектур", "лофт", "фасад", "окна", "кухни на заказ")):
+    # 18. Architecture & Loft Furniture
+    if any(k in cat for k in ("интерьер", "мебел", "дизайн интерьер", "архитектур", "лофт", "окна", "кухни на заказ")):
         return "architectural_brutal_loft"
 
-    # 15. Cleaning & Nordic Hygge
+    # 19. Cleaning & Nordic Hygge
     if any(k in cat for k in ("клининг", "химчистк", "апартамент", "уборк", "стирк", "постель", "посуточно", "отель", "гостиниц")):
         return "nordic_hygge_wood"
 
-    # 16. Sweet pastel (bubble tea, desserts, kids)
+    # 20. Sweet pastel (bubble tea, desserts, kids)
     if any(k in cat for k in ("бабл", "bubble", "мороженое", "торт", "десерт", "сладост", "дети", "детск", "подарк", "шары", "праздник")):
         return "playful_pastel"
 
-    # 17. Creative & Digital Neo-brutalism
+    # 21. Creative & Digital Neo-brutalism
     if any(k in cat for k in ("digital", "диджитал", "агентств", "стритвер", "streetwear", "мерч", "продакшн", "креатив")):
         return "acid_neo_brutalism"
 
-    # 18. Beauty & Fashion Editorial
+    # 22. Beauty & Fashion Editorial
     if any(k in cat for k in ("бьюти", "красот", "маникюр", "педикюр", "волос", "парикмахер", "косметол", "одежд", "спа", "ногти", "брови", "массаж", "мода")):
         return "luxury_editorial"
 
-    # 19. Coffee & Bakery Craft
+    # 23. Coffee & Bakery Craft
     if any(k in cat for k in ("кофе", "пекарн", "кондитер", "выпечк", "ресторан", "кафе", "доставка еды", "кухн", "чай")):
         return "warm_artisan_coffee"
 
-    # 20. Default to clean swiss trust for corporate, legal, medical, and general businesses
+    # 24. Default to clean swiss trust
     return "clean_swiss_trust"
 
 

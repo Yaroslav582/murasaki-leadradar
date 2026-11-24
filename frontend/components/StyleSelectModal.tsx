@@ -397,12 +397,108 @@ export const BUILTIN_STYLES: DesignStyle[] = [
     font_body: "Montserrat",
     recommended_niches: ["ювелир", "золот", "бриллиант", "vip", "премиум", "часы", "украшени", "ломбард"],
   },
+  {
+    id: "matte_graphite_titanium",
+    name: "Matte Graphite & Titanium",
+    name_ru: "Матовый графит и титан",
+    description: "Эстетика премиальной матовой техники (Apple Space Grey, Leica, Bang & Olufsen): матовый графит (#18191D), приглушенный титановый сатин (#94A3B8) и сверхточный минимализм.",
+    tags: ["Премиум-техника", "Аудио", "Авто-ателье", "Hi-End", "Инженерия", "Минимализм"],
+    tone: "graphite",
+    preview_colors: {
+      bg: "#18191D",
+      card: "#22242B",
+      accent: "#94A3B8",
+      text: "#F1F5F9",
+      subtext: "#94A3B8",
+      badge_bg: "#2C2F38",
+    },
+    font_heading: "Manrope",
+    font_body: "Inter",
+    recommended_niches: ["аудио", "hi-fi", "элитн", "титан", "электроник", "звук", "студийн", "инжиниринг", "хай-тек"],
+  },
+  {
+    id: "monochrome_slate_studio",
+    name: "Monochrome Slate Studio",
+    name_ru: "Монохромная фото-студия",
+    description: "Строгий 100% монохром без цвета: антрацит (#111215), глубокий сланец (#1A1B20), кино-типографика Space Grotesk и фокус на черно-белой фотографии.",
+    tags: ["Фотостудии", "Видеопродакшн", "Арт-галереи", "Модели", "Режиссура", "Выставки"],
+    tone: "graphite",
+    preview_colors: {
+      bg: "#111215",
+      card: "#1A1B20",
+      accent: "#F8FAFC",
+      text: "#FFFFFF",
+      subtext: "#9CA3AF",
+      badge_bg: "#25272E",
+    },
+    font_heading: "Space Grotesk",
+    font_body: "Inter",
+    recommended_niches: ["фото", "фотограф", "видео", "продакшн", "модел", "галере", "съемк", "кино", "арт"],
+  },
+  {
+    id: "cool_grey_concrete",
+    name: "Cool Grey Concrete",
+    name_ru: "Серый бетон и минимализм",
+    description: "Текстурированный серый бетон (#282A30), прохладный сланец (#333740), лаконичные ледяные акценты (#38BDF8) и монументальная архитектурная геометрия Syne.",
+    tags: ["Керамогранит", "Фасады", "Премиум-ремонт", "Ландшафт", "Лофт", "Материалы"],
+    tone: "graphite",
+    preview_colors: {
+      bg: "#282A30",
+      card: "#333740",
+      accent: "#38BDF8",
+      text: "#F8FAFC",
+      subtext: "#CBD5E1",
+      badge_bg: "#404552",
+    },
+    font_heading: "Syne",
+    font_body: "Inter",
+    recommended_niches: ["керамогранит", "фасад", "плитк", "бетон", "ландшафт", "камень", "гранит", "стяжк", "полы"],
+  },
+  {
+    id: "deep_slate_fintech",
+    name: "Deep Slate Consulting",
+    name_ru: "Глубокий сланец и консалтинг",
+    description: "Солидная палитра темного сланца и стали: глубокий серо-синий гранит (#0F172A, #1E293B), статусная геометрия Plus Jakarta Sans и выверенная аналитика.",
+    tags: ["Консалтинг", "Инвестиции", "Финансы", "Аудит", "Бизнес-брокеры", "Аналитика"],
+    tone: "graphite",
+    preview_colors: {
+      bg: "#0F172A",
+      card: "#1E293B",
+      accent: "#60A5FA",
+      text: "#F8FAFC",
+      subtext: "#94A3B8",
+      badge_bg: "#334155",
+    },
+    font_heading: "Plus Jakarta Sans",
+    font_body: "Inter",
+    recommended_niches: ["консалтинг", "инвестици", "финанс", "брокер", "бизнес", "оценк", "актив", "капитал", "фонд"],
+  },
 ];
 
 export function detectNicheStyle(category: string | undefined): string {
   const cat = (category || "").toLowerCase();
 
-  // 1. Specialized Nightlife / Hookah / Club
+  // 1. Photography & Monochrome film/video studio
+  if (cat.includes("фото") || cat.includes("фотограф") || cat.includes("видео") || cat.includes("продакшн") || cat.includes("модел") || cat.includes("съемк") || cat.includes("киностуд") || cat.includes("арт-галере")) {
+    return "monochrome_slate_studio";
+  }
+
+  // 2. Consulting, Finance & Investment
+  if (cat.includes("консалтинг") || cat.includes("инвестици") || cat.includes("финанс") || cat.includes("брокер") || cat.includes("оценк") || cat.includes("капитал") || cat.includes("фонд") || cat.includes("аудит")) {
+    return "deep_slate_fintech";
+  }
+
+  // 3. Architectural Concrete, Porcelain & Facades
+  if (cat.includes("керамогранит") || cat.includes("фасад") || cat.includes("плитк") || cat.includes("камень") || cat.includes("гранит") || cat.includes("стяжк") || cat.includes("полы")) {
+    return "cool_grey_concrete";
+  }
+
+  // 4. Hi-End Audio, Titanium & Acoustic Labs
+  if (cat.includes("аудио") || cat.includes("hi-fi") || cat.includes("звук") || cat.includes("акустик") || cat.includes("хай-тек")) {
+    return "matte_graphite_titanium";
+  }
+
+  // 5. Specialized Nightlife / Hookah / Club
   if (cat.includes("кальян") || cat.includes("лаунж") || cat.includes("lounge") || cat.includes("караоке") || cat.includes("hookah") || cat.includes("ночн") || cat.includes("коктейл")) {
     return "midnight_velvet_lounge";
   }
@@ -516,7 +612,7 @@ export default function StyleSelectModal({
 }) {
   const recommendedId = useMemo(() => detectNicheStyle(lead.category), [lead.category]);
   const [selectedId, setSelectedId] = useState<string>(recommendedId);
-  const [toneFilter, setToneFilter] = useState<"all" | "dark" | "light" | "vibrant">("all");
+  const [toneFilter, setToneFilter] = useState<"all" | "graphite" | "dark" | "light" | "vibrant">("all");
   const [expandedSpecId, setExpandedSpecId] = useState<string | null>(null);
 
   // Filtered & sorted styles: AI recommendation always appears FIRST!
@@ -536,10 +632,11 @@ export default function StyleSelectModal({
   // Counts for filter chips
   const counts = useMemo(() => {
     const total = availableStyles.length;
+    const graphite = availableStyles.filter((s) => s.tone === "graphite").length;
     const dark = availableStyles.filter((s) => s.tone === "dark").length;
     const light = availableStyles.filter((s) => s.tone === "light").length;
     const vibrant = availableStyles.filter((s) => s.tone === "vibrant").length;
-    return { total, dark, light, vibrant };
+    return { total, graphite, dark, light, vibrant };
   }, [availableStyles]);
 
   const selectedStyle = availableStyles.find((s) => s.id === selectedId) || availableStyles[0];
@@ -576,7 +673,7 @@ export default function StyleSelectModal({
                 <h2 className="text-sm sm:text-base font-extrabold text-white truncate">Выбор стиля сайта</h2>
                 <span className="inline-flex items-center gap-1 rounded bg-gradient-to-r from-indigo-500/20 to-purple-500/20 px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] font-mono font-bold uppercase tracking-wider text-indigo-300 border border-indigo-500/30">
                   <FileCode size={10} />
-                  AWESOME-DESIGN-MD · 20 стилей
+                  AWESOME-DESIGN-MD · 24 стиля
                 </span>
               </div>
               <p className="text-[11px] sm:text-xs text-slate-400 truncate">
@@ -615,7 +712,7 @@ export default function StyleSelectModal({
           </button>
         </div>
 
-        {/* Компактные чипсы-фильтры: Все (20), Тёмные (6), Светлые (10), Яркие (4) */}
+        {/* Компактные чипсы-фильтры: Все (24), Графитовые (4), Тёмные (6), Светлые (10), Яркие (4) */}
         <div className="flex items-center gap-1.5 overflow-x-auto px-4 py-2.5 sm:px-6 border-b border-white/[0.06] bg-[#161822] scrollbar-none">
           <button
             type="button"
@@ -630,6 +727,20 @@ export default function StyleSelectModal({
             }`}
           >
             Все ({counts.total})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic("light");
+              setToneFilter("graphite");
+            }}
+            className={`shrink-0 flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${
+              toneFilter === "graphite"
+                ? "bg-brand-500 text-white shadow-sm ring-1 ring-brand-400"
+                : "bg-white/[0.05] text-slate-300 hover:bg-white/[0.1] hover:text-white"
+            }`}
+          >
+            <span>🌑</span> Графитовые ({counts.graphite})
           </button>
           <button
             type="button"
