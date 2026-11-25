@@ -7,16 +7,21 @@ import {
   FileSpreadsheet,
   FileText,
   Filter,
+  LayoutGrid,
+  List,
+  MessageCircle,
+  Phone,
   Plus,
   Search,
   Send,
   SlidersHorizontal,
   Sparkles,
+  Star,
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Demo, Lead, LeadFilters, LeadStatus, Meta, ParseJob, ParseRequest, SortKey, Stats } from "@/lib/types";
-import { SOURCE_LABELS, STATUS_META, formatNumber } from "@/lib/utils";
+import { SOURCE_LABELS, STATUS_META, WEBSITE_STATUS_META, formatNumber, getLeadScore, getTelegramUrl, getWebsiteStatus, getWhatsAppUrl, phoneDigits } from "@/lib/utils";
 import AccountsView from "@/components/AccountsView";
 import BillingModal from "@/components/BillingModal";
 import BottomNav, { type NavTab } from "@/components/BottomNav";
@@ -80,6 +85,7 @@ export default function HomePage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("new");
+  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -547,38 +553,58 @@ export default function HomePage() {
                     )}
                   </div>
 
+                  {/* Переключатель вида: Таблица / Карточки */}
+                  <div className="hidden md:flex items-center rounded-lg border border-[#22252A] bg-[#121417] p-0.5">
+                    <button
+                      onClick={() => setViewMode("table")}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition ${
+                        viewMode === "table" ? "bg-[#22252A] text-white" : "text-[#71717A] hover:text-white"
+                      }`}
+                      title="Табличный вид (CRM)"
+                    >
+                      <List size={14} />
+                    </button>
+                    <button
+                      onClick={() => setViewMode("grid")}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition ${
+                        viewMode === "grid" ? "bg-[#22252A] text-white" : "text-[#71717A] hover:text-white"
+                      }`}
+                      title="Карточки"
+                    >
+                      <LayoutGrid size={14} />
+                    </button>
+                  </div>
+
+                  {/* Компактная кнопка «Касание по выборке» */}
+                  <button
+                    onClick={() => {
+                      triggerHaptic("medium");
+                      setOutreachOpen(true);
+                    }}
+                    className="btn-primary !h-9 !px-3.5 shrink-0"
+                    title="Запустить мягкий аутрич по текущей выборке"
+                  >
+                    <Send size={13} />
+                    <span className="hidden sm:inline">Рассылка</span>
+                    <span className="font-mono text-[11px] opacity-70">{formatNumber(total)}</span>
+                  </button>
+
                   {/* Компактная квадратная кнопка Фильтры в одну строку с инпутом */}
                   <button
                     onClick={() => setSidebarOpen(true)}
-                    className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.07] bg-[#1A1C23] text-[#9CA3AF] transition hover:border-white/20 hover:text-[#F3F4F6] lg:hidden"
+                    className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#22252A] bg-[#121417] text-[#A1A1AA] transition hover:border-[#32363E] hover:text-white lg:hidden"
                     title="Фильтры"
                     aria-label="Фильтры"
                   >
                     <SlidersHorizontal size={14} />
                     {activeCount ? (
-                      <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#8B5CF6] px-1 font-mono text-[9px] font-bold text-white shadow-sm tabular-nums tracking-tight">
+                      <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#F4F4F5] px-1 font-mono text-[9px] font-bold text-[#09090B] tabular-nums">
                         {activeCount}
                       </span>
                     ) : null}
                   </button>
                 </div>
               </div>
-
-              {/* Кнопка «Касание по выборке» на всю ширину с Murasaki Violet градиентом */}
-              <button
-                onClick={() => {
-                  triggerHaptic("medium");
-                  setOutreachOpen(true);
-                }}
-                className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] py-2.5 px-4 text-xs font-semibold text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25),0_4px_20px_rgba(139,92,246,0.3)] transition-all hover:brightness-110 active:scale-[0.99]"
-                title="Запустить мягкий аутрич с AI-уникализацией оффера"
-              >
-                <Send size={13} className="transition-transform group-hover:translate-x-0.5" />
-                <span>Касание по выборке</span>
-                <span className="rounded-full bg-white/20 px-2 py-0.2 font-mono text-[11px] font-medium text-white tabular-nums tracking-tight">
-                  {formatNumber(total)} лидов
-                </span>
-              </button>
 
               {activeCount ? (
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -611,7 +637,131 @@ export default function HomePage() {
                 </div>
               ) : leads.length ? (
                 <>
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                  {viewMode === "table" ? (
+                    <div className="hidden md:block overflow-hidden rounded-xl border border-[#22252A] bg-[#121417]">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-[#22252A] bg-[#16181D] text-[11px] font-medium text-[#71717A]">
+                            <th className="py-2.5 pl-4 pr-3">Компания</th>
+                            <th className="px-3 py-2.5">Город / Рейтинг</th>
+                            <th className="px-3 py-2.5">Сайт и аудит</th>
+                            <th className="px-3 py-2.5">Контакты</th>
+                            <th className="px-3 py-2.5">Статус</th>
+                            <th className="py-2.5 pl-3 pr-4 text-right">Действие</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#1D2025]">
+                          {leads.map((lead) => {
+                            const st = STATUS_META[lead.status] ?? STATUS_META.new;
+                            const siteSt = getWebsiteStatus(lead);
+                            const siteMeta = WEBSITE_STATUS_META[siteSt] ?? WEBSITE_STATUS_META.no_website;
+                            const score = getLeadScore(lead);
+                            const tg = getTelegramUrl(lead);
+                            const wa = getWhatsAppUrl(lead);
+                            const digits = phoneDigits(lead.phone);
+
+                            return (
+                              <tr
+                                key={lead.id}
+                                onClick={() => setDrawerLead(lead)}
+                                className="cursor-pointer transition-colors hover:bg-[#181A20]"
+                              >
+                                <td className="py-3 pl-4 pr-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono text-[11px] font-semibold text-[#A1A1AA] tabular-nums">
+                                      {score.toFixed(1)}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <p className="truncate font-medium text-[#F4F4F5] max-w-[260px]">{lead.name}</p>
+                                      <p className="truncate text-[11px] text-[#71717A]">{lead.category || "Без категории"}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap">
+                                  <p className="text-[#D4D4D8]">{lead.city}</p>
+                                  <p className="mt-0.5 flex items-center gap-1 text-[11px] text-[#71717A]">
+                                    <Star size={10} className="fill-amber-400 text-amber-400" />
+                                    <span className="font-mono text-[#D4D4D8]">{lead.rating ? lead.rating.toFixed(1) : "—"}</span>
+                                    <span className="font-mono">({lead.reviews_count})</span>
+                                  </p>
+                                </td>
+                                <td className="px-3 py-3">
+                                  <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium ${siteMeta.badge}`}>
+                                    <span className={`h-1.5 w-1.5 rounded-full ${siteMeta.dot}`} />
+                                    {siteMeta.label}
+                                  </span>
+                                  {lead.site_audit?.issues?.[0] ? (
+                                    <p className="mt-1 truncate max-w-[220px] text-[11px] text-amber-400/90">
+                                      {lead.site_audit.issues[0]}
+                                    </p>
+                                  ) : lead.website_url ? (
+                                    <p className="mt-1 truncate max-w-[220px] text-[11px] text-[#71717A]">
+                                      {lead.website_url.replace(/^https?:\/\//, "")}
+                                    </p>
+                                  ) : null}
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center gap-1.5">
+                                    {digits ? (
+                                      <a
+                                        href={`tel:${digits}`}
+                                        className="inline-flex items-center gap-1 rounded-md border border-[#22252A] bg-[#16181D] px-2 py-1 font-mono text-[11px] text-[#D4D4D8] hover:border-[#32363E] hover:text-white"
+                                      >
+                                        <Phone size={10} className="text-emerald-400" />
+                                        {lead.phone}
+                                      </a>
+                                    ) : (
+                                      <span className="text-[11px] text-[#52525B]">—</span>
+                                    )}
+                                    {wa && (
+                                      <a
+                                        href={wa}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-[#22252A] bg-[#16181D] text-emerald-400 hover:border-emerald-500/40"
+                                        title="WhatsApp"
+                                      >
+                                        <MessageCircle size={12} />
+                                      </a>
+                                    )}
+                                    {tg && (
+                                      <a
+                                        href={tg}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-[#22252A] bg-[#16181D] text-sky-400 hover:border-sky-500/40"
+                                        title="Telegram"
+                                      >
+                                        <Send size={11} />
+                                      </a>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 whitespace-nowrap">
+                                  <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium ${st.badge}`}>
+                                    <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
+                                    {st.label}
+                                  </span>
+                                </td>
+                                <td className="py-3 pl-3 pr-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    onClick={() => handleDemoFromCard(lead)}
+                                    disabled={generatingId === lead.id}
+                                    className="inline-flex items-center gap-1 rounded-md border border-[#2A2E35] bg-[#181A1F] px-2.5 py-1 text-[11px] font-medium text-[#F4F4F5] transition hover:bg-[#22252A] disabled:opacity-50"
+                                  >
+                                    <Sparkles size={11} />
+                                    {generatingId === lead.id ? "..." : lead.demo_id ? "Демо" : "Создать демо"}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+
+                  <div className={`grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 ${viewMode === "table" ? "md:hidden" : ""}`}>
                     {leads.map((lead) => (
                       <LeadCard
                         key={lead.id}

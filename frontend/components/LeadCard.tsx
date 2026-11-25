@@ -42,13 +42,6 @@ export default function LeadCard({
   const waUrl = getWhatsAppUrl(lead);
   const digits = phoneDigits(lead.phone);
 
-  const topAccent =
-    score >= 4.2
-      ? "from-amber-400/70 via-rose-500/60 to-violet-500/40"
-      : score >= 3.2
-        ? "from-violet-500/60 via-indigo-500/40 to-transparent"
-        : "from-white/10 via-white/5 to-transparent";
-
   const handleCardClick = () => {
     triggerHaptic("light");
     onOpen(lead);
@@ -65,9 +58,8 @@ export default function LeadCard({
       }}
       role="button"
       tabIndex={0}
-      className="group card-interactive relative flex cursor-pointer flex-col overflow-hidden p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B5CF6]/60"
+      className="group card-interactive relative flex cursor-pointer flex-col p-4 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#52525B]"
     >
-      <div className={`pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r ${topAccent} opacity-80 transition-opacity group-hover:opacity-100`} />
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="inline-flex items-center rounded-md bg-[#242731]/50 border border-white/[0.06] px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold text-[#9CA3AF]">
@@ -95,7 +87,7 @@ export default function LeadCard({
         </div>
       </div>
 
-      <h3 className="mt-2.5 line-clamp-2 font-display text-[15px] font-bold leading-snug tracking-tight text-[#F8FAFC] transition group-hover:text-[#DDD6FE]">
+      <h3 className="mt-2.5 line-clamp-2 text-[14px] font-semibold leading-snug text-[#F4F4F5] transition group-hover:text-white">
         {lead.name}
       </h3>
 

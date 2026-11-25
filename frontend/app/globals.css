@@ -4,14 +4,13 @@
 
 :root {
   color-scheme: dark;
-  --bg-canvas: #090A0F;
-  --bg-surface: #12141C;
-  --bg-elevated: #1B1E2A;
-  --accent-violet: #8B5CF6;
-  --accent-violet-hover: #7C3AED;
-  --text-primary: #F8FAFC;
-  --text-secondary: #94A3B8;
-  --text-muted: #64748B;
+  --bg-canvas: #0B0C0E;
+  --bg-surface: #121417;
+  --bg-elevated: #1A1D22;
+  --accent-primary: #F4F4F5;
+  --text-primary: #F4F4F5;
+  --text-secondary: #A1A1AA;
+  --text-muted: #71717A;
 }
 
 * {
@@ -24,13 +23,8 @@ body {
 }
 
 body {
-  background:
-    radial-gradient(1100px 560px at 82% -12%, rgba(139, 92, 246, 0.14), transparent 60%),
-    radial-gradient(900px 520px at 8% -4%, rgba(56, 189, 248, 0.08), transparent 55%),
-    radial-gradient(700px 400px at 50% 100%, rgba(16, 185, 129, 0.04), transparent 60%),
-    #090A0F;
-  background-attachment: fixed;
-  color: #F8FAFC;
+  background: #0B0C0E;
+  color: #F4F4F5;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
@@ -63,46 +57,46 @@ body {
 
 @layer components {
   .card {
-    @apply rounded-2xl border border-white/[0.06] bg-[#12141C]/90 backdrop-blur-md shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_10px_30px_-10px_rgba(0,0,0,0.55)] transition-all duration-200;
+    @apply rounded-xl border border-[#22252A] bg-[#121417] transition-colors duration-150;
   }
   .card-interactive {
-    @apply card hover:-translate-y-0.5 hover:border-violet-400/25 hover:bg-[#171A25]/95 hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_16px_36px_-12px_rgba(139,92,246,0.22)];
+    @apply card hover:border-[#32363E] hover:bg-[#16181D];
   }
 
   .input {
-    @apply w-full rounded-xl border border-white/[0.08] bg-[#12141C]/90 px-3.5 py-2.5 text-xs text-[#F8FAFC] placeholder:text-[#64748B] outline-none transition focus:border-violet-500/60 focus:bg-[#171A25] focus:ring-2 focus:ring-violet-500/20;
+    @apply w-full rounded-lg border border-[#22252A] bg-[#121417] px-3 py-2 text-xs text-[#F4F4F5] placeholder:text-[#71717A] outline-none transition focus:border-[#52525B] focus:bg-[#16181D];
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-medium transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-primary {
-    @apply btn bg-gradient-to-r from-[#8B5CF6] via-[#7C3AED] to-[#6366F1] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_20px_-2px_rgba(139,92,246,0.45)] hover:brightness-110 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_6px_26px_rgba(139,92,246,0.6)];
+    @apply btn bg-[#F4F4F5] text-[#09090B] hover:bg-white shadow-sm;
   }
 
   .btn-ghost {
-    @apply btn border border-white/[0.08] bg-white/[0.04] text-[#CBD5E1] hover:border-white/[0.16] hover:bg-white/[0.08] hover:text-white;
+    @apply btn border border-[#22252A] bg-[#16181D] text-[#D4D4D8] hover:border-[#32363E] hover:bg-[#1E2128] hover:text-white;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-[#94A3B8] transition hover:border-white/[0.15] hover:bg-white/[0.08] hover:text-[#F8FAFC];
+    @apply inline-flex items-center gap-1.5 rounded-md border border-[#22252A] bg-[#16181D] px-2.5 py-1 text-xs font-medium text-[#A1A1AA] transition hover:border-[#32363E] hover:text-[#F4F4F5];
   }
 
   .chip-active {
-    @apply border-violet-500/40 bg-violet-500/15 text-[#DDD6FE] shadow-[0_0_12px_rgba(139,92,246,0.18)];
+    @apply border-[#3F3F46] bg-[#27272A] text-white;
   }
 
   .label {
-    @apply text-[11px] font-semibold uppercase tracking-wider text-[#64748B];
+    @apply text-[11px] font-medium text-[#71717A];
   }
 
   .icon-btn {
-    @apply inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-[#94A3B8] transition hover:border-white/[0.16] hover:bg-white/[0.09] hover:text-white;
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#22252A] bg-[#16181D] text-[#A1A1AA] transition hover:border-[#32363E] hover:bg-[#1E2128] hover:text-white;
   }
 
   .pill-metric {
-    @apply inline-flex items-center gap-1 rounded-lg border border-white/[0.07] bg-white/[0.04] px-2 py-0.5 text-[11px] text-[#94A3B8];
+    @apply inline-flex items-center gap-1 rounded-md border border-[#22252A] bg-[#16181D] px-2 py-0.5 text-[11px] text-[#A1A1AA];
   }
 }
 

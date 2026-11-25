@@ -46,25 +46,19 @@ export default function Topbar({
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#090A0F]/75 pt-3 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-[#22252A] bg-[#0B0C0E]/95 backdrop-blur-sm">
         <div className="flex h-14 items-center justify-between gap-3 px-4 lg:px-8">
           {/* Слева: Название + бренд */}
           <div className="flex items-center gap-2.5">
-            <div className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]">
-              <Radar size={15} />
-              <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400 ring-2 ring-[#111216]" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2A2E35] bg-[#181A1F] text-[#F4F4F5]">
+              <Radar size={14} />
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-semibold tracking-tight text-[#F3F4F6]">LeadRadar</span>
-              <span className="rounded bg-brand-500/15 px-1.5 py-0.2 text-[9px] font-semibold text-brand-300 border border-brand-500/25">
-                PRO
-              </span>
-            </div>
+            <span className="text-sm font-semibold tracking-tight text-[#F4F4F5]">LeadRadar</span>
           </div>
 
           {/* Десктопная навигация */}
           {onViewChange && (
-            <div className="hidden md:flex items-center gap-1 rounded-lg border border-white/[0.06] bg-[#242731] p-1">
+            <div className="hidden md:flex items-center gap-1 rounded-lg border border-[#22252A] bg-[#121417] p-1">
               <button
                 onClick={() => {
                   triggerHaptic("light");
@@ -72,12 +66,12 @@ export default function Topbar({
                 }}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition ${
                   currentView === "leads"
-                    ? "bg-brand-500 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]"
-                    : "text-[#9CA3AF] hover:text-[#F3F4F6]"
+                    ? "bg-[#22252A] text-white"
+                    : "text-[#A1A1AA] hover:text-white"
                 }`}
               >
                 <Database size={13} />
-                Карты
+                Лиды
               </button>
               <button
                 onClick={() => {
@@ -86,11 +80,11 @@ export default function Topbar({
                 }}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition ${
                   currentView === "telegram"
-                    ? "bg-brand-500 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]"
-                    : "text-[#9CA3AF] hover:text-[#F3F4F6]"
+                    ? "bg-[#22252A] text-white"
+                    : "text-[#A1A1AA] hover:text-white"
                 }`}
               >
-                <Radio size={13} className={currentView === "telegram" ? "animate-pulse text-brand-300" : ""} />
+                <Radio size={13} />
                 TG-Радар
               </button>
               <button
@@ -100,8 +94,8 @@ export default function Topbar({
                 }}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition ${
                   currentView === "accounts"
-                    ? "bg-brand-500 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]"
-                    : "text-[#9CA3AF] hover:text-[#F3F4F6]"
+                    ? "bg-[#22252A] text-white"
+                    : "text-[#A1A1AA] hover:text-white"
                 }`}
               >
                 <Users size={13} />
@@ -114,8 +108,8 @@ export default function Topbar({
                 }}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition ${
                   currentView === "inbox"
-                    ? "bg-brand-500 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]"
-                    : "text-[#9CA3AF] hover:text-[#F3F4F6]"
+                    ? "bg-[#22252A] text-white"
+                    : "text-[#A1A1AA] hover:text-white"
                 }`}
               >
                 <MessageSquare size={13} />

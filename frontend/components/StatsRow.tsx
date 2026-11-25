@@ -25,120 +25,79 @@ export default function StatsRow({
   const dealRatio = total ? (deals / total) * 100 : 0;
 
   return (
-    <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-      {/* Bento 1: Без сайта */}
-      <div className="card group relative overflow-hidden p-4">
-        <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-rose-500/10 blur-2xl transition group-hover:bg-rose-500/20" />
-        <div className="relative flex items-center justify-between">
-          <span className="text-xs font-medium text-[#94A3B8]">
-            Без сайта
-          </span>
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-400">
-            <Globe2 size={15} />
-          </div>
+    <div className="grid grid-cols-2 divide-y divide-[#22252A] overflow-hidden rounded-xl border border-[#22252A] bg-[#121417] lg:grid-cols-4 lg:divide-x lg:divide-y-0">
+      <div className="flex flex-col justify-between p-4">
+        <div className="flex items-center justify-between text-xs text-[#71717A]">
+          <span>Всего в базе</span>
+          <Radar size={14} className="text-[#71717A]" />
         </div>
-        <div className="relative mt-3">
-          <p className="font-display text-2xl font-bold tracking-tight text-[#F8FAFC] tabular-nums sm:text-[28px]">
+        <div className="mt-2 flex items-baseline gap-2">
+          <span className="font-mono text-2xl font-semibold tracking-tight text-[#F4F4F5] tabular-nums">
+            {formatNumber(total)}
+          </span>
+          <span className="text-xs text-[#71717A]">
+            <span className="font-mono text-emerald-400">{formatNumber(deals)}</span> сделок
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col justify-between p-4">
+        <div className="flex items-center justify-between text-xs text-[#71717A]">
+          <span>Без сайта</span>
+          <Globe2 size={14} className="text-[#71717A]" />
+        </div>
+        <div className="mt-2 flex items-baseline gap-2">
+          <span className="font-mono text-2xl font-semibold tracking-tight text-[#F4F4F5] tabular-nums">
             {formatNumber(noWebsite)}
-          </p>
-          <p className="mt-1 text-xs text-[#64748B]">
-            {total ? (
-              <>
-                <span className="font-mono font-semibold text-rose-300 tabular-nums">{Math.round((noWebsite / total) * 100)}%</span> базы готовы к сайту
-              </>
-            ) : (
-              "Готовы к сайту"
-            )}
-          </p>
-        </div>
-      </div>
-
-      {/* Bento 2: С соцсетями */}
-      <div className="card group relative overflow-hidden p-4">
-        <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-violet-500/15 blur-2xl transition group-hover:bg-violet-500/25" />
-        <div className="relative flex items-center justify-between">
-          <span className="text-xs font-medium text-[#94A3B8]">
-            С соцсетями
           </span>
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-violet-500/25 bg-violet-500/10 text-[#A78BFA]">
-            <MessageCircle size={15} />
-          </div>
-        </div>
-        <div className="relative mt-3">
-          <p className="font-display text-2xl font-bold tracking-tight text-[#F8FAFC] tabular-nums sm:text-[28px]">
-            {formatNumber(withSocial)}
-          </p>
-          <p className="mt-1 text-xs text-[#64748B]">
-            Прямой контакт · <span className="font-mono font-semibold text-violet-300 tabular-nums">{formatNumber(demos)}</span> демо
-          </p>
+          {total > 0 && (
+            <span className="font-mono text-xs text-[#A1A1AA] tabular-nums">
+              {Math.round((noWebsite / total) * 100)}%
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Bento 3: Воронка лидов */}
-      <div className="card col-span-2 relative overflow-hidden p-4 lg:col-span-2">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="relative">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-violet-500/15 border border-violet-500/25 text-[#A78BFA]">
-                <Radar size={14} />
-              </span>
-              <span className="text-xs font-medium text-[#94A3B8]">
-                Воронка лидов
-              </span>
-            </div>
-            <button
-              onClick={() => {
-                triggerHaptic("light");
-                onParse();
-              }}
-              className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.05] px-2.5 py-1 text-xs font-semibold text-[#CBD5E1] transition hover:border-violet-500/40 hover:bg-violet-500/15 hover:text-white"
-            >
-              <ArrowUpRight size={12} /> Собрать ещё
-            </button>
-          </div>
+      <div className="flex flex-col justify-between p-4">
+        <div className="flex items-center justify-between text-xs text-[#71717A]">
+          <span>Есть мессенджеры</span>
+          <MessageCircle size={14} className="text-[#71717A]" />
+        </div>
+        <div className="mt-2 flex items-baseline gap-2">
+          <span className="font-mono text-2xl font-semibold tracking-tight text-[#F4F4F5] tabular-nums">
+            {formatNumber(withSocial)}
+          </span>
+          <span className="text-xs text-[#71717A]">
+            <span className="font-mono text-[#A1A1AA]">{formatNumber(demos)}</span> демо
+          </span>
+        </div>
+      </div>
 
-          <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="font-display text-2xl font-bold tracking-tight text-[#F8FAFC] tabular-nums sm:text-[30px]">
-              {formatNumber(total)}
-            </span>
-            <span className="text-xs text-[#64748B]">
-              в базе · <span className="font-mono tabular-nums font-semibold text-[#10B981]">{formatNumber(deals)}</span> сделок
-            </span>
+      <div className="flex flex-col justify-between p-4">
+        <div className="flex items-center justify-between text-xs text-[#71717A]">
+          <span>Воронка</span>
+          <button
+            onClick={() => {
+              triggerHaptic("light");
+              onParse();
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-[#22252A] bg-[#181A1F] px-2 py-0.5 text-[11px] font-medium text-[#D4D4D8] transition hover:border-[#32363E] hover:text-white"
+          >
+            <ArrowUpRight size={11} /> Сбор
+          </button>
+        </div>
+        <div className="mt-2">
+          <div className="flex items-center justify-between text-xs text-[#A1A1AA]">
+            <span>В работе: <strong className="font-mono text-[#F4F4F5]">{formatNumber(inWork)}</strong></span>
+            <span className="font-mono text-emerald-400">{total ? Math.round((deals / total) * 100) : 0}%</span>
           </div>
-
-          {/* Сегментированный трекер */}
-          <div className="mt-3.5 flex h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+          <div className="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-[#1E2025]">
             {inWorkRatio > 0 && (
-              <div
-                className="bg-[#8B5CF6] transition-all duration-500"
-                style={{ width: `${inWorkRatio}%` }}
-                title={`В работе: ${inWork}`}
-              />
+              <div className="bg-zinc-400 transition-all duration-500" style={{ width: `${inWorkRatio}%` }} />
             )}
             {dealRatio > 0 && (
-              <div
-                className="bg-[#10B981] transition-all duration-500"
-                style={{ width: `${dealRatio}%` }}
-                title={`Сделки: ${deals}`}
-              />
+              <div className="bg-emerald-500 transition-all duration-500" style={{ width: `${dealRatio}%` }} />
             )}
-          </div>
-
-          {/* Легенда воронки без пестроты */}
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#9CA3AF]">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#8B5CF6] shadow-[0_0_6px_rgba(139,92,246,0.4)]" />
-              <span>В работе (<span className="font-mono tabular-nums tracking-tight text-[#F3F4F6]">{inWork}</span>)</span>
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-emerald-400 font-medium">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
-              <span>Сделки (<span className="font-mono tabular-nums tracking-tight">{deals}</span>)</span>
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-[#6B7280]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#323644]" />
-              <span>Новые (<span className="font-mono tabular-nums tracking-tight">{statuses.new}</span>)</span>
-            </span>
           </div>
         </div>
       </div>

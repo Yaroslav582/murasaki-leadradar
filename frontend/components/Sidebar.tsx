@@ -58,7 +58,7 @@ export default function Sidebar({
     (filters.minRating !== null ? 1 : 0);
 
   return (
-    <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0D0F16]/90 backdrop-blur-xl pt-3">
+    <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-[#22252A] bg-[#0D0E11] pt-2">
       <div className="flex items-center justify-between border-b border-white/[0.04] px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-[#242731] text-[#8B5CF6]">
@@ -114,7 +114,7 @@ export default function Sidebar({
           </label>
 
           <label className="flex cursor-pointer items-center justify-between gap-3">
-            <span className="flex items-center gap-2 text-xs font-medium text-amber-300/90">
+            <span className="flex items-center gap-2 text-xs text-[#D4D4D8]">
               <Flame size={14} className="text-amber-400" />
               Горячие (нет / сломан)
             </span>
