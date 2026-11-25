@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -121,7 +122,51 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
             db.add(target_lead)
         await db.commit()
         await db.refresh(demo)
+
+        # Capture mobile preview screenshot in background (best-effort)
+        asyncio.create_task(_capture_and_save_screenshot(demo.id, demo.html))
         return demo
+
+
+async def capture_demo_screenshot(demo_id: str, html_content: str) -> Path | None:
+    """Render demo HTML into a mobile-sized PNG preview using Playwright if available."""
+    try:
+        from playwright.async_api import async_playwright
+    except Exception:
+        return None
+
+    out_dir = Path(__file__).resolve().parent.parent / "static" / "uploads" / "demos"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{demo_id}.png"
+
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page(viewport={"width": 412, "height": 840}, device_scale_factor=2)
+            await page.set_content(html_content, wait_until="networkidle", timeout=15000)
+            await page.screenshot(path=str(out_path), full_page=False)
+            await browser.close()
+        return out_path
+    except Exception as exc:
+        logger.debug("Demo screenshot skipped for %s: %s", demo_id, exc)
+        return None
+
+
+async def _capture_and_save_screenshot(demo_id: str, html_content: str) -> str | None:
+    path = await capture_demo_screenshot(demo_id, html_content)
+    if not path:
+        return None
+    rel_url = f"/static/uploads/demos/{demo_id}.png"
+    try:
+        async with SessionLocal() as db:
+            demo = await db.get(DemoSite, demo_id)
+            if demo:
+                demo.preview_image_url = rel_url
+                db.add(demo)
+                await db.commit()
+    except Exception as exc:
+        logger.debug("Could not persist preview_image_url for %s: %s", demo_id, exc)
+    return rel_url
 
 
 async def get_lead_demo(session: AsyncSession, lead: Lead) -> DemoSite | None:

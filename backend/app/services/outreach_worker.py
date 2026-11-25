@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from datetime import timedelta
+from pathlib import Path
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -123,6 +125,12 @@ class OutreachWorker:
                     failed += 1
                     continue
 
+                # 0. Anti-duplicate check: don't message the same lead or username twice
+                dup_stmt = select(Dialog.id).where(Dialog.lead_id == lead.id)
+                if (await session.execute(dup_stmt)).first():
+                    logger.info("Skipping duplicate outreach for lead %s (dialog exists)", lead.name)
+                    continue
+
                 # 1. Check and spend 1 credit for outreach message
                 try:
                     await check_and_spend(
@@ -154,7 +162,28 @@ class OutreachWorker:
 
                     if await client.is_user_authorized():
                         peer_entity = await client.get_entity(target_peer)
-                        sent_msg = await client.send_message(peer_entity, message_text, parse_mode="md", link_preview=False)
+
+                        # Check if we have a generated mobile screenshot for this lead's demo
+                        preview_path = None
+                        if lead.demo_id:
+                            candidate = (
+                                Path(__file__).resolve().parent.parent
+                                / "static" / "uploads" / "demos" / f"{lead.demo_id}.png"
+                            )
+                            if candidate.exists():
+                                preview_path = candidate
+
+                        if preview_path is not None:
+                            sent_msg = await client.send_file(
+                                peer_entity,
+                                str(preview_path),
+                                caption=message_text[:1024],
+                                parse_mode="md",
+                            )
+                        else:
+                            sent_msg = await client.send_message(
+                                peer_entity, message_text, parse_mode="md", link_preview=False
+                            )
 
                         # Create or update Dialog + Message in Unified Inbox
                         peer_id = str(getattr(peer_entity, "id", target_peer))
@@ -170,6 +199,8 @@ class OutreachWorker:
                             status="new",
                             unread_count=0,
                             last_message_at=utcnow(),
+                            followup_step=0,
+                            next_followup_at=utcnow() + timedelta(hours=48),
                         )
                         session.add(dialog)
                         await session.flush()
@@ -211,6 +242,98 @@ class OutreachWorker:
         self._stats["current_lead"] = None
         self._active_tasks.pop(campaign_id, None)
         logger.info("Campaign %s finished. Sent: %d, Failed: %d", campaign_id, sent, failed)
+
+    async def process_followups(self) -> int:
+        """Send scheduled follow-ups for silent dialogs (48h and +72h)."""
+        now = utcnow()
+        sent_count = 0
+        async with SessionLocal() as session:
+            stmt = select(Dialog).where(
+                Dialog.next_followup_at.isnot(None),
+                Dialog.next_followup_at <= now,
+                Dialog.followup_step < 2,
+                Dialog.status.in_(("new", "ai_handling")),
+            ).limit(15)
+            dialogs = list((await session.execute(stmt)).scalars().all())
+            for dialog in dialogs:
+                lead = await session.get(Lead, dialog.lead_id) if dialog.lead_id else None
+                biz_name = (lead.name if lead else None) or dialog.peer_name or "вашей компании"
+                step = dialog.followup_step or 0
+
+                if step == 0:
+                    text = (
+                        f"Добрый день! Подскажите, удалось ли посмотреть набросок сайта для «{biz_name}»? "
+                        "Если нужно поправить цвета, текст или добавить прайс — сделаем бесплатно."
+                    )
+                    next_at = now + timedelta(hours=72)
+                else:
+                    text = (
+                        f"Закрываю задачу по макету для «{biz_name}», чтобы не потерялась. "
+                        "Ссылка на демо останется рабочей — напишите, если вернётесь к вопросу сайта 👍"
+                    )
+                    next_at = None
+
+                account = await account_pool.get_account_by_id(session, dialog.account_id) if hasattr(account_pool, "get_account_by_id") else None
+                if account is None:
+                    from app.models import TgAccount
+                    account = await session.get(TgAccount, dialog.account_id)
+                if not account or account.status != "active":
+                    dialog.next_followup_at = None
+                    session.add(dialog)
+                    await session.commit()
+                    continue
+
+                try:
+                    client = await account_pool.get_client_for_account(account)
+                    await client.connect()
+                    if await client.is_user_authorized():
+                        target = dialog.peer_username or int(dialog.peer_id) if str(dialog.peer_id).lstrip("-").isdigit() else dialog.peer_id
+                        sent_msg = await client.send_message(target, text, link_preview=False)
+                        session.add(
+                            Message(
+                                dialog_id=dialog.id,
+                                account_id=account.id,
+                                direction="out",
+                                text=text,
+                                tg_message_id=getattr(sent_msg, "id", None),
+                                is_ai_generated=True,
+                            )
+                        )
+                        dialog.followup_step = step + 1
+                        dialog.next_followup_at = next_at
+                        dialog.last_message_at = now
+                        session.add(dialog)
+                        await account_pool.record_action(session, account.id)
+                        await session.commit()
+                        sent_count += 1
+                        await asyncio.sleep(random.uniform(15.0, 40.0))
+                except Exception as exc:
+                    logger.warning("Follow-up failed for dialog %s: %s", dialog.id, exc)
+                    dialog.next_followup_at = now + timedelta(hours=12)
+                    session.add(dialog)
+                    await session.commit()
+        return sent_count
+
+    def start_followup_loop(self) -> None:
+        if getattr(self, "_followup_task", None) and not self._followup_task.done():
+            return
+
+        async def _loop() -> None:
+            while True:
+                try:
+                    await asyncio.sleep(1800)
+                    await self.process_followups()
+                except asyncio.CancelledError:
+                    break
+                except Exception as exc:
+                    logger.debug("Follow-up loop notice: %s", exc)
+
+        self._followup_task = asyncio.create_task(_loop())
+
+    def stop_followup_loop(self) -> None:
+        task = getattr(self, "_followup_task", None)
+        if task and not task.done():
+            task.cancel()
 
 
 outreach_worker = OutreachWorker()

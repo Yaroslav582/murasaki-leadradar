@@ -64,6 +64,7 @@ class LeadOut(BaseModel):
     demo_url: str | None = None
     photos: list = Field(default_factory=list)
     logo_url: str | None = None
+    site_audit: dict = Field(default_factory=dict)
     enriched_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -102,7 +103,7 @@ class LeadOut(BaseModel):
             return [v] if v.startswith("http") else []
         return []
 
-    @field_validator("social_links", mode="before")
+    @field_validator("social_links", "site_audit", mode="before")
     @classmethod
     def _coerce_social_links(cls, v: Any) -> dict:
         if v is None:
@@ -215,26 +216,32 @@ class LeadOut(BaseModel):
             except Exception:
                 self.demo_url = f"/demo/{self.demo_id}"
 
-        # 1. Website status (no_website, only_social, weak_website, has_website)
+        # 1. Website status (no_website, only_social, broken_website, weak_website, has_website)
         socials = self.social_links or {}
         has_social = any(bool(v) for v in socials.values()) if isinstance(socials, dict) else False
         url = (self.website_url or "").strip().lower()
+        audit = self.site_audit if isinstance(self.site_audit, dict) else {}
 
         if not url:
             self.website_status = "only_social" if has_social else "no_website"
+        elif audit.get("is_alive") is False:
+            self.website_status = "broken_website"
         else:
             weak_builders = (
                 "tilda.ws", "wixsite.com", "taplink.cc", "ucoz.", "blogspot.",
                 "wordpress.com", "sites.google.com", "timeweb.me", "nethouse.ru",
-                "setup.ru", "insales.ru", "linktr.ee", "msto.me"
+                "setup.ru", "insales.ru", "linktr.ee", "msto.me", "dikidi.", "yclients.",
             )
-            is_builder = any(b in url for b in weak_builders)
-            is_insecure = url.startswith("http://")
-            self.website_status = "weak_website" if (is_builder or is_insecure) else "has_website"
+            is_builder = any(b in url for b in weak_builders) or bool(audit.get("is_stub"))
+            is_insecure = url.startswith("http://") or (audit.get("ssl_valid") is False)
+            no_mobile = audit.get("has_viewport") is False
+            self.website_status = "weak_website" if (is_builder or is_insecure or no_mobile) else "has_website"
 
         # 2. Lead score (1.0 to 5.0)
         score = 1.0
-        if self.website_status == "only_social":
+        if self.website_status == "broken_website":
+            score += 2.1
+        elif self.website_status == "only_social":
             score += 2.0
         elif self.website_status in ("no_website", "weak_website"):
             score += 1.8
@@ -261,7 +268,13 @@ class LeadOut(BaseModel):
         self.lead_score = min(5.0, round(score, 1))
 
         # 3. Growth points (Точки роста)
-        if self.website_status == "no_website":
+        audit_issues = list(audit.get("issues") or [])
+        if self.website_status == "broken_website":
+            self.growth_points = audit_issues or [
+                "Сайт компании сейчас не открывается — клиенты с карт уходят к конкурентам.",
+                "Потеря доверия и заявок 24/7 из-за нерабочего домена или хостинга.",
+            ]
+        elif self.website_status == "no_website":
             self.growth_points = [
                 "Теряют до 60% горячих заявок из поиска Яндекс и Google — клиенты уходят к конкурентам с сайтом.",
                 "Нет формы захвата и онлайн-записи 24/7 — клиенты в нерабочее время не могут оставить заявку.",
@@ -274,13 +287,14 @@ class LeadOut(BaseModel):
                 "Менеджеры тратят часы на ручные ответы в чате вместо автоматического приема заказов с сайта.",
             ]
         elif self.website_status == "weak_website":
-            self.growth_points = [
+            base_weak = [
                 "Сайт на конструкторе или без SSL-сертификата (HTTPS) отпугивает клиентов предупреждением браузера.",
                 "Устаревшая или медленная мобильная версия приводит к уходу до 45% посетителей со смартфонов.",
                 "Отсутствие современной продающей структуры снижает конверсию переходов в реальные звонки.",
             ]
+            self.growth_points = (audit_issues + base_weak)[:4]
         else:
-            self.growth_points = [
+            self.growth_points = audit_issues + [
                 "Сайт требует обновления мобильной конверсии и прямого подключения к Telegram и WhatsApp.",
                 "Возможность увеличить поток заявок с существующего сайта за счет современного редизайна и оффера.",
             ]
@@ -393,6 +407,9 @@ class DemoOut(BaseModel):
     published: bool
     public_url: str = ""
     style: str | None = None
+    views_count: int = 0
+    last_viewed_at: datetime | None = None
+    preview_image_url: str | None = None
     created_at: datetime
     updated_at: datetime
 

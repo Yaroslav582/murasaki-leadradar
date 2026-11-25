@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_session
 from app.models import DemoSite
 from app.schemas import DemoOut, DemoUpdate
-from app.services.demos import demo_out
+from app.services.demos import _capture_and_save_screenshot, demo_out
 
 router = APIRouter(prefix="/demos", tags=["demos"])
 
@@ -59,3 +59,12 @@ async def get_demo_raw(demo_id: str, session: AsyncSession = Depends(get_session
         content=demo.html,
         headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"},
     )
+
+
+@router.post("/{demo_id}/screenshot")
+async def generate_demo_screenshot(demo_id: str, session: AsyncSession = Depends(get_session)) -> dict:
+    demo = await session.get(DemoSite, demo_id)
+    if demo is None:
+        raise HTTPException(status_code=404, detail="Демо не найдено")
+    url = await _capture_and_save_screenshot(demo.id, demo.html)
+    return {"demo_id": demo.id, "preview_image_url": url}

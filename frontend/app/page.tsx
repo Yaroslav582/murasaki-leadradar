@@ -48,6 +48,7 @@ const EMPTY_FILTERS: LeadFilters = {
   statuses: [],
   sources: [],
   onlyNoWebsite: false,
+  onlyWeakOrBroken: false,
   onlySocial: false,
   onlyPhone: false,
   minRating: null,

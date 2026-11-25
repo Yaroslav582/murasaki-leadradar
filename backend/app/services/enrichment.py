@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse
 
@@ -31,6 +32,60 @@ INSTAGRAM_BLOCKLIST = {
 TELEGRAM_BLOCKLIST = {
     "joinchat", "share", "addstickers", "proxy", "s", "iv", "login", "setlanguage",
 }
+
+STUB_DOMAINS = (
+    "taplink.cc", "vk.com", "vk.link", "t.me", "telegram.me", "instagram.com",
+    "dikidi.net", "dikidi.ru", "yclients.com", "2gis.ru", "tilda.ws",
+    "wixsite.com", "nethouse.ru", "linktr.ee", "msto.me", "ok.ru",
+    "sites.google.com", "ucoz.", "blogspot.", "setup.ru",
+)
+VIEWPORT_RE = re.compile(r'<meta[^>]+name=["\']viewport["\']', re.I)
+
+
+def audit_website(
+    site_url: str,
+    html: str | None = None,
+    final_url: str | None = None,
+    status_code: int | None = None,
+    ssl_valid: bool = True,
+    response_ms: int | None = None,
+) -> dict:
+    """Audit target website health, mobile readiness, SSL and stub/builder usage."""
+    target = (final_url or site_url or "").strip().lower()
+    parsed = urlparse(target if target.startswith(("http://", "https://")) else f"https://{target}")
+    host = parsed.netloc.lower()
+
+    stub_match = next((d for d in STUB_DOMAINS if d in host), None)
+    is_stub = stub_match is not None
+    is_https = (final_url or site_url or "").strip().lower().startswith("https://")
+    is_alive = html is not None and (status_code is None or status_code < 400)
+    has_viewport = bool(VIEWPORT_RE.search(html)) if html else None
+
+    issues: list[str] = []
+    if not is_alive:
+        code_txt = f" (код {status_code})" if status_code else " (таймаут или ошибка соединения)"
+        issues.append(f"Сайт не открывается{code_txt} — клиенты видят ошибку.")
+    if is_stub:
+        issues.append(f"Вместо полноценного сайта используется заглушка ({stub_match}).")
+    if not is_https or not ssl_valid:
+        issues.append("Отсутствует или недействителен SSL-сертификат (HTTPS) — браузер пугает клиентов.")
+    if is_alive and has_viewport is False:
+        issues.append("Нет мобильной адаптации (отсутствует meta viewport) — сайт неудобен на смартфоне.")
+    if response_ms is not None and response_ms > 3500:
+        issues.append(f"Медленная загрузка сайта ({response_ms / 1000:.1f} сек) — потеря до 40% трафика.")
+
+    return {
+        "is_alive": is_alive,
+        "status_code": status_code,
+        "ssl_valid": ssl_valid,
+        "is_https": is_https,
+        "is_stub": is_stub,
+        "stub_domain": stub_match,
+        "has_viewport": has_viewport,
+        "response_ms": response_ms,
+        "issues": issues,
+        "audited_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def extract_contacts(html: str, page_url: str = "") -> dict:
@@ -101,17 +156,29 @@ def _contact_links(html: str, base_url: str) -> list[str]:
     return links
 
 
-async def _fetch(client: httpx.AsyncClient, url: str) -> tuple[str, str] | None:
+async def _fetch_with_meta(
+    client: httpx.AsyncClient, url: str
+) -> tuple[str | None, str | None, int | None, int]:
+    t0 = time.monotonic()
     try:
         response = await client.get(url, follow_redirects=True)
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
         if response.status_code >= 400:
-            return None
+            return str(response.url), None, response.status_code, elapsed_ms
         content_type = response.headers.get("content-type", "")
         if "html" not in content_type and "text" not in content_type:
-            return None
-        return str(response.url), response.text[:600_000]
+            return str(response.url), None, response.status_code, elapsed_ms
+        return str(response.url), response.text[:600_000], response.status_code, elapsed_ms
     except Exception:
-        return None
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        return None, None, None, elapsed_ms
+
+
+async def _fetch(client: httpx.AsyncClient, url: str) -> tuple[str, str] | None:
+    final_url, html, _status, _ms = await _fetch_with_meta(client, url)
+    if final_url and html is not None:
+        return final_url, html
+    return None
 
 
 async def enrich_lead(
@@ -124,14 +191,31 @@ async def enrich_lead(
     if not site:
         return False
 
-    page = await _fetch(client, site)
-    if page is None:
-        page = await _fetch(insecure_client, site)
-    if page is None:
+    ssl_valid = True
+    final_url, html, status_code, response_ms = await _fetch_with_meta(client, site)
+    if html is None:
+        ssl_valid = False
+        final_url_ins, html_ins, status_ins, ms_ins = await _fetch_with_meta(insecure_client, site)
+        if html_ins is not None:
+            final_url, html, status_code, response_ms = final_url_ins, html_ins, status_ins, ms_ins
+        elif status_ins is not None:
+            status_code = status_ins
+            response_ms = ms_ins
+
+    lead.site_audit = audit_website(
+        site_url=site,
+        html=html,
+        final_url=final_url,
+        status_code=status_code,
+        ssl_valid=ssl_valid,
+        response_ms=response_ms,
+    )
+
+    if html is None or final_url is None:
         lead.enriched_at = datetime.now(timezone.utc)
+        session.add(lead)
         return False
 
-    final_url, html = page
     contacts = extract_contacts(html, final_url)
 
     extra_html = ""

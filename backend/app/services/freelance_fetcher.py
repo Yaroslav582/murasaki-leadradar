@@ -164,20 +164,130 @@ async def fetch_fl_orders(limit: int = 15) -> list[dict[str, Any]]:
     return results
 
 
+async def fetch_habr_freelance_orders(limit: int = 15) -> list[dict[str, Any]]:
+    """Fetch live tasks from Habr Freelance RSS/HTML."""
+    results: list[dict[str, Any]] = []
+    async with httpx.AsyncClient(headers=HEADERS, timeout=12, follow_redirects=True) as client:
+        try:
+            resp = await client.get(
+                "https://freelance.habr.com/tasks?categories=development_sites,development_all_inclusive,design_sites"
+            )
+            if resp.status_code != 200:
+                return results
+            soup = BeautifulSoup(resp.text, "html.parser")
+            tasks = soup.select("li.content-list__item")
+            for item in tasks:
+                title_el = item.select_one(".task__title a")
+                if not title_el:
+                    continue
+                title = title_el.get_text(strip=True)
+                href = title_el.get("href", "")
+                proj_url = f"https://freelance.habr.com{href}" if href.startswith("/") else href
+                price_el = item.select_one(".task__price")
+                budget_str = price_el.get_text(" ", strip=True) if price_el else "По договоренности"
+
+                matched, _ = match_keywords(title)
+                if not matched:
+                    continue
+
+                num_match = re.search(r"\d+", href)
+                msg_id = int(num_match.group(0)) if num_match else random.randint(100000, 999999)
+                results.append({
+                    "source": "habr",
+                    "source_url": proj_url,
+                    "message_id": msg_id,
+                    "chat_id": "freelance.habr.com",
+                    "chat_title": "Habr Freelance",
+                    "author_username": "habr_client",
+                    "author_name": "Заказчик на Habr Freelance",
+                    "raw_text": title,
+                    "summary": title,
+                    "category": "Веб-сайт",
+                    "budget": budget_str,
+                })
+                if len(results) >= limit:
+                    break
+        except Exception as exc:
+            logger.warning("Error fetching Habr Freelance orders: %s", exc)
+    return results
+
+
+async def fetch_hh_project_leads(limit: int = 15) -> list[dict[str, Any]]:
+    """Fetch small-business vacancies on HH.ru looking for website/landing creation."""
+    results: list[dict[str, Any]] = []
+    async with httpx.AsyncClient(
+        headers={"User-Agent": "LeadRadar/1.0 (https://leadradar.app)"},
+        timeout=12,
+    ) as client:
+        try:
+            resp = await client.get(
+                "https://api.hh.ru/vacancies",
+                params={
+                    "text": "создать сайт OR нужен лендинг OR сайт под ключ",
+                    "area": 113,
+                    "per_page": min(limit, 20),
+                    "order_by": "publication_time",
+                },
+            )
+            if resp.status_code != 200:
+                return results
+            items = resp.json().get("items") or []
+            for v in items:
+                title = v.get("name") or ""
+                emp = (v.get("employer") or {}).get("name") or "Компания"
+                area = (v.get("area") or {}).get("name") or ""
+                url = v.get("alternate_url") or ""
+                vid = v.get("id")
+                salary = v.get("salary")
+                budget_str = "По договорённости"
+                if isinstance(salary, dict):
+                    s_from = salary.get("from")
+                    s_to = salary.get("to")
+                    cur = salary.get("currency", "RUB")
+                    if s_from or s_to:
+                        budget_str = f"{s_from or ''}–{s_to or ''} {cur}".strip("– ")
+
+                snippet = ((v.get("snippet") or {}).get("requirement") or "") + " " + (
+                    (v.get("snippet") or {}).get("responsibility") or ""
+                )
+                clean_snippet = _clean_html(snippet)
+                raw_text = f"{title} ({emp}, {area}). {clean_snippet}".strip()
+
+                results.append({
+                    "source": "hh",
+                    "source_url": url,
+                    "message_id": int(vid) if str(vid).isdigit() else random.randint(100000, 999999),
+                    "chat_id": "hh.ru",
+                    "chat_title": f"HH.ru ({area or 'РФ'})",
+                    "author_username": "hh_employer",
+                    "author_name": emp,
+                    "raw_text": raw_text,
+                    "summary": f"{title} — {emp}",
+                    "category": "Веб-сайт",
+                    "budget": budget_str,
+                })
+                if len(results) >= limit:
+                    break
+        except Exception as exc:
+            logger.warning("Error fetching HH.ru leads: %s", exc)
+    return results
+
+
 async def sync_external_freelance_orders(session: AsyncSession) -> int:
-    """Fetch external orders from Kwork & FL.ru, generate responses and save to DB."""
+    """Fetch external orders from Kwork, FL.ru, Habr Freelance & HH.ru, generate responses and save to DB."""
     all_external: list[dict[str, Any]] = []
 
-    kwork_items, fl_items = await asyncio.gather(
+    kwork_items, fl_items, habr_items, hh_items = await asyncio.gather(
         fetch_kwork_orders(limit=20),
         fetch_fl_orders(limit=10),
+        fetch_habr_freelance_orders(limit=10),
+        fetch_hh_project_leads(limit=10),
         return_exceptions=True,
     )
 
-    if isinstance(kwork_items, list):
-        all_external.extend(kwork_items)
-    if isinstance(fl_items, list):
-        all_external.extend(fl_items)
+    for batch in (kwork_items, fl_items, habr_items, hh_items):
+        if isinstance(batch, list):
+            all_external.extend(batch)
 
     new_count = 0
     created_orders: list[TelegramOrder] = []

@@ -43,6 +43,7 @@ class Lead(Base):
     demo_id: Mapped[str | None] = mapped_column(String(36))
     photos: Mapped[list] = mapped_column(JSON, default=list)
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    site_audit: Mapped[dict] = mapped_column(JSON, default=dict)
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -62,6 +63,9 @@ class DemoSite(Base):
     message: Mapped[str] = mapped_column(Text, default="")
     published: Mapped[bool] = mapped_column(Boolean, default=True)
     style: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    views_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    preview_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -259,6 +263,8 @@ class Dialog(Base):
     ai_auto_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     unread_count: Mapped[int] = mapped_column(Integer, default=0)
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    followup_step: Mapped[int] = mapped_column(Integer, default=0)
+    next_followup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

@@ -4,14 +4,14 @@
 
 :root {
   color-scheme: dark;
-  --bg-canvas: #111216;
-  --bg-surface: #1A1C23;
-  --bg-elevated: #242731;
+  --bg-canvas: #090A0F;
+  --bg-surface: #12141C;
+  --bg-elevated: #1B1E2A;
   --accent-violet: #8B5CF6;
   --accent-violet-hover: #7C3AED;
-  --text-primary: #F3F4F6;
-  --text-secondary: #9CA3AF;
-  --text-muted: #6B7280;
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
 }
 
 * {
@@ -25,10 +25,12 @@ body {
 
 body {
   background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(139, 92, 246, 0.08), transparent 60%),
-    radial-gradient(900px 500px at 10% 0%, rgba(56, 189, 248, 0.03), transparent 50%),
-    #111216;
-  color: #F3F4F6;
+    radial-gradient(1100px 560px at 82% -12%, rgba(139, 92, 246, 0.14), transparent 60%),
+    radial-gradient(900px 520px at 8% -4%, rgba(56, 189, 248, 0.08), transparent 55%),
+    radial-gradient(700px 400px at 50% 100%, rgba(16, 185, 129, 0.04), transparent 60%),
+    #090A0F;
+  background-attachment: fixed;
+  color: #F8FAFC;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
@@ -61,46 +63,46 @@ body {
 
 @layer components {
   .card {
-    @apply rounded-xl border border-white/[0.04] bg-[#1A1C23] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05),0_4px_20px_rgba(0,0,0,0.3)] transition-all;
+    @apply rounded-2xl border border-white/[0.06] bg-[#12141C]/90 backdrop-blur-md shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_10px_30px_-10px_rgba(0,0,0,0.55)] transition-all duration-200;
   }
   .card-interactive {
-    @apply card hover:border-white/[0.12] hover:bg-[#1E2029];
+    @apply card hover:-translate-y-0.5 hover:border-violet-400/25 hover:bg-[#171A25]/95 hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_16px_36px_-12px_rgba(139,92,246,0.22)];
   }
 
   .input {
-    @apply w-full rounded-lg border border-white/[0.07] bg-[#1A1C23] px-3.5 py-2 text-xs text-[#F3F4F6] placeholder:text-[#6B7280] outline-none transition focus:border-brand-500/60 focus:bg-[#20232C] focus:ring-1 focus:ring-brand-500/30;
+    @apply w-full rounded-xl border border-white/[0.08] bg-[#12141C]/90 px-3.5 py-2.5 text-xs text-[#F8FAFC] placeholder:text-[#64748B] outline-none transition focus:border-violet-500/60 focus:bg-[#171A25] focus:ring-2 focus:ring-violet-500/20;
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-medium transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-primary {
-    @apply btn bg-brand-500 text-white hover:bg-brand-600 shadow-[0_0_16px_rgba(139,92,246,0.25)];
+    @apply btn bg-gradient-to-r from-[#8B5CF6] via-[#7C3AED] to-[#6366F1] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_20px_-2px_rgba(139,92,246,0.45)] hover:brightness-110 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_6px_26px_rgba(139,92,246,0.6)];
   }
 
   .btn-ghost {
-    @apply btn border border-white/[0.07] bg-[#242731] text-[#9CA3AF] hover:border-white/[0.14] hover:bg-[#2C303D] hover:text-[#F3F4F6];
+    @apply btn border border-white/[0.08] bg-white/[0.04] text-[#CBD5E1] hover:border-white/[0.16] hover:bg-white/[0.08] hover:text-white;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-white/[0.06] bg-[#242731] px-2.5 py-1 text-xs font-medium text-[#9CA3AF] transition hover:border-white/[0.12] hover:text-[#F3F4F6];
+    @apply inline-flex items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-[#94A3B8] transition hover:border-white/[0.15] hover:bg-white/[0.08] hover:text-[#F8FAFC];
   }
 
   .chip-active {
-    @apply border-[rgba(139,92,246,0.3)] bg-[rgba(139,92,246,0.14)] text-[#C4B5FD];
+    @apply border-violet-500/40 bg-violet-500/15 text-[#DDD6FE] shadow-[0_0_12px_rgba(139,92,246,0.18)];
   }
 
   .label {
-    @apply text-[11px] font-medium text-[#6B7280];
+    @apply text-[11px] font-semibold uppercase tracking-wider text-[#64748B];
   }
 
   .icon-btn {
-    @apply inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.07] bg-[#242731] text-[#9CA3AF] transition hover:border-white/[0.14] hover:bg-[#2C303D] hover:text-[#F3F4F6];
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-[#94A3B8] transition hover:border-white/[0.16] hover:bg-white/[0.09] hover:text-white;
   }
 
   .pill-metric {
-    @apply inline-flex items-center gap-1 rounded-md border border-white/[0.06] bg-[#242731] px-2 py-0.5 text-[11px] text-[#9CA3AF];
+    @apply inline-flex items-center gap-1 rounded-lg border border-white/[0.07] bg-white/[0.04] px-2 py-0.5 text-[11px] text-[#94A3B8];
   }
 }
 

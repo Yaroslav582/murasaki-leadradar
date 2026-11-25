@@ -168,6 +168,7 @@ class AccountPool:
                             dialog.peer_name = peer_name
                         if not is_out:
                             dialog.unread_count += 1
+                            dialog.next_followup_at = None
                         else:
                             # User manually replied from personal account -> disable AI auto-reply
                             dialog.status = "manual"
@@ -743,6 +744,63 @@ class AccountPool:
         except Exception as e:
             logger.warning("History sync failed for dialog %s: %s", dialog.id, e)
             return []
+
+    async def resolve_phone_to_telegram(
+        self, session: AsyncSession, phone: str, first_name: str = "Lead"
+    ) -> dict[str, Any] | None:
+        """Check if a mobile phone number is registered in Telegram via ImportContacts."""
+        import re
+        from telethon.tl.functions.contacts import DeleteContactsRequest, ImportContactsRequest
+        from telethon.tl.types import InputPhoneContact
+
+        digits = re.sub(r"\D", "", phone or "")
+        if len(digits) < 10:
+            return None
+        if len(digits) == 11 and digits.startswith("8"):
+            digits = "7" + digits[1:]
+        elif len(digits) == 10:
+            digits = "7" + digits
+        normalized = f"+{digits}"
+
+        account = await self.get_available_account(session)
+        if not account:
+            return None
+
+        try:
+            client = await self.get_client_for_account(account)
+            await client.connect()
+            if not await client.is_user_authorized():
+                return None
+
+            contact = InputPhoneContact(
+                client_id=0,
+                phone=normalized,
+                first_name=(first_name or "Lead")[:64],
+                last_name="",
+            )
+            res = await client(ImportContactsRequest([contact]))
+            users = getattr(res, "users", []) or []
+            if not users:
+                return None
+
+            tg_user = users[0]
+            username = getattr(tg_user, "username", None)
+            tg_id = getattr(tg_user, "id", None)
+            try:
+                await client(DeleteContactsRequest(id=[tg_user]))
+            except Exception:
+                pass
+
+            telegram_url = f"https://t.me/{username}" if username else (f"tg://user?id={tg_id}" if tg_id else None)
+            return {
+                "user_id": tg_id,
+                "username": username,
+                "telegram_url": telegram_url,
+                "phone": normalized,
+            }
+        except Exception as exc:
+            logger.debug("Phone-to-Telegram lookup failed for %s: %s", normalized, exc)
+            return None
 
 
 account_pool = AccountPool()

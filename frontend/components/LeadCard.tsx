@@ -36,10 +36,18 @@ export default function LeadCard({
   const siteMeta = WEBSITE_STATUS_META[siteStatus] ?? WEBSITE_STATUS_META.no_website;
   const score = getLeadScore(lead);
   const scoreBadge = getLeadScoreBadge(score);
+  const auditIssue = lead.site_audit?.issues?.[0];
 
   const tgUrl = getTelegramUrl(lead);
   const waUrl = getWhatsAppUrl(lead);
   const digits = phoneDigits(lead.phone);
+
+  const topAccent =
+    score >= 4.2
+      ? "from-amber-400/70 via-rose-500/60 to-violet-500/40"
+      : score >= 3.2
+        ? "from-violet-500/60 via-indigo-500/40 to-transparent"
+        : "from-white/10 via-white/5 to-transparent";
 
   const handleCardClick = () => {
     triggerHaptic("light");
@@ -57,8 +65,9 @@ export default function LeadCard({
       }}
       role="button"
       tabIndex={0}
-      className="group card relative flex cursor-pointer flex-col p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/[0.12] hover:bg-[#1E202A] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B5CF6]/50"
+      className="group card-interactive relative flex cursor-pointer flex-col overflow-hidden p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B5CF6]/60"
     >
+      <div className={`pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r ${topAccent} opacity-80 transition-opacity group-hover:opacity-100`} />
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="inline-flex items-center rounded-md bg-[#242731]/50 border border-white/[0.06] px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold text-[#9CA3AF]">
@@ -86,7 +95,7 @@ export default function LeadCard({
         </div>
       </div>
 
-      <h3 className="mt-2.5 line-clamp-2 text-sm font-semibold leading-snug text-[#F3F4F6] transition group-hover:text-[#C4B5FD]">
+      <h3 className="mt-2.5 line-clamp-2 font-display text-[15px] font-bold leading-snug tracking-tight text-[#F8FAFC] transition group-hover:text-[#DDD6FE]">
         {lead.name}
       </h3>
 
@@ -111,7 +120,13 @@ export default function LeadCard({
         </span>
       </div>
 
-      <p className="mt-2 line-clamp-1 text-xs text-[#6B7280]">{lead.address || "Адрес не указан"}</p>
+      <p className="mt-2 line-clamp-1 text-xs text-[#64748B]">{lead.address || "Адрес не указан"}</p>
+
+      {auditIssue && (
+        <p className="mt-1.5 line-clamp-1 rounded-md border border-amber-500/20 bg-amber-500/[0.07] px-2 py-1 text-[11px] font-medium text-amber-300/90">
+          {auditIssue}
+        </p>
+      )}
 
       {/* Быстрые контакты и мессенджеры */}
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/[0.04] pt-2.5">

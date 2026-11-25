@@ -208,6 +208,12 @@ export const WEBSITE_STATUS_META = {
     dot: "bg-[#8B5CF6] shadow-[0_0_6px_rgba(139,92,246,0.5)]",
     description: "Ведут соцсети, но теряют клиентов из поиска без сайта",
   },
+  broken_website: {
+    label: "Сайт сломан",
+    badge: "border-red-500/35 bg-red-500/15 text-red-300",
+    dot: "bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.7)]",
+    description: "Сайт не отвечает или выдаёт ошибку — горячий клиент",
+  },
   weak_website: {
     label: "Слабый сайт",
     badge: "border-amber-500/25 bg-amber-500/10 text-[#F59E0B]",
@@ -227,10 +233,10 @@ export function getWebsiteStatus(lead: {
   website_url?: string | null;
   has_website?: boolean;
   social_links?: Record<string, string | undefined>;
-}): "no_website" | "only_social" | "weak_website" | "has_website" {
+}): "no_website" | "only_social" | "broken_website" | "weak_website" | "has_website" {
   if (
     lead.website_status &&
-    ["no_website", "only_social", "weak_website", "has_website"].includes(lead.website_status)
+    ["no_website", "only_social", "broken_website", "weak_website", "has_website"].includes(lead.website_status)
   ) {
     return lead.website_status as any;
   }

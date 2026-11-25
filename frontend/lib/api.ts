@@ -93,6 +93,7 @@ export function leadQuery(
   filters.statuses.forEach((value) => params.append("status", value));
   filters.sources.forEach((value) => params.append("source", value));
   if (filters.onlyNoWebsite) params.set("only_no_website", "true");
+  if (filters.onlyWeakOrBroken) params.set("only_weak_or_broken", "true");
   if (filters.onlySocial) params.set("only_social", "true");
   if (filters.onlyPhone) params.set("only_phone", "true");
   if (filters.minRating !== null) params.set("min_rating", String(filters.minRating));
@@ -110,6 +111,13 @@ export const api = {
 
   meta() {
     return request<Meta>("/api/meta");
+  },
+
+  resolveTelegram(leadId: string) {
+    return request<{ found: boolean; username?: string | null; telegram_url?: string | null; phone?: string }>(
+      `/api/leads/${leadId}/resolve-telegram`,
+      { method: "POST" },
+    );
   },
 
   stats() {

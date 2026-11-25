@@ -331,5 +331,49 @@ class LeadNotifier:
 
         return sent_count
 
+    async def notify_demo_viewed(
+        self,
+        lead_name: str,
+        demo_id: str,
+        views_count: int,
+        demo_url: str = "",
+        lead_id: str | None = None,
+    ) -> int:
+        """Alerts the owner in Telegram when a prospect opens their generated demo site."""
+        recipients = await self.get_recipients()
+        if not recipients:
+            return 0
+
+        safe_name = html.escape(lead_name or "Клиент")
+        lines = [
+            "🔥 <b>Клиент открыл демо-сайт!</b>",
+            f"🏢 <b>Компания:</b> {safe_name}",
+            f"👀 <b>Просмотров:</b> {views_count}",
+        ]
+        if demo_url:
+            lines.append(f"🔗 <a href=\"{html.escape(demo_url)}\">Открыть демо</a>")
+        lines.append("\n<i>Самое время написать ему в диалоге, пока он изучает сайт!</i>")
+        text = "\n".join(lines)
+
+        url = self._get_api_url("sendMessage")
+        sent_count = 0
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for chat_id in recipients:
+                try:
+                    resp = await client.post(
+                        url,
+                        json={
+                            "chat_id": chat_id,
+                            "text": text,
+                            "parse_mode": "HTML",
+                            "disable_web_page_preview": True,
+                        },
+                    )
+                    if resp.status_code == 200:
+                        sent_count += 1
+                except Exception as exc:
+                    logger.warning("Error dispatching demo view alert to %d: %s", chat_id, exc)
+        return sent_count
+
 
 lead_notifier = LeadNotifier()

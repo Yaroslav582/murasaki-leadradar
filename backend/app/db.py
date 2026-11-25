@@ -149,7 +149,9 @@ async def init_db() -> None:
         lead_statements = [
             "ALTER TABLE leads ADD COLUMN IF NOT EXISTS photos JSON DEFAULT '[]'::json;",
             "ALTER TABLE leads ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500);",
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS site_audit JSON DEFAULT '{}'::json;",
             "UPDATE leads SET photos = '[]'::json WHERE photos IS NULL;",
+            "UPDATE leads SET site_audit = '{}'::json WHERE site_audit IS NULL;",
         ]
         for stmt in lead_statements:
             try:
@@ -170,7 +172,12 @@ async def init_db() -> None:
             "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS daily_actions_reset_at TIMESTAMPTZ;",
             "ALTER TABLE proxies ADD COLUMN IF NOT EXISTS user_id BIGINT;",
             "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS ai_auto_reply_enabled BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS followup_step INTEGER DEFAULT 0;",
+            "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS next_followup_at TIMESTAMPTZ;",
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS style VARCHAR(64);",
+            "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0;",
+            "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS last_viewed_at TIMESTAMPTZ;",
+            "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS preview_image_url VARCHAR(500);",
             "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source VARCHAR(32) DEFAULT 'telegram';",
             "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source_url VARCHAR(500);",
             "ALTER TABLE telegram_chat_targets ADD COLUMN IF NOT EXISTS cooldown_minutes INTEGER DEFAULT 120;",
@@ -206,8 +213,15 @@ async def init_db() -> None:
                             logger.info("Added 'logo_url' column to SQLite leads table")
                         except Exception as e:
                             logger.debug("Notice adding logo_url: %s", e)
+                    if "site_audit" not in existing_lead_cols:
+                        try:
+                            sync_conn.exec_driver_sql("ALTER TABLE leads ADD COLUMN site_audit JSON DEFAULT '{}'")
+                            logger.info("Added 'site_audit' column to SQLite leads table")
+                        except Exception as e:
+                            logger.debug("Notice adding site_audit: %s", e)
                     try:
                         sync_conn.exec_driver_sql("UPDATE leads SET photos = '[]' WHERE photos IS NULL")
+                        sync_conn.exec_driver_sql("UPDATE leads SET site_audit = '{}' WHERE site_audit IS NULL")
                     except Exception:
                         pass
             except Exception as exc:
@@ -274,6 +288,8 @@ async def init_db() -> None:
                 if existing_dlg_cols:
                     new_dlg_cols = [
                         ("ai_auto_reply_enabled", "BOOLEAN DEFAULT 0"),
+                        ("followup_step", "INTEGER DEFAULT 0"),
+                        ("next_followup_at", "DATETIME"),
                     ]
                     for col_name, col_def in new_dlg_cols:
                         if col_name not in existing_dlg_cols:
@@ -282,8 +298,16 @@ async def init_db() -> None:
                 # demo_sites
                 res = sync_conn.exec_driver_sql("PRAGMA table_info(demo_sites)").fetchall()
                 existing_demo_cols = {row[1] for row in res}
-                if existing_demo_cols and "style" not in existing_demo_cols:
-                    sync_conn.exec_driver_sql("ALTER TABLE demo_sites ADD COLUMN style VARCHAR(64)")
+                if existing_demo_cols:
+                    new_demo_cols = [
+                        ("style", "VARCHAR(64)"),
+                        ("views_count", "INTEGER DEFAULT 0"),
+                        ("last_viewed_at", "DATETIME"),
+                        ("preview_image_url", "VARCHAR(500)"),
+                    ]
+                    for col_name, col_def in new_demo_cols:
+                        if col_name not in existing_demo_cols:
+                            sync_conn.exec_driver_sql(f"ALTER TABLE demo_sites ADD COLUMN {col_name} {col_def}")
             except Exception as exc:
                 logger.debug("SQLite secondary migration notice: %s", exc)
 

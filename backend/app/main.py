@@ -4,22 +4,24 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import api_router
 from app.config import settings
 from app.db import get_session, init_db
-from app.models import DemoSite
+from app.models import DemoSite, Lead, utcnow
 from app.seed import seed_demo_data, seed_telegram_data
 from app.services.account_pool import account_pool
 from app.services.bot_runner import bot_runner
 from app.services.jobs import fail_stale_jobs
 from app.services.keep_alive import keep_alive_service
+from app.services.outreach_worker import outreach_worker
 from app.services.telegram_service import telegram_manager
 from app.services.warmup_worker import warmup_worker
 
@@ -125,9 +127,11 @@ async def lifespan(app: FastAPI):
     except Exception as w_exc:
         logger.warning("Failed to initialize warmup worker from DB: %s", w_exc)
     keep_alive_service.start()
+    outreach_worker.start_followup_loop()
     try:
         yield
     finally:
+        outreach_worker.stop_followup_loop()
         keep_alive_service.stop()
         warmup_worker.stop()
         bot_runner.stop()
@@ -172,7 +176,12 @@ async def health() -> dict:
 
 
 @app.get("/demo/{demo_id}", response_class=HTMLResponse)
-async def public_demo(demo_id: str, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
+async def public_demo(
+    demo_id: str,
+    request: Request,
+    preview: int = 0,
+    session: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
     target_id = demo_id.strip()
     demo = await session.get(DemoSite, target_id)
     if demo is None:
@@ -182,6 +191,36 @@ async def public_demo(demo_id: str, session: AsyncSession = Depends(get_session)
 
     if demo is None or not demo.published:
         raise HTTPException(status_code=404, detail="Демо не найдено")
+
+    ua = (request.headers.get("user-agent") or "").lower()
+    is_bot = any(b in ua for b in ("bot", "crawler", "spider", "telegram", "whatsapp", "preview", "curl"))
+    if not preview and not is_bot:
+        now = utcnow()
+        prev_viewed = demo.last_viewed_at
+        demo.views_count = (demo.views_count or 0) + 1
+        demo.last_viewed_at = now
+        session.add(demo)
+        await session.commit()
+
+        should_notify = prev_viewed is None or (
+            (now - prev_viewed.replace(tzinfo=now.tzinfo) if prev_viewed.tzinfo is None else now - prev_viewed).total_seconds()
+            >= 600
+        )
+        if should_notify:
+            lead = await session.get(Lead, demo.lead_id)
+            lead_name = lead.name if lead else demo.title
+            from app.services.demos import public_demo_url
+            from app.services.lead_notifier import lead_notifier
+            asyncio.create_task(
+                lead_notifier.notify_demo_viewed(
+                    lead_name=lead_name,
+                    demo_id=demo.id,
+                    views_count=demo.views_count,
+                    demo_url=public_demo_url(demo.id),
+                    lead_id=demo.lead_id,
+                )
+            )
+
     return HTMLResponse(
         content=demo.html,
         headers={"X-Robots-Tag": "noindex", "Cache-Control": "no-store"},

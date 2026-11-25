@@ -169,12 +169,49 @@ async def enrich_single(
     lead = await session.get(Lead, lead_id)
     if lead is None:
         raise HTTPException(status_code=404, detail="Лид не найден")
-    if not lead.website_url:
-        raise HTTPException(status_code=400, detail="У лида нет сайта для обогащения")
+    if not lead.website_url and not lead.phone:
+        raise HTTPException(status_code=400, detail="У лида нет сайта или телефона для обогащения")
 
-    await enrich_leads(session, [lead])
-    await session.refresh(lead)
+    if lead.website_url:
+        await enrich_leads(session, [lead])
+        await session.refresh(lead)
+
+    socials = dict(lead.social_links or {})
+    if lead.phone and not socials.get("telegram"):
+        from app.services.account_pool import account_pool
+        resolved = await account_pool.resolve_phone_to_telegram(session, lead.phone, lead.name)
+        if resolved and resolved.get("telegram_url"):
+            socials["telegram"] = resolved["telegram_url"]
+            lead.social_links = socials
+            lead.enriched_at = utcnow()
+            session.add(lead)
+            await session.commit()
+            await session.refresh(lead)
+
     return LeadOut.model_validate(lead)
+
+
+@router.post("/{lead_id}/resolve-telegram")
+async def resolve_lead_telegram(
+    lead_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    lead = await session.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Лид не найден")
+    if not lead.phone:
+        raise HTTPException(status_code=400, detail="У лида не указан телефон")
+
+    from app.services.account_pool import account_pool
+    resolved = await account_pool.resolve_phone_to_telegram(session, lead.phone, lead.name)
+    if resolved and resolved.get("telegram_url"):
+        socials = dict(lead.social_links or {})
+        socials["telegram"] = resolved["telegram_url"]
+        lead.social_links = socials
+        session.add(lead)
+        await session.commit()
+        return {"found": True, **resolved}
+    return {"found": False, "phone": lead.phone}
 
 
 @router.post("/{lead_id}/demo", response_model=DemoOut)

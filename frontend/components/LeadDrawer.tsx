@@ -78,6 +78,7 @@ export default function LeadDrawer({
   const [savingStatus, setSavingStatus] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageLoading, setMessageLoading] = useState(false);
+  const [resolvingTg, setResolvingTg] = useState(false);
 
   useEffect(() => {
     if (!lead) return;
@@ -172,10 +173,35 @@ export default function LeadDrawer({
     }
   };
 
+  const handleResolveTelegram = async () => {
+    setResolvingTg(true);
+    try {
+      const res = await api.resolveTelegram(lead.id);
+      if (res.found && res.telegram_url) {
+        onUpdated({
+          ...lead,
+          social_links: { ...(lead.social_links ?? {}), telegram: res.telegram_url },
+        });
+        showToast(
+          res.username ? `Найден Telegram: @${res.username}` : "Найден профиль Telegram по номеру!",
+          "success",
+        );
+      } else {
+        showToast("К этому номеру не привязан Telegram (или скрыт настройками)", "info");
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Ошибка поиска Telegram", "error");
+    } finally {
+      setResolvingTg(false);
+    }
+  };
+
+  const audit = lead.site_audit;
+
   return (
     <div className="fixed inset-0 z-[85]">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-fadeIn" onClick={onClose} />
-      <div className="absolute right-0 top-0 flex h-full w-full max-w-[560px] flex-col border-l border-white/[0.06] bg-[#111216] shadow-2xl animate-slideLeft pt-3">
+      <div className="absolute inset-0 bg-black/75 backdrop-blur-md animate-fadeIn" onClick={onClose} />
+      <div className="absolute right-0 top-0 flex h-full w-full max-w-[560px] flex-col border-l border-white/[0.08] bg-[#0C0E15]/95 backdrop-blur-2xl shadow-2xl animate-slideLeft pt-3">
         <div className="flex items-start gap-3 border-b border-white/[0.06] px-5 py-5">
           <Avatar name={lead.name} category={lead.category} />
           <div className="min-w-0 flex-1">
@@ -290,6 +316,12 @@ export default function LeadDrawer({
               <Copy size={13} />
               Свой промпт (0 кр)
             </button>
+            {lead.phone && !tgUrl && (
+              <button onClick={handleResolveTelegram} disabled={resolvingTg} className="btn-ghost border-sky-500/25 text-sky-300 hover:bg-sky-500/10">
+                {resolvingTg ? <Spinner size={14} /> : <Send size={14} />}
+                Найти TG по номеру
+              </button>
+            )}
             {lead.website_url ? (
               <button onClick={() => onEnrich(lead)} disabled={enriching} className="btn-ghost">
                 {enriching ? <Spinner size={15} /> : <RefreshCw size={15} />}
@@ -297,6 +329,38 @@ export default function LeadDrawer({
               </button>
             ) : null}
           </div>
+
+          {audit && audit.audited_at && (
+            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="label flex items-center gap-1.5 text-slate-300">
+                  <Globe2 size={13} className="text-violet-400" />
+                  Технический аудит сайта
+                </span>
+                {audit.response_ms ? (
+                  <span className="font-mono text-[11px] text-slate-400">{audit.response_ms} мс</span>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-1.5 text-[11px]">
+                <span className={`rounded-md border px-2 py-0.5 font-medium ${audit.is_alive ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" : "border-red-500/30 bg-red-500/15 text-red-300"}`}>
+                  {audit.is_alive ? `HTTP ${audit.status_code ?? 200}` : `Не отвечает${audit.status_code ? ` (${audit.status_code})` : ""}`}
+                </span>
+                <span className={`rounded-md border px-2 py-0.5 font-medium ${audit.ssl_valid && audit.is_https ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" : "border-amber-500/30 bg-amber-500/10 text-amber-300"}`}>
+                  {audit.ssl_valid && audit.is_https ? "SSL OK" : "Проблема SSL"}
+                </span>
+                {audit.has_viewport !== null && audit.has_viewport !== undefined && (
+                  <span className={`rounded-md border px-2 py-0.5 font-medium ${audit.has_viewport ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" : "border-rose-500/30 bg-rose-500/10 text-rose-300"}`}>
+                    {audit.has_viewport ? "Мобильная версия OK" : "Нет мобильной адаптации"}
+                  </span>
+                )}
+                {audit.is_stub && (
+                  <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-300">
+                    Заглушка ({audit.stub_domain})
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Индикатор стилей awesome-design-md */}
           <div className="flex items-center gap-2 rounded-xl border border-brand-500/20 bg-brand-500/[0.05] px-3 py-2 text-[11px] text-slate-300">

@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Filter, Globe2, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Star, X } from "lucide-react";
+import { Building2, Filter, Flame, Globe2, MapPin, MessageCircle, Phone, RotateCcw, SlidersHorizontal, Star, X } from "lucide-react";
 import type { LeadFilters, LeadStatus, Meta } from "@/lib/types";
 import { ALL_STATUSES, STATUS_META, SOURCE_LABELS, categoryStyle, formatNumber } from "@/lib/utils";
 import { triggerHaptic } from "@/lib/telegram";
@@ -52,12 +52,13 @@ export default function Sidebar({
     filters.statuses.length +
     filters.sources.length +
     (filters.onlyNoWebsite ? 1 : 0) +
+    (filters.onlyWeakOrBroken ? 1 : 0) +
     (filters.onlySocial ? 1 : 0) +
     (filters.onlyPhone ? 1 : 0) +
     (filters.minRating !== null ? 1 : 0);
 
   return (
-    <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-white/[0.04] bg-[#16181F] pt-3">
+    <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0D0F16]/90 backdrop-blur-xl pt-3">
       <div className="flex items-center justify-between border-b border-white/[0.04] px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-[#242731] text-[#8B5CF6]">
@@ -105,11 +106,19 @@ export default function Sidebar({
           <p className="label">Быстрые фильтры</p>
 
           <label className="flex cursor-pointer items-center justify-between gap-3">
-            <span className="flex items-center gap-2 text-xs text-[#9CA3AF]">
+            <span className="flex items-center gap-2 text-xs text-[#94A3B8]">
               <Globe2 size={14} className="text-rose-400" />
               Только без сайта
             </span>
             <Switch checked={filters.onlyNoWebsite} onChange={(value) => onChange({ onlyNoWebsite: value })} />
+          </label>
+
+          <label className="flex cursor-pointer items-center justify-between gap-3">
+            <span className="flex items-center gap-2 text-xs font-medium text-amber-300/90">
+              <Flame size={14} className="text-amber-400" />
+              Горячие (нет / сломан)
+            </span>
+            <Switch checked={Boolean(filters.onlyWeakOrBroken)} onChange={(value) => onChange({ onlyWeakOrBroken: value })} />
           </label>
 
           <label className="flex cursor-pointer items-center justify-between gap-3">

@@ -1,5 +1,18 @@
 export type LeadStatus = "new" | "database" | "sent" | "rejected" | "deal";
-export type WebsiteStatus = "no_website" | "only_social" | "weak_website" | "has_website";
+export type WebsiteStatus = "no_website" | "only_social" | "broken_website" | "weak_website" | "has_website";
+
+export interface SiteAudit {
+  is_alive?: boolean;
+  status_code?: number | null;
+  ssl_valid?: boolean;
+  is_https?: boolean;
+  is_stub?: boolean;
+  stub_domain?: string | null;
+  has_viewport?: boolean | null;
+  response_ms?: number | null;
+  issues?: string[];
+  audited_at?: string;
+}
 
 export interface Lead {
   id: string;
@@ -32,6 +45,7 @@ export interface Lead {
   demo_url?: string | null;
   photos?: string[];
   logo_url?: string | null;
+  site_audit?: SiteAudit;
   enriched_at: string | null;
   created_at: string;
   updated_at: string;
@@ -97,6 +111,9 @@ export interface Demo {
   published: boolean;
   public_url: string;
   style?: string | null;
+  views_count?: number;
+  last_viewed_at?: string | null;
+  preview_image_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -131,6 +148,7 @@ export interface LeadFilters {
   statuses: string[];
   sources: string[];
   onlyNoWebsite: boolean;
+  onlyWeakOrBroken?: boolean;
   onlySocial: boolean;
   onlyPhone: boolean;
   minRating: number | null;

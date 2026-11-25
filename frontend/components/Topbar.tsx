@@ -46,7 +46,7 @@ export default function Topbar({
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-white/[0.04] bg-[#111216]/80 pt-3 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#090A0F]/75 pt-3 backdrop-blur-xl">
         <div className="flex h-14 items-center justify-between gap-3 px-4 lg:px-8">
           {/* Слева: Название + бренд */}
           <div className="flex items-center gap-2.5">

@@ -17,6 +17,7 @@ class LeadFilters:
     statuses: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     only_no_website: bool = False
+    only_weak_or_broken: bool = False
     only_social: bool = False
     only_phone: bool = False
     min_rating: float | None = None
@@ -31,6 +32,7 @@ def lead_filters(
     status: list[str] | None = Query(default=None),
     source: list[str] | None = Query(default=None),
     only_no_website: bool = Query(default=False),
+    only_weak_or_broken: bool = Query(default=False),
     only_social: bool = Query(default=False),
     only_phone: bool = Query(default=False),
     min_rating: float | None = Query(default=None, ge=0, le=5),
@@ -44,6 +46,7 @@ def lead_filters(
         statuses=status or [],
         sources=source or [],
         only_no_website=only_no_website,
+        only_weak_or_broken=only_weak_or_broken,
         only_social=only_social,
         only_phone=only_phone,
         min_rating=min_rating,
@@ -75,6 +78,20 @@ def apply_lead_filters(stmt: Select, filters: LeadFilters) -> Select:
         conditions.append(Lead.source.in_(filters.sources))
     if filters.only_no_website:
         conditions.append(Lead.has_website.is_(False))
+    if filters.only_weak_or_broken:
+        conditions.append(
+            or_(
+                Lead.has_website.is_(False),
+                Lead.website_url.ilike("http://%"),
+                Lead.website_url.ilike("%taplink.cc%"),
+                Lead.website_url.ilike("%vk.com%"),
+                Lead.website_url.ilike("%t.me%"),
+                Lead.website_url.ilike("%tilda.ws%"),
+                Lead.website_url.ilike("%dikidi.%"),
+                Lead.website_url.ilike("%yclients.%"),
+                cast(Lead.site_audit, String).ilike('%"is_alive": false%'),
+            )
+        )
     if filters.only_social:
         conditions.append(func.length(cast(Lead.social_links, String)) > 2)
     if filters.only_phone:
