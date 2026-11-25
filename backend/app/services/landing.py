@@ -1176,9 +1176,31 @@ def render_jinja_demo(
     city = business_dict.get("city") or "Россия"
     city_in = _city_in(city)
 
+    safe_business = dict(business_dict)
+    if safe_business.get("rating") is not None:
+        try:
+            safe_business["rating"] = round(float(safe_business["rating"]), 1)
+        except (TypeError, ValueError):
+            pass
+
+    safe_content = dict(content_json or {})
+    if isinstance(safe_content.get("services"), list):
+        cleaned_services = []
+        for srv in safe_content["services"]:
+            if not isinstance(srv, dict):
+                cleaned_services.append(srv)
+                continue
+            item = dict(srv)
+            price = str(item.get("price") or "").strip()
+            if price and re.fullmatch(r"[\d\s.,\-–]+", price):
+                price = f"{price} ₽"
+            item["price"] = price
+            cleaned_services.append(item)
+        safe_content["services"] = cleaned_services
+
     rendered = tmpl.render(
-        business=business_dict,
-        content=content_json,
+        business=safe_business,
+        content=safe_content,
         hero_image=hero_image,
         gallery_photos=gallery_photos,
         tel_href=tel_href,

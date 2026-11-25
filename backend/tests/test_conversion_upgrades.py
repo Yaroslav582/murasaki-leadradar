@@ -119,3 +119,39 @@ async def test_demo_view_tracking_and_weak_filter(client, lead):
     assert "Taplink Studio" in names
     assert lead.name in names
     assert "Good Site LLC" not in names
+
+
+def test_render_jinja_demo_fixes_title_rating_and_ruble():
+    from app.services.landing import render_jinja_demo
+
+    html_out = render_jinja_demo(
+        template_id="cool_grey_concrete",
+        business_dict={
+            "name": "Тест Студия",
+            "category": "Бьюти",
+            "city": "Москва",
+            "rating": 4.800000190734863,
+            "reviews_count": 12,
+        },
+        content_json={
+            "hero_title": "Заголовок",
+            "hero_subtitle": "Подзаголовок",
+            "usp_list": [{"title": "Факт", "desc": "Описание"}],
+            "services": [
+                {"name": "Услуга 1", "price": "от 2 000 ₽", "desc": "Описание"},
+                {"name": "Услуга 2", "price": "по запросу", "desc": "Описание"},
+                {"name": "Услуга 3", "price": "1 500", "desc": "Описание"},
+            ],
+            "faq": [],
+        },
+        hero_image="",
+        gallery_photos=[],
+    )
+    assert "<title>Тест Студия — Бьюти в Москве</title>" in html_out
+    assert "{ business.name }" not in html_out
+    assert "4.800000" not in html_out
+    assert "4.8" in html_out
+    assert "₽ ₽" not in html_out
+    assert "по запросу ₽" not in html_out
+    assert "1 500 ₽" in html_out
+
