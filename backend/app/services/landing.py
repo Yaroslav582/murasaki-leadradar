@@ -40,20 +40,14 @@ def format_tel_href(phone: str | None) -> str:
 
 
 MURASAKI_BADGE_SNIPPET = """
-<!-- Murasaki LeadRadar Official Concept Badge -->
-<div class="fixed top-3 inset-x-3 z-50 mx-auto max-w-md pointer-events-none">
-  <div class="pointer-events-auto flex items-center justify-between gap-2.5 rounded-2xl border border-black/10 bg-white/95 px-3.5 py-2 shadow-xl backdrop-blur-md">
-    <div class="flex items-center gap-2 min-w-0">
-      <span class="relative flex h-2 w-2">
-        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-      </span>
-      <p class="truncate text-xs font-semibold text-slate-800">
-        Персональный демо-концепт для {business_name}
-      </p>
-    </div>
-    <a href="https://t.me/Murasaki_website" target="_blank" rel="noopener" class="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-[#229ED9] px-2.5 py-1 text-[11px] font-bold text-white shadow-sm transition hover:bg-[#1C88BD]">
-      <span>Написать</span> →
+<!-- Concept preview bar -->
+<div class="fixed bottom-3 inset-x-3 z-50 mx-auto max-w-md pointer-events-none">
+  <div class="pointer-events-auto flex items-center justify-between gap-2 rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 shadow-md backdrop-blur-sm">
+    <p class="truncate text-[11px] font-medium text-slate-600">
+      Макет для {business_name}
+    </p>
+    <a href="https://t.me/Murasaki_website" target="_blank" rel="noopener" class="shrink-0 rounded-md bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-slate-800">
+      Обсудить запуск
     </a>
   </div>
 </div>
