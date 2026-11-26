@@ -121,3 +121,78 @@ async def refine_demo_singular(
     session: AsyncSession = Depends(get_session),
 ) -> DemoOut:
     return await _refine_demo_impl(demo_id, payload, session)
+
+
+async def _rebuild_demo_impl(demo_id: str, session: AsyncSession) -> DemoOut:
+    """Re-collect media, re-run sub-niche Vision photo sorting, and rebuild demo HTML."""
+    from app.services.ai_router import sort_business_photos
+    from app.services.demos import lead_to_dict, public_demo_url
+    from app.services.design_systems import resolve_style_id
+    from app.services.landing import generate_landing_html
+    from app.services.media_collector import collect_media
+
+    demo = await resolve_demo_by_identifier(session, demo_id, allow_lead_fallback=True)
+    if demo is None:
+        raise HTTPException(status_code=404, detail="Демо не найдено")
+
+    lead = await session.get(Lead, demo.lead_id) if demo.lead_id else None
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Связанный лид не найден")
+
+    data = lead_to_dict(lead)
+    media_res = await collect_media(data, max_items=12)
+    real_photos = media_res.get("real_photos") or []
+    collected_photos = media_res.get("photos") or []
+
+    hp: list[str] = []
+    interior: list[str] = []
+    rejected: list[str] = []
+    if real_photos:
+        try:
+            sorted_photos = await asyncio.wait_for(
+                sort_business_photos(
+                    real_photos,
+                    business_category=lead.category or "",
+                    business_name=lead.name or "",
+                ),
+                timeout=25.0,
+            )
+            hp = sorted_photos.get("hero_product") or []
+            interior = sorted_photos.get("interior") or []
+            rejected = sorted_photos.get("rejected") or sorted_photos.get("trash") or []
+        except Exception:
+            pass
+
+    lead.photos = collected_photos
+    data["photos"] = collected_photos
+    data["hero_product"] = hp
+    data["interior_photos"] = interior
+    data["rejected_photos"] = rejected
+
+    effective_style = resolve_style_id(demo.style, lead.category)
+    target_public_url = public_demo_url(demo.slug or demo.id)
+    html_code, _engine = await generate_landing_html(
+        data,
+        style_id=effective_style,
+        public_url=target_public_url,
+    )
+
+    demo.html = html_code
+    demo.updated_at = utcnow()
+    session.add(demo)
+    session.add(lead)
+    await session.commit()
+    await session.refresh(demo)
+
+    asyncio.create_task(_capture_and_save_screenshot(demo.id, demo.html))
+    return demo_out(demo)
+
+
+@router.post("/{demo_id}/rebuild", response_model=DemoOut)
+async def rebuild_demo(demo_id: str, session: AsyncSession = Depends(get_session)) -> DemoOut:
+    return await _rebuild_demo_impl(demo_id, session)
+
+
+@single_demo_router.post("/{demo_id}/rebuild", response_model=DemoOut)
+async def rebuild_demo_singular(demo_id: str, session: AsyncSession = Depends(get_session)) -> DemoOut:
+    return await _rebuild_demo_impl(demo_id, session)

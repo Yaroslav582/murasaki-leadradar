@@ -33,86 +33,86 @@ TG_SYSTEM_EXCLUDES = {
     "botfather", "stickers",
 }
 
-# ── English search keywords for aesthetic niche fallback ─────────────────────
-NICHE_SEARCH_QUERIES: dict[str, dict[str, Any]] = {
-    "Бьюти": {
-        "query": "beauty salon interior aesthetic spa",
-        "hero": "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=80",
-        "gallery": [
-            "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1607779097040-26e80aa78e66?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1516975080664-ed2fc6a32937?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1527799820374-dcf8d9d4a388?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=800&q=80",
-        ],
-    },
-    "Автосервисы": {
-        "query": "car detailing garage mechanics workshop",
-        "hero": "https://images.unsplash.com/photo-1486006920555-c77dce18193b?auto=format&fit=crop&w=1200&q=80",
-        "gallery": [
-            "https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1517524008697-84bbe3c3fd98?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1625047509168-a7026f36de04?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=800&q=80",
-        ],
-    },
-    "Рестораны": {
-        "query": "restaurant food dish dining aesthetic cafe",
-        "hero": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
-        "gallery": [
-            "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80",
-        ],
-    },
-    "Медицина": {
-        "query": "modern dental clinic doctor hospital aesthetic",
-        "hero": "https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1200&q=80",
-        "gallery": [
-            "https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1666214280557-f1b5022eb634?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=800&q=80",
-        ],
-    },
-    "Юристы": {
-        "query": "modern law firm office lawyer corporate boardroom",
-        "hero": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80",
-        "gallery": [
-            "https://images.unsplash.com/photo-1450133064473-71024230f91b?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=800&q=80",
-        ],
-    },
-    "Фитнес": {
-        "query": "fitness gym workout crossfit athletic interior",
-        "hero": "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=1200&q=80",
-        "gallery": [
-            "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1540497077202-7c8a3999166f?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&q=80",
-        ],
-    },
-    "Default": {
-        "query": "modern office creative workspace business interior",
-        "hero": "https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=1200&q=80",
-        "gallery": [
-            "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=800&q=80",
-            "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=800&q=80",
-        ],
-    },
+# ── Sub-niche detection & same-origin curated stock photography ─────────────
+SUBNICHE_KEYS = (
+    "hair",
+    "barber",
+    "nails",
+    "beauty",
+    "coffee",
+    "restaurant",
+    "dental",
+    "clinic",
+    "auto",
+    "fitness",
+    "flowers",
+    "office",
+)
+
+NICHE_SEARCH_QUERIES: dict[str, dict[str, str]] = {
+    "hair": {"query": "hair salon haircut hairstylist"},
+    "barber": {"query": "barbershop men haircut fade"},
+    "nails": {"query": "nail studio manicure pedicure"},
+    "beauty": {"query": "cosmetology spa facial beauty"},
+    "coffee": {"query": "specialty coffee cafe bakery"},
+    "restaurant": {"query": "modern restaurant dining dishes"},
+    "dental": {"query": "modern dental clinic dentistry"},
+    "clinic": {"query": "medical clinic doctor center"},
+    "auto": {"query": "car detailing auto service"},
+    "fitness": {"query": "fitness gym workout yoga"},
+    "flowers": {"query": "flower shop bouquet florist"},
+    "office": {"query": "modern business office consulting"},
 }
+
+
+def _stock_base_url(public_url: str = "") -> str:
+    if public_url and public_url.strip().startswith(("http://", "https://")):
+        parsed = urlparse(public_url.strip())
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}"
+    base = (settings.public_base_url or "http://127.0.0.1:8000").strip().rstrip("/")
+    if not base.startswith(("http://", "https://")):
+        base = f"https://{base}"
+    return base
+
+
+def detect_subniche(
+    category: str | None,
+    business_name: str | None = None,
+    services: list[Any] | None = None,
+) -> str:
+    """Resolve granular visual sub-niche from category, business name, and service titles."""
+    srv_text = " ".join(
+        str(s.get("name") or s.get("category") or "") if isinstance(s, dict) else str(s)
+        for s in (services or [])
+    )
+    text = f"{category or ''} {business_name or ''} {srv_text}".lower()
+
+    if any(k in text for k in ("барбер", "barber")) or (
+        "мужск" in text and any(k in text for k in ("стриж", "бород", "парикмах"))
+    ):
+        return "barber"
+    if any(k in text for k in ("маникюр", "педикюр", "ногт", "ногтев", "nail", "гель-лак")):
+        return "nails"
+    if any(k in text for k in ("парикмах", "волос", "колорист", "окрашиван", "мелирован", "укладк", "стриж", "кератин", "причес", "hair")):
+        return "hair"
+    if any(k in text for k in ("бьюти", "красот", "косметол", "спа", "spa", "массаж", "брови", "ресниц", "эпиляц", "шугаринг", "перманент", "визаж", "эстетик", "салон")):
+        return "beauty"
+    if any(k in text for k in ("кофейн", "кофе", "coffee", "пекарн", "кондитер", "выпечк", "десерт", "торт", "булочн", "круассан")):
+        return "coffee"
+    if any(k in text for k in ("ресторан", "кафе", "бар ", "паб", "пицц", "суши", "ролл", "бургер", "шашлык", "бистро", "столов", "доставка еды", "кухн", "общепит")):
+        return "restaurant"
+    if any(k in text for k in ("стоматолог", "зубн", "дента", "ортодонт", "имплант", "брекет")):
+        return "dental"
+    if any(k in text for k in ("клиник", "медицин", "медцентр", "врач", "доктор", "анализ", "узи", "диагност", "терапевт", "остеопат", "ветеринар", "здоров")):
+        return "clinic"
+    if any(k in text for k in ("автосервис", "детейлинг", "шиномонтаж", "автомойк", "мойк", "кузов", "тюнинг", " сто ", "авто", "мотор", "машин")):
+        return "auto"
+    if any(k in text for k in ("фитнес", "тренажер", "спорт", "йога", "пилатес", "кроссфит", "бассейн", "единобор", "бокс", "танц", "стретч")):
+        return "fitness"
+    if any(k in text for k in ("цвет", "букет", "флорист", "магазин", "бутик", "одежд", "подарк", "ювелир", "шоурум")):
+        return "flowers"
+    return "office"
 
 
 def _get_public_media_url(file_name: str) -> str:
@@ -316,32 +316,63 @@ async def probe_tg_profile_for_channels(profile_handle: str) -> list[str]:
     return list(dict.fromkeys(discovered_channels))
 
 
-def get_niche_fallback(category: str | None) -> dict[str, Any]:
-    cat = (category or "").lower()
-    if any(k in cat for k in ("бьюти", "красот", "маникюр", "педикюр", "волос", "парикмахер", "косметол", "спа", "массаж", "ногти", "брови")):
-        return NICHE_SEARCH_QUERIES["Бьюти"]
-    if any(k in cat for k in ("авто", "сервис", "шиномонтаж", "детейлинг", "мойка", "кузов", "сто")):
-        return NICHE_SEARCH_QUERIES["Автосервисы"]
-    if any(k in cat for k in ("ресторан", "кафе", "кофейн", "пекарн", "доставка еды", "пицц", "суши", "бургер", "бар", "кухн", "кондитер")):
-        return NICHE_SEARCH_QUERIES["Рестораны"]
-    if any(k in cat for k in ("медицин", "клиник", "стоматолог", "доктор", "врач", "зуб", "анализ")):
-        return NICHE_SEARCH_QUERIES["Медицина"]
-    if any(k in cat for k in ("юрист", "юрид", "адвокат", "нотариус", "финанс", "бухгалтер", "аудит", "b2b", "недвижим")):
-        return NICHE_SEARCH_QUERIES["Юристы"]
-    if any(k in cat for k in ("фитнес", "тренажер", "спорт", "йога", "кроссфит", "бассейн")):
-        return NICHE_SEARCH_QUERIES["Фитнес"]
-    return NICHE_SEARCH_QUERIES["Default"]
+def get_niche_fallback(
+    category: str | None,
+    business_name: str | None = None,
+    services: list[Any] | None = None,
+    public_url: str = "",
+) -> dict[str, Any]:
+    sub = detect_subniche(category, business_name=business_name, services=services)
+    base = _stock_base_url(public_url)
+    works = [f"{base}/static/stock/{sub}/works_{i}.jpg" for i in (1, 2, 3)]
+    interior = [f"{base}/static/stock/{sub}/interior_{i}.jpg" for i in (1, 2, 3)]
+    return {
+        "subniche": sub,
+        "query": NICHE_SEARCH_QUERIES.get(sub, {}).get("query", sub),
+        "hero": f"{base}/static/stock/{sub}/hero.jpg",
+        "works": works,
+        "interior": interior,
+        "gallery": works + interior,
+    }
+
+
+async def _fetch_yandex_org_gallery(source_id: str | None, limit: int = 8) -> list[str]:
+    """Best-effort fetch of full gallery photos from Yandex Maps org gallery HTML."""
+    oid = str(source_id or "").strip()
+    if not oid or not oid.isdigit():
+        return []
+    url = f"https://yandex.ru/maps/org/{oid}/gallery/"
+    headers = {
+        "User-Agent": sample_user_agents(settings.user_agent_list),
+        "Accept-Language": "ru-RU,ru;q=0.9",
+    }
+    proxy = settings.proxy_url.strip() if settings.proxy_url and settings.proxy_url.strip() else None
+    found: list[str] = []
+    try:
+        async with httpx.AsyncClient(headers=headers, timeout=httpx.Timeout(4.0), follow_redirects=True, proxy=proxy) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200 or "captcha" in resp.text.lower()[:2000]:
+                return []
+            for m in re.finditer(r"https://avatars\.mds\.yandex\.net/get-altay/\d+/[A-Za-z0-9_-]+/(?:orig|XXL|XL|L)", resp.text):
+                u = m.group(0)
+                if u not in found:
+                    found.append(u)
+                if len(found) >= limit:
+                    break
+    except Exception:
+        pass
+    return found
 
 
 async def collect_media(lead_dict: dict[str, Any], max_items: int = 12) -> dict[str, Any]:
     """Cascading media collector for business lead.
 
     Priority order:
-    1. Yandex Maps: Organization photos + review attachments (filtering out chat screenshots & vertical price lists).
+    1. Yandex Maps: Organization photos & gallery (filtering out chat screenshots, stock placeholders & price lists).
     2. Direct Telegram Channel: Photos from the last 10-15 messages.
     3. Telegram Personal Account: Probing bio and personal channel for attached channels, then fetching work photos.
     4. Media persistence: All Telegram CDN images are saved locally to prevent link expiration.
-    5. Niche fallback: If total real photos < 2, map category to aesthetic query and curated Unsplash collection.
+    5. Niche fallback: Separate role-matched same-origin stock photos (`hero`, `works`, `interior`).
     """
     collected: list[str] = []
     seen: set[str] = set()
@@ -352,9 +383,20 @@ async def collect_media(lead_dict: dict[str, Any], max_items: int = 12) -> dict[
     # ── 1. Yandex Maps photos & review attachments ───────────────────────────
     raw_yandex_photos = list(lead_dict.get("photos") or [])
     for p in raw_yandex_photos:
-        if p and p not in seen and not is_trash_or_screenshot(p):
+        if not p or p in seen:
+            continue
+        low = p.lower()
+        if "images.unsplash.com" in low or "/static/stock/" in low:
+            continue
+        if not is_trash_or_screenshot(p):
             seen.add(p)
             collected.append(p)
+
+    if len(collected) < 4 and lead_dict.get("source_id"):
+        for gp in await _fetch_yandex_org_gallery(lead_dict.get("source_id"), limit=max_items):
+            if gp not in seen and not is_trash_or_screenshot(gp):
+                seen.add(gp)
+                collected.append(gp)
 
     # ── 2. Direct Telegram channel parsing ───────────────────────────────────
     tg_url = socials.get("telegram")
@@ -369,7 +411,6 @@ async def collect_media(lead_dict: dict[str, Any], max_items: int = 12) -> dict[
 
     # ── 3. Telegram personal profile probe ───────────────────────────────────
     if len(collected) < max_items and tg_url:
-        # Check if the given telegram link was a user profile rather than a channel
         profile_channels = await probe_tg_profile_for_channels(tg_url)
         for chan in profile_channels:
             chan_photos = await scrape_tg_channel_posts(chan, limit=8)
@@ -385,24 +426,30 @@ async def collect_media(lead_dict: dict[str, Any], max_items: int = 12) -> dict[
     for p in collected[:max_items]:
         saved_url = await persist_remote_image(p)
         persisted.append(saved_url)
-    collected = persisted
+    real_photos = list(persisted)
+    combined = list(persisted)
 
-    # ── 5. Niche Fallback (if real photos < 2) ───────────────────────────────
-    if len(collected) < 2:
-        fallback_data = get_niche_fallback(category)
+    # ── 5. Granular sub-niche Fallback (if real photos < 2) ──────────────────
+    if len(combined) < 2:
+        fallback_data = get_niche_fallback(
+            category,
+            business_name=lead_dict.get("name"),
+            services=lead_dict.get("services"),
+        )
         if not logo_url and fallback_data.get("hero"):
             logo_url = fallback_data["hero"]
 
-        if fallback_data.get("hero") and fallback_data["hero"] not in collected:
-            collected.append(fallback_data["hero"])
+        if fallback_data.get("hero") and fallback_data["hero"] not in combined:
+            combined.append(fallback_data["hero"])
 
         for g in fallback_data.get("gallery", []):
-            if g not in collected and len(collected) < max_items:
-                collected.append(g)
+            if g not in combined and len(combined) < max_items:
+                combined.append(g)
 
     return {
-        "photos": collected[:max_items],
-        "logo_url": logo_url or (collected[0] if collected else None),
-        "count": len(collected),
+        "photos": combined[:max_items],
+        "real_photos": real_photos[:max_items],
+        "logo_url": logo_url or (combined[0] if combined else None),
+        "count": len(combined),
     }
 

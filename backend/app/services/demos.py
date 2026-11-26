@@ -122,22 +122,27 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
     try:
         media_res = await collect_media(lead_dict, max_items=12)
         collected_photos = media_res.get("photos") or []
+        real_photos = media_res.get("real_photos") if "real_photos" in media_res else collected_photos
         if media_res.get("logo_url") and not lead.logo_url:
             lead.logo_url = media_res["logo_url"]
     except Exception as exc:
         logger.warning("Media collection notice for %s: %s", lead.name, exc)
         collected_photos = list(getattr(lead, "photos", []) or [])
+        real_photos = [
+            p for p in collected_photos
+            if "images.unsplash.com" not in p and "/static/stock/" not in p
+        ]
 
-    # 2. Vision AI sorting (distributes into hero_product, interior, trash)
+    # 2. Vision AI sorting ONLY on real business photos (distributes into hero_product, interior, rejected)
     hp: list[str] = []
     interior: list[str] = []
-    vision_ran = False
-    if collected_photos:
+    rejected: list[str] = []
+    if real_photos:
         try:
             from app.services.ai_router import sort_business_photos
             sorted_photos = await asyncio.wait_for(
                 sort_business_photos(
-                    collected_photos,
+                    real_photos,
                     business_category=lead.category or "",
                     business_name=lead.name or "",
                 ),
@@ -145,8 +150,8 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
             )
             hp = sorted_photos.get("hero_product") or []
             interior = sorted_photos.get("interior") or []
+            rejected = sorted_photos.get("rejected") or sorted_photos.get("trash") or []
             ordered_photos = hp + [p for p in interior if p not in hp]
-            vision_ran = True
             lead.photos = ordered_photos if ordered_photos else collected_photos
             if sorted_photos.get("logo") and not lead.logo_url:
                 lead.logo_url = sorted_photos["logo"]
@@ -157,9 +162,9 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
         lead.photos = collected_photos
 
     data = lead_to_dict(lead)
-    if vision_ran:
-        data["hero_product"] = hp
-        data["interior_photos"] = interior
+    data["hero_product"] = hp
+    data["interior_photos"] = interior
+    data["rejected_photos"] = rejected
     demo_id = new_id()
 
     from app.services.design_systems import resolve_style_id

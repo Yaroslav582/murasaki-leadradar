@@ -404,8 +404,35 @@ async def test_monochrome_contrast_and_vision_photo_index_sorting(monkeypatch):
     )
     assert "--accent-fg: #09090B;" in html_mono
     assert "background-color: #09090B; color: #FFFFFF;" in html_mono
-    # Empty interior_photos should fall back to clean niche URLs, not work1.jpg
-    assert "https://images.unsplash.com/" in html_mono
+    # Empty interior_photos should fall back to clean same-origin sub-niche URLs, not work1.jpg
+    assert "/static/stock/" in html_mono
+    assert "images.unsplash.com" not in html_mono
+
+    # 1b. Hair salon with rejected facade photo must use hair sub-niche stock without duplicates
+    html_hair = render_jinja_demo(
+        template_id="dark_cyber_neon",
+        business_dict={
+            "name": "Парикмахерская Dolce Vita",
+            "category": "Парикмахерская",
+            "city": "Сочи",
+            "hero_product": [],
+            "interior_photos": [],
+            "rejected_photos": ["https://avatars.mds.yandex.net/get-altay/123/facade/orig"],
+        },
+        content_json={
+            "hero_title": "Парикмахерская Dolce Vita",
+            "hero_subtitle": "Стрижки и окрашивание",
+            "services": [{"category": "Стрижки", "name": "Стрижка женская", "price": "1 200 ₽"}],
+        },
+        hero_image="https://avatars.mds.yandex.net/get-altay/123/facade/orig",
+        gallery_photos=[],
+        public_url="https://murasaki-leadradar-1.onrender.com/demo/dolce-vita-sochi",
+    )
+    assert "https://murasaki-leadradar-1.onrender.com/static/stock/hair/hero.jpg" in html_hair
+    assert "https://murasaki-leadradar-1.onrender.com/static/stock/hair/works_1.jpg" in html_hair
+    assert "https://murasaki-leadradar-1.onrender.com/static/stock/hair/interior_1.jpg" in html_hair
+    assert "facade/orig" not in html_hair
+    assert "images.unsplash.com" not in html_hair
 
     # 2. Index-based Vision sorting must discard trash completely
     async def fake_vision(**kwargs):

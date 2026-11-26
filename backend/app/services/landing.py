@@ -588,14 +588,20 @@ def _primary_href(lead: dict) -> tuple[str, str, str]:
 
 
 def _get_curated_photos(lead: dict, category: str) -> tuple[str, list[str]]:
-    """Returns (hero_photo, gallery_photos) combining real lead photos with high-quality fallbacks."""
-    niche_key = category if category in NICHE_FALLBACK_IMAGES else "Default"
-    fallbacks = NICHE_FALLBACK_IMAGES[niche_key]
+    """Returns (hero_photo, gallery_photos) combining real lead photos with same-origin sub-niche stock."""
+    from app.services.media_collector import get_niche_fallback
 
-    raw_lead_photos = [p for p in (lead.get("photos") or []) if isinstance(p, str) and p.startswith("http")]
-    logo = lead.get("logo_url") if isinstance(lead.get("logo_url"), str) and lead.get("logo_url").startswith("http") else None
+    fallbacks = get_niche_fallback(
+        category,
+        business_name=lead.get("name"),
+        services=lead.get("services"),
+    )
 
-    # Determine hero image
+    raw_lead_photos = [
+        p for p in (lead.get("photos") or [])
+        if isinstance(p, str) and p.startswith("http") and "images.unsplash.com" not in p
+    ]
+
     if raw_lead_photos:
         hero = raw_lead_photos[0]
         remaining = raw_lead_photos[1:]
@@ -603,7 +609,6 @@ def _get_curated_photos(lead: dict, category: str) -> tuple[str, list[str]]:
         hero = fallbacks["hero"]
         remaining = []
 
-    # Determine gallery images (up to 4)
     gallery: list[str] = []
     for p in remaining:
         if p not in gallery and p != hero:
@@ -611,11 +616,6 @@ def _get_curated_photos(lead: dict, category: str) -> tuple[str, list[str]]:
         if len(gallery) >= 4:
             break
 
-    # If only 1 real photo was provided, keep lead photo in gallery as well
-    if len(raw_lead_photos) == 1 and hero not in gallery:
-        gallery.append(hero)
-
-    # If not enough real photos, fill from fallback
     for fb in fallbacks["gallery"]:
         if len(gallery) >= 4:
             break
@@ -627,6 +627,8 @@ def _get_curated_photos(lead: dict, category: str) -> tuple[str, list[str]]:
 
 def build_fallback_landing(lead: dict) -> str:
     """Builds a rich, responsive, niche-adapted landing page with multiple hero layouts."""
+    from app.services.media_collector import get_niche_fallback
+
     category = lead.get("category") or "Бизнес"
     theme_key = detect_theme(category)
     theme = THEMES[theme_key]
@@ -642,7 +644,7 @@ def build_fallback_landing(lead: dict) -> str:
     map_url = f"https://yandex.ru/maps/?text={quote(lead.get('name', '') + ' ' + (lead.get('address') or ''))}"
 
     hero_img, gallery_imgs = _get_curated_photos(lead, category)
-    niche_fallback = NICHE_FALLBACK_IMAGES.get(category, NICHE_FALLBACK_IMAGES["Default"])
+    niche_fallback = get_niche_fallback(category, business_name=lead.get("name"))
     hero_fallback = niche_fallback["hero"]
 
     primary_href, primary_label, sticky_label = _primary_href(lead)
@@ -1398,20 +1400,64 @@ def render_jinja_demo(
             {"value": "10 мин", "label": "Ответ в мессенджере"},
         ]
 
-    niche_fb = get_niche_fallback(category)
-    fb_gallery = [u for u in (niche_fb.get("gallery") or []) if u]
-    fb_hero = niche_fb.get("hero") or (fb_gallery[0] if fb_gallery else "")
-    has_explicit_split = "hero_product" in business_dict or "interior_photos" in business_dict
-    raw_hero_product = list(business_dict.get("hero_product") or [])
-    raw_interior = list(business_dict.get("interior_photos") or [])
+    niche_fb = get_niche_fallback(
+        category,
+        business_name=business_dict.get("name"),
+        services=safe_content.get("services"),
+        public_url=public_url,
+    )
+    fb_hero = niche_fb["hero"]
+    fb_works = list(niche_fb.get("works") or niche_fb.get("gallery") or [])
+    fb_interior = list(niche_fb.get("interior") or niche_fb.get("gallery") or [])
 
-    all_photos = list(gallery_photos or [])
+    has_explicit_split = "hero_product" in business_dict or "interior_photos" in business_dict
+    rejected_set = set(business_dict.get("rejected_photos") or [])
+    raw_hero_product = [
+        u for u in (business_dict.get("hero_product") or [])
+        if u and u not in rejected_set and "images.unsplash.com" not in u
+    ]
+    raw_interior = [
+        u for u in (business_dict.get("interior_photos") or [])
+        if u and u not in rejected_set and "images.unsplash.com" not in u
+    ]
+
+    all_photos = [
+        u for u in (gallery_photos or [])
+        if u and u not in rejected_set and "images.unsplash.com" not in u
+    ]
     if has_explicit_split:
-        work_urls = [u for u in dict.fromkeys(raw_hero_product) if u] or fb_gallery[:3]
-        interior_urls = [u for u in dict.fromkeys(raw_interior) if u] or fb_gallery[1:6] or ([fb_hero] if fb_hero else [])
+        work_urls = list(dict.fromkeys(raw_hero_product)) or fb_works[:3]
+        used_works = set(work_urls)
+        interior_candidates = [u for u in dict.fromkeys(raw_interior) if u not in used_works]
+        interior_urls = (
+            interior_candidates
+            or [u for u in fb_interior if u not in used_works][:3]
+            or fb_interior[:3]
+        )
+        effective_hero = (
+            (raw_hero_product[0] if raw_hero_product else None)
+            or fb_hero
+            or (raw_interior[0] if raw_interior else None)
+        )
     else:
-        work_urls = [u for u in dict.fromkeys(([hero_image] if hero_image else []) + all_photos[:3]) if u] or fb_gallery[:3]
-        interior_urls = [u for u in dict.fromkeys(all_photos[3:8]) if u] or fb_gallery[1:6] or work_urls
+        safe_hero_in = (
+            hero_image
+            if (hero_image and hero_image not in rejected_set and "images.unsplash.com" not in hero_image and "/static/stock/" not in hero_image)
+            else None
+        )
+        non_stock_all = [u for u in all_photos if "/static/stock/" not in u]
+        work_urls = (
+            list(dict.fromkeys(([safe_hero_in] if safe_hero_in else []) + non_stock_all[:3]))
+            or fb_works[:3]
+        )
+        used_works = set(work_urls)
+        interior_candidates = [u for u in dict.fromkeys(non_stock_all[3:8]) if u not in used_works]
+        interior_urls = (
+            interior_candidates
+            or [u for u in fb_interior if u not in used_works][:3]
+            or fb_interior[:3]
+        )
+        effective_hero = safe_hero_in or fb_hero or (work_urls[0] if work_urls else "")
 
     work_cards = []
     service_names = [s.get("name") for s in safe_content.get("services", []) if isinstance(s, dict)]
@@ -1419,14 +1465,15 @@ def render_jinja_demo(
         caption = service_names[idx] if idx < len(service_names) else f"{category} · пример #{idx + 1}"
         work_cards.append({"url": url, "caption": caption})
 
-    effective_hero = (raw_hero_product[0] if raw_hero_product else None) or hero_image or (work_urls[0] if work_urls else fb_hero)
-
     tmpl = jinja_env.get_template("_master_9sections.html")
     rendered = tmpl.render(
         business=safe_business,
         content=safe_content,
         style=style_ctx,
         hero_image=effective_hero,
+        fallback_hero_image=fb_hero,
+        fallback_work_image=fb_works[0] if fb_works else fb_hero,
+        fallback_interior_image=fb_interior[0] if fb_interior else fb_hero,
         gallery_photos=all_photos,
         work_cards=work_cards,
         interior_photos=interior_urls,
@@ -1462,8 +1509,13 @@ async def generate_landing_html(
 
     category = lead.get("category") or "Бизнес"
     effective_style = resolve_style_id(style_id, category)
-    niche_fallback = get_niche_fallback(category)
-    photos = list(lead.get("photos") or [])
+    niche_fallback = get_niche_fallback(
+        category,
+        business_name=lead.get("name"),
+        services=lead.get("services"),
+        public_url=public_url,
+    )
+    photos = [p for p in (lead.get("photos") or []) if isinstance(p, str) and "images.unsplash.com" not in p]
     hero_img = photos[0] if photos else niche_fallback.get("hero")
     gallery_imgs = photos[1:7] if len(photos) > 1 else niche_fallback.get("gallery", [])
 

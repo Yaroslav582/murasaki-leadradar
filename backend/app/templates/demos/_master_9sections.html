@@ -116,7 +116,7 @@
 
     <div class="lg:col-span-6">
       <div class="relative overflow-hidden rounded-2xl border aspect-[4/3] shadow-2xl" style="border-color: var(--border); background-color: var(--card);">
-        <img src="{{ hero_image }}" alt="{{ business.name }}" class="h-full w-full object-cover" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80';">
+        <img src="{{ hero_image }}" alt="{{ business.name }}" class="h-full w-full object-cover" onerror="this.onerror=null; this.src='{{ fallback_hero_image or hero_image }}';">
         {% if business.rating %}
         <div class="absolute bottom-4 left-4 flex items-center gap-2.5 rounded-xl border px-3.5 py-2 text-xs font-semibold backdrop-blur-md shadow-lg" style="background-color: {{ style.nav_bg }}; border-color: var(--border);">
           <span class="text-amber-400 font-bold">★ {{ business.rating }}</span>
@@ -157,7 +157,7 @@
       {% for item in work_cards %}
       <div class="w-[78%] shrink-0 snap-start overflow-hidden rounded-2xl border sm:w-[44%] lg:w-[31%]" style="background-color: var(--card); border-color: var(--border);">
         <div class="aspect-[4/3] overflow-hidden">
-          <img src="{{ item.url }}" alt="{{ item.caption }}" class="h-full w-full object-cover transition duration-500 hover:scale-105" loading="lazy">
+          <img src="{{ item.url }}" alt="{{ item.caption }}" class="h-full w-full object-cover transition duration-500 hover:scale-105" loading="lazy" onerror="this.onerror=null; this.src='{{ fallback_work_image or hero_image }}';">
         </div>
         <div class="p-4">
           <p class="text-sm font-semibold">{{ item.caption }}</p>
@@ -175,9 +175,10 @@
     <h2 class="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Атмосфера и интерьер</h2>
 
     <div class="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4 md:grid-rows-2">
+      {% set interior_count = interior_photos[:5]|length %}
       {% for photo in interior_photos[:5] %}
-      <div class="overflow-hidden rounded-2xl border {% if loop.first %}col-span-2 row-span-2 aspect-[4/3] md:aspect-auto{% else %}aspect-[4/3]{% endif %}" style="border-color: var(--border); background-color: var(--card);">
-        <img src="{{ photo }}" alt="{{ business.name }} — интерьер {{ loop.index }}" class="h-full w-full object-cover transition duration-500 hover:scale-105" loading="lazy">
+      <div class="overflow-hidden rounded-2xl border {% if interior_count == 1 %}col-span-2 row-span-2 md:col-span-4 aspect-[16/9]{% elif interior_count == 2 %}col-span-1 md:col-span-2 row-span-2 aspect-[4/3]{% elif interior_count == 3 %}{% if loop.first %}col-span-2 row-span-2 aspect-[4/3] md:aspect-auto{% else %}col-span-1 md:col-span-2 aspect-[16/9] md:aspect-auto{% endif %}{% else %}{% if loop.first %}col-span-2 row-span-2 aspect-[4/3] md:aspect-auto{% else %}aspect-[4/3]{% endif %}{% endif %}" style="border-color: var(--border); background-color: var(--card);">
+        <img src="{{ photo }}" alt="{{ business.name }} — интерьер {{ loop.index }}" class="h-full w-full object-cover transition duration-500 hover:scale-105" loading="lazy" onerror="this.onerror=null; this.src='{{ fallback_interior_image or hero_image }}';">
       </div>
       {% endfor %}
     </div>

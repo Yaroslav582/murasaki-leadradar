@@ -640,8 +640,13 @@ class OutreachWorker:
             try:
                 media_res = await collect_media(lead_dict, max_items=10)
                 collected_photos = media_res.get("photos") or list(item.photos or [])
+                real_photos = media_res.get("real_photos") if "real_photos" in media_res else collected_photos
             except Exception:
                 collected_photos = list(item.photos or [])
+                real_photos = [
+                    p for p in collected_photos
+                    if "images.unsplash.com" not in p and "/static/stock/" not in p
+                ]
 
             if not collected_photos:
                 await _cleanup_temp_contact()
@@ -653,21 +658,26 @@ class OutreachWorker:
 
             item.photos = collected_photos[:10]
             lead_dict["photos"] = item.photos
+            lead_dict["hero_product"] = []
+            lead_dict["interior_photos"] = []
+            lead_dict["rejected_photos"] = []
 
-            try:
-                from app.services.ai_router import sort_business_photos
-                sorted_ph = await asyncio.wait_for(
-                    sort_business_photos(
-                        collected_photos,
-                        business_category=item.category,
-                        business_name=item.company_name,
-                    ),
-                    timeout=25.0,
-                )
-                lead_dict["hero_product"] = sorted_ph.get("hero_product") or []
-                lead_dict["interior_photos"] = sorted_ph.get("interior") or []
-            except Exception:
-                pass
+            if real_photos:
+                try:
+                    from app.services.ai_router import sort_business_photos
+                    sorted_ph = await asyncio.wait_for(
+                        sort_business_photos(
+                            real_photos,
+                            business_category=item.category,
+                            business_name=item.company_name,
+                        ),
+                        timeout=25.0,
+                    )
+                    lead_dict["hero_product"] = sorted_ph.get("hero_product") or []
+                    lead_dict["interior_photos"] = sorted_ph.get("interior") or []
+                    lead_dict["rejected_photos"] = sorted_ph.get("rejected") or sorted_ph.get("trash") or []
+                except Exception:
+                    pass
 
             lead_row = Lead(
                 name=item.company_name,
