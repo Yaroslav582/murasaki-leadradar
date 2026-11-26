@@ -5,6 +5,7 @@ Provides design token definitions, moodboards, typography specs, and LLM design 
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -630,116 +631,136 @@ def get_all_styles() -> list[dict[str, Any]]:
     return results
 
 
-def detect_style_by_category(category: str | None) -> str:
+def detect_style_by_category(category: str | None, business_name: str | None = None) -> str:
     """Smart heuristic to recommend the best matching design style from all 20 styles."""
-    cat = (category or "").lower()
+    cat = f"{category or ''} {business_name or ''}".lower()
 
-    # 1. Photography & Monochrome film/video studio
-    if any(k in cat for k in ("фото", "фотограф", "видео", "продакшн", "модел", "съемк", "киностуд", "арт-галере")):
+    # 1. Medical, Dental & Trust B2B FIRST (prevents substring traps like 'сто' inside 'стоматология')
+    if any(k in cat for k in (
+        "стоматолог", "зубн", "дента", "клиник", "медицин", "медцентр", "врач", "доктор",
+        "юрист", "адвокат", "нотариус", "бухгалтер", "недвижим", "риэлтор",
+    )):
+        return "clean_swiss_trust"
+
+    # 2. Barber / Tattoo / Leather craft (only explicit men's / barber, NOT general unisex hair salons)
+    is_unisex_beauty = any(k in cat for k in ("женск", "маникюр", "педикюр", "ногт", "косметол", "ресниц", "брови"))
+    if any(k in cat for k in ("барбер", "барбершоп", "тату", "кожгалантере", "мужская парикмахерская")) or (
+        not is_unisex_beauty and "мужск" in cat and any(k in cat for k in ("стриж", "бород"))
+    ):
+        return "vintage_barber_leather"
+
+    # 3. Beauty, Hair, Nails & Fashion Editorial (before 'дизайн' / 'фото' traps like 'дизайн ногтей' or 'фотоэпиляция')
+    if any(k in cat for k in (
+        "бьюти", "красот", "маникюр", "педикюр", "ногт", "волос", "парикмахер",
+        "косметол", "одежд", "спа", "spa", "брови", "ресниц", "массаж", "мода",
+        "эпиляц", "шугаринг", "перманент", "визаж", "колорист",
+    )):
+        return "luxury_editorial"
+
+    # 4. Photography & Monochrome film/video studio
+    if any(k in cat for k in ("фотостуд", "фотограф", "видеограф", "фотосалон", "модел", "киностуд", "арт-галере")):
         return "monochrome_slate_studio"
 
-    # 2. Consulting, Finance & Investment
+    # 5. Consulting, Finance & Investment
     if any(k in cat for k in ("консалтинг", "инвестици", "финанс", "брокер", "оценк", "капитал", "фонд", "аудит")):
         return "deep_slate_fintech"
 
-    # 3. Architectural Concrete, Porcelain & Facades
+    # 6. Architectural Concrete, Porcelain & Facades
     if any(k in cat for k in ("керамогранит", "фасад", "плитк", "камень", "гранит", "стяжк", "полы")):
         return "cool_grey_concrete"
 
-    # 4. Hi-End Audio, Titanium & Acoustic Labs
+    # 7. Hi-End Audio, Titanium & Acoustic Labs
     if any(k in cat for k in ("аудио", "hi-fi", "звук", "акустик", "хай-тек")):
         return "matte_graphite_titanium"
 
-    # 5. Specialized Nightlife / Hookah / Club
+    # 8. Specialized Nightlife / Hookah / Club
     if any(k in cat for k in ("кальян", "лаунж", "lounge", "караоке", "hookah", "ночн", "коктейл")):
         return "midnight_velvet_lounge"
 
-    # 6. Asian / Sushi / Ramen street food
+    # 9. Asian / Sushi / Ramen street food
     if any(k in cat for k in ("суши", "ролл", "рамен", "азиатск", "японск", "вок", "лапш", "том ям", "гёдза")):
         return "tokyo_neo_izakaya"
 
-    # 7. Burgers / Pizza / Grill / BBQ
+    # 10. Burgers / Pizza / Grill / BBQ
     if any(k in cat for k in ("бургер", "пицц", "гриль", "барбекю", "стейк", "шашлык", "мясо", "хот-дог", "пивн")):
         return "bold_diner_grill"
 
-    # 8. Barber / Tattoo / Leather craft
-    if any(k in cat for k in ("барбер", "барбершоп", "тату", "кожгалантере", "брить")):
-        return "vintage_barber_leather"
+    # 11. Coffee, Bakery & Restaurants (before 'сто' trap in 'ресторан')
+    if any(k in cat for k in ("кофе", "пекарн", "кондитер", "выпечк", "ресторан", "кафе", "доставка еды", "кухн", "чай", "бистро")):
+        return "warm_artisan_coffee"
 
-    # 9. Sports / Fitness / Combat / Gym
-    if any(k in cat for k in ("фитнес", "кроссфит", "единоборств", "бокс", "тренажер", "спортзал", "gym", "тренер", "бассейн", "борьб")):
+    # 12. Sports / Fitness / Combat / Gym
+    if any(k in cat for k in ("фитнес", "кроссфит", "единоборств", "бокс", "тренажер", "спортзал", "gym", "тренер", "бассейн", "борьб", "пилатес")):
         return "kinetic_sport_volt"
 
-    # 10. Pets & Vet care
+    # 13. Pets & Vet care
     if any(k in cat for k in ("ветклиник", "ветеринар", "груминг", "зоо", "питом", "собак", "кошек", "зоомагазин", "кинолог")):
         return "friendly_pet_care"
 
-    # 11. Jewelry & Luxury / VIP
+    # 14. Jewelry & Luxury / VIP
     if any(k in cat for k in ("ювелир", "золот", "бриллиант", "vip", "часы", "украшени", "ломбард")):
         return "obsidian_gold_luxury"
 
-    # 12. Glamping & Nature tours
+    # 15. Glamping & Nature tours
     if any(k in cat for k in ("глэмпинг", "база отдых", "тур", "поход", "кемпинг", "экскурси", "шале", "домик в лес", "сплав")):
         return "nature_camp_glamping"
 
-    # 13. Flowers & Organic Botanical
-    if any(k in cat for k in ("цветы", "флорист", "букет", "эко-лав", "органик", "йог", "сад", "растени", "веган", "трав")):
+    # 16. Flowers & Organic Botanical
+    if any(k in cat for k in ("цветы", "цветоч", "флорист", "букет", "эко-лав", "органик", "йог", "сад", "растени", "веган", "трав")):
         return "organic_botanical_sage"
 
-    # 14. Education / Courses / Driving school
+    # 17. Education / Courses / Driving school
     if any(k in cat for k in ("автошкол", "курс", "языков", "школ", "обучени", "репетитор", "академи", "английск", "подготовк")):
         return "modern_edtech_campus"
 
-    # 15. Gadget & Tech repair
+    # 18. Gadget & Tech repair
     if any(k in cat for k in ("ремонт телефон", "ремонт техник", "apple", "ноутбук", "смартфон", "компьютерн", "электроник")):
         return "clean_tech_lab"
 
-    # 16. Auto, Detailing & Cyber
-    if any(k in cat for k in ("авто", "сервис", "шиномонтаж", "детейлинг", "мойка", "кузов", "сто", "кибер", "gadget", "it-")):
+    # 19. Auto, Detailing & Cyber (use word boundary for 'сто' so it doesn't match 'ресторан'/'стоматология')
+    if re.search(r"\bсто\b", cat) or any(k in cat for k in (
+        "автосервис", "автомойк", "шиномонтаж", "детейлинг", "мойка авто", "кузов", "кибер", "gadget", "it-",
+    )):
         return "dark_cyber_neon"
 
-    # 17. Heavy Steel & Construction
+    # 20. Heavy Steel & Construction
     if any(k in cat for k in ("стройк", "строитель", "спецтехник", "металл", "бетон", "производств", "кран", "экскаватор", "кровл", "жби", "строймонтаж")):
         return "industrial_heavy_steel"
 
-    # 18. Architecture & Loft Furniture
+    # 21. Architecture & Loft Furniture
     if any(k in cat for k in ("интерьер", "мебел", "дизайн интерьер", "архитектур", "лофт", "окна", "кухни на заказ")):
         return "architectural_brutal_loft"
 
-    # 19. Cleaning & Nordic Hygge
+    # 22. Cleaning & Nordic Hygge
     if any(k in cat for k in ("клининг", "химчистк", "апартамент", "уборк", "стирк", "постель", "посуточно", "отель", "гостиниц")):
         return "nordic_hygge_wood"
 
-    # 20. Sweet pastel (bubble tea, desserts, kids)
+    # 23. Sweet pastel (bubble tea, desserts, kids)
     if any(k in cat for k in ("бабл", "bubble", "мороженое", "торт", "десерт", "сладост", "дети", "детск", "подарк", "шары", "праздник")):
         return "playful_pastel"
 
-    # 21. Creative & Digital Neo-brutalism
+    # 24. Creative & Digital Neo-brutalism
     if any(k in cat for k in ("digital", "диджитал", "агентств", "стритвер", "streetwear", "мерч", "продакшн", "креатив")):
         return "acid_neo_brutalism"
 
-    # 22. Beauty & Fashion Editorial
-    if any(k in cat for k in ("бьюти", "красот", "маникюр", "педикюр", "волос", "парикмахер", "косметол", "одежд", "спа", "ногти", "брови", "массаж", "мода")):
-        return "luxury_editorial"
-
-    # 23. Coffee & Bakery Craft
-    if any(k in cat for k in ("кофе", "пекарн", "кондитер", "выпечк", "ресторан", "кафе", "доставка еды", "кухн", "чай")):
-        return "warm_artisan_coffee"
-
-    # 24. Default to clean swiss trust
+    # 25. Default to clean swiss trust
     return "clean_swiss_trust"
 
 
-def resolve_style_id(style_id: str | None, category: str | None = None) -> str:
+def resolve_style_id(
+    style_id: str | None,
+    category: str | None = None,
+    business_name: str | None = None,
+) -> str:
     """Resolves any style string (or None) into a valid canonical style_id."""
     if not style_id or style_id.lower() in ("auto", "default", "none"):
-        return detect_style_by_category(category)
+        return detect_style_by_category(category, business_name=business_name)
     cleaned = style_id.lower().strip()
     if cleaned in STYLES_CATALOG:
         return cleaned
     if cleaned in STYLE_ALIASES:
         return STYLE_ALIASES[cleaned]
-    return detect_style_by_category(category)
+    return detect_style_by_category(category, business_name=business_name)
 
 
 def get_style(style_id: str | None, category: str | None = None) -> dict[str, Any]:

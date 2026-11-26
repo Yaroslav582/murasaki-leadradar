@@ -661,7 +661,7 @@ async def sort_business_photos(
     """
     Intelligently sorts and categorizes lead photos for landing pages using Vision AI models from VISION_MODELS_CHAIN.
     Distributes photos into 3 key categories:
-      - hero_product: close-up shots of works, products, food, procedures (used for hero screen and portfolio gallery)
+      - hero_product: close-up shots of works, products, food, procedures, WITH short 2-3 word Russian captions
       - interior: premises, facade, atmosphere, indoor design
       - trash: screenshots of chats, price lists with text, documents, blurry/unfitting photos (discarded)
     """
@@ -675,6 +675,7 @@ async def sort_business_photos(
     if not valid_photos:
         return {
             "hero_product": [],
+            "work_captions": {},
             "interior": [],
             "trash": [],
             "hero": None,
@@ -692,6 +693,9 @@ async def sort_business_photos(
         "1. hero_product (Примеры работ / услуги / продукт / блюда):\n"
         "   - СЮДА ТОЛЬКО: готовые результаты работы мастеров (причёска, ногти, машина в боксе), блюда/кофе, товары, процесс оказания услуги.\n"
         "   - ЗАПРЕЩЕНО в hero_product: пустые помещения, улицы, парковки, вывески снаружи, лица клиентов крупным планом, перчатки/расходники!\n"
+        "   - Для КАЖДОГО фото в hero_product ОБЯЗАТЕЛЬНО напиши короткую и точную подпись на русском (2–3 слова), "
+        "описывающую именно то, что изображено на самой картинке (например: «Нюдовый маникюр», «Французский маникюр», «Педикюр с покрытием», «Укладка волос», «Полировка кузова»).\n"
+        "   - Если на фото просто портрет или непонятная услуга — ставь нейтральную подпись «Работа мастера» или «Результат процедуры».\n"
         "2. interior (Атмосфера и интерьер):\n"
         "   - СЮДА ТОЛЬКО: эстетичный общий план интерьера зала, рабочего кабинета, кресел, стойки ресепшена, красивого фасада.\n"
         "   - ЗАПРЕЩЕНО в interior: портреты/лица людей крупным планом, руки в перчатках, тюбики/баночки крупным планом, грязные углы, документы!\n"
@@ -699,44 +703,77 @@ async def sort_business_photos(
         "   - СЮДА ОБЯЗАТЕЛЬНО: любые лица людей/селфи крупным планом, руки в медицинских/рабочих перчатках, случайные инструменты/расходники, "
         "некрасивая улица/парковка/лестница, скриншоты, прайс-листы с текстом, чеки, размытые или тёмные фото.\n\n"
         "Если сомневаешься в эстетике фото — отправляй его в trash! Лучше оставить категорию пустой, чем показать плохое фото.\n"
-        "Верни СТРОГО JSON с числовыми индексами (0, 1, 2...):\n"
-        '{"hero_product": [1, 3], "interior": [0], "trash": [2, 4]}'
+        "Верни СТРОГО JSON с объектами в hero_product (индекс + подпись) и числовыми индексами в interior и trash:\n"
+        '{"hero_product": [{"index": 1, "caption": "Нюдовый маникюр"}, {"index": 3, "caption": "Укладка волос"}], "interior": [0], "trash": [2, 4]}'
     )
 
     try:
         raw_json = await ask_ai_vision(
             prompt=prompt,
             image_urls=target_batch,
-            system_prompt="Отвечай строго в формате JSON с массивами числовых индексов без markdown и пояснений.",
-            max_tokens=600,
+            system_prompt="Отвечай строго в формате JSON без markdown и пояснений.",
+            max_tokens=750,
             temperature=0.1,
             expect_json=True,
         )
         parsed = extract_json_payload(raw_json)
         if isinstance(parsed, dict):
+            def _extract_idx(val: Any) -> int | None:
+                if isinstance(val, int) and not isinstance(val, bool):
+                    return val
+                if isinstance(val, str):
+                    if val in target_batch:
+                        return target_batch.index(val)
+                    m = re.search(r"\d+", val)
+                    if m:
+                        return int(m.group(0))
+                return None
+
             def _pick(items: Any) -> list[str]:
                 out: list[str] = []
                 if not isinstance(items, list):
                     return out
                 for val in items:
-                    idx: int | None = None
-                    if isinstance(val, int):
-                        idx = val
-                    elif isinstance(val, str):
-                        if val in target_batch:
-                            if val not in out:
-                                out.append(val)
-                            continue
-                        m = re.search(r"\d+", val)
-                        if m:
-                            idx = int(m.group(0))
+                    raw_ref = val.get("index") if isinstance(val, dict) else val
+                    idx = _extract_idx(raw_ref)
                     if idx is not None and 0 <= idx < len(target_batch):
                         url = target_batch[idx]
                         if url not in out:
                             out.append(url)
                 return out
 
-            hero_product = _pick(parsed.get("hero_product") or [])
+            def _clean_caption(raw_cap: Any) -> str:
+                if not isinstance(raw_cap, str):
+                    return "Работа мастера"
+                cleaned = re.sub(r"[\"'«»\n\r]+", " ", raw_cap).strip()
+                cleaned = re.sub(r"\s+", " ", cleaned)
+                if not cleaned or len(cleaned) < 3:
+                    return "Работа мастера"
+                words = cleaned.split(" ")
+                if len(words) > 4:
+                    cleaned = " ".join(words[:4])
+                return cleaned[:48]
+
+            work_captions: dict[str, str] = {}
+            raw_hp_items = parsed.get("hero_product") or []
+            captions_map = parsed.get("captions") if isinstance(parsed.get("captions"), dict) else {}
+            if isinstance(raw_hp_items, list):
+                for val in raw_hp_items:
+                    if isinstance(val, dict):
+                        idx = _extract_idx(val.get("index"))
+                        if idx is not None and 0 <= idx < len(target_batch):
+                            url = target_batch[idx]
+                            work_captions[url] = _clean_caption(val.get("caption") or captions_map.get(str(idx)))
+                    else:
+                        idx = _extract_idx(val)
+                        if idx is not None and 0 <= idx < len(target_batch):
+                            url = target_batch[idx]
+                            work_captions[url] = _clean_caption(captions_map.get(str(idx)))
+
+            hero_product = _pick(raw_hp_items)
+            for url in hero_product:
+                work_captions.setdefault(url, "Работа мастера")
+
             interior = [u for u in _pick(parsed.get("interior") or []) if u not in hero_product]
             trash = _pick(parsed.get("trash") or parsed.get("rejected") or [])
 
@@ -749,6 +786,7 @@ async def sort_business_photos(
             )
             return {
                 "hero_product": hero_product,
+                "work_captions": work_captions,
                 "interior": interior,
                 "trash": trash,
                 "hero": hero,
@@ -759,9 +797,10 @@ async def sort_business_photos(
     except Exception as exc:
         logger.warning("Vision photo sorting unavailable or failed (%s). Using clean fallback.", exc)
 
-    # Conservative fallback if Vision is offline: leave empty so niche curated Unsplash photos are used cleanly
+    # Conservative fallback if Vision is offline: leave empty so niche curated stock photos are used cleanly
     return {
         "hero_product": [],
+        "work_captions": {},
         "interior": [],
         "trash": [],
         "hero": None,
@@ -890,9 +929,7 @@ async def generate_demo_json(
         )
         parsed = extract_json_payload(raw_res)
         if isinstance(parsed, dict) and "hero_title" in parsed and "services" in parsed:
-            t_id = parsed.get("template_id")
-            if t_id not in valid_templates:
-                parsed["template_id"] = suggested_template
+            parsed["template_id"] = suggested_template
             # Fill any missing 9-section fields from niche fallback
             for key in ("facts", "usp_list", "promo", "reviews", "faq"):
                 if not parsed.get(key):

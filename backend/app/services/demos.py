@@ -135,6 +135,7 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
 
     # 2. Vision AI sorting ONLY on real business photos (distributes into hero_product, interior, rejected)
     hp: list[str] = []
+    work_captions: dict[str, str] = {}
     interior: list[str] = []
     rejected: list[str] = []
     if real_photos:
@@ -149,6 +150,7 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
                 timeout=25.0,
             )
             hp = sorted_photos.get("hero_product") or []
+            work_captions = dict(sorted_photos.get("work_captions") or {})
             interior = sorted_photos.get("interior") or []
             rejected = sorted_photos.get("rejected") or sorted_photos.get("trash") or []
             ordered_photos = hp + [p for p in interior if p not in hp]
@@ -163,6 +165,7 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
 
     data = lead_to_dict(lead)
     data["hero_product"] = hp
+    data["work_captions"] = work_captions
     data["interior_photos"] = interior
     data["rejected_photos"] = rejected
     demo_id = new_id()

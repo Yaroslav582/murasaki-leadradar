@@ -319,6 +319,22 @@ async def probe_tg_profile_for_channels(profile_handle: str) -> list[str]:
     return list(dict.fromkeys(discovered_channels))
 
 
+SUBNICHE_WORK_CAPTIONS: dict[str, tuple[str, str, str]] = {
+    "hair": ("Укладка и причёска", "Сложное окрашивание", "Мужская стрижка"),
+    "barber": ("Мужская стрижка фейд", "Оформление бороды", "Укладка волос"),
+    "nails": ("Нюдовый маникюр", "Французский маникюр", "Педикюр с покрытием"),
+    "beauty": ("Уходовая процедура", "Брови и ресницы", "Расслабляющий массаж"),
+    "coffee": ("Капучино и круассан", "Свежая выпечка", "Освежающий айс-латте"),
+    "restaurant": ("Авторская паста", "Блюдо с креветками", "Авторские коктейли"),
+    "dental": ("Осмотр и диагностика", "Эстетика улыбки", "Лечение под микроскопом"),
+    "clinic": ("Консультация врача", "УЗИ и диагностика", "Приём специалиста"),
+    "auto": ("Полировка кузова", "Компьютерная диагностика", "Детейлинг салона"),
+    "fitness": ("Персональная тренировка", "Йога и пилатес", "Функциональный тренинг"),
+    "flowers": ("Авторский букет", "Букет пионов и роз", "Сборка композиций"),
+    "office": ("Консультация специалиста", "Разбор проекта", "Работа команды"),
+}
+
+
 def get_niche_fallback(
     category: str | None,
     business_name: str | None = None,
@@ -329,11 +345,14 @@ def get_niche_fallback(
     base = _stock_base_url(public_url)
     works = [f"{base}/static/stock/{sub}/works_{i}.jpg" for i in (1, 2, 3)]
     interior = [f"{base}/static/stock/{sub}/interior_{i}.jpg" for i in (1, 2, 3)]
+    captions = SUBNICHE_WORK_CAPTIONS.get(sub, ("Работа мастера", "Результат процедуры", "Пример услуги"))
+    work_captions = {works[idx]: captions[idx] for idx in range(3)}
     return {
         "subniche": sub,
         "query": NICHE_SEARCH_QUERIES.get(sub, {}).get("query", sub),
         "hero": f"{base}/static/stock/{sub}/hero.jpg",
         "works": works,
+        "work_captions": work_captions,
         "interior": interior,
         "gallery": works + interior,
     }

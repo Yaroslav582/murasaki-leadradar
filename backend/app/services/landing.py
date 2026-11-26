@@ -1459,10 +1459,16 @@ def render_jinja_demo(
         )
         effective_hero = safe_hero_in or fb_hero or (work_urls[0] if work_urls else "")
 
+    work_captions_map: dict[str, str] = dict(niche_fb.get("work_captions") or {})
+    raw_captions = business_dict.get("work_captions")
+    if isinstance(raw_captions, dict):
+        for u, cap in raw_captions.items():
+            if isinstance(u, str) and isinstance(cap, str) and cap.strip():
+                work_captions_map[u] = cap.strip()
+
     work_cards = []
-    service_names = [s.get("name") for s in safe_content.get("services", []) if isinstance(s, dict)]
-    for idx, url in enumerate(work_urls[:6]):
-        caption = service_names[idx] if idx < len(service_names) else f"{category} · пример #{idx + 1}"
+    for url in work_urls[:6]:
+        caption = work_captions_map.get(url) or "Работа мастера"
         work_cards.append({"url": url, "caption": caption})
 
     tmpl = jinja_env.get_template("_master_9sections.html")

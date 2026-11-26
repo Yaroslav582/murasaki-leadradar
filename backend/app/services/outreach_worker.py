@@ -659,6 +659,7 @@ class OutreachWorker:
             item.photos = collected_photos[:10]
             lead_dict["photos"] = item.photos
             lead_dict["hero_product"] = []
+            lead_dict["work_captions"] = {}
             lead_dict["interior_photos"] = []
             lead_dict["rejected_photos"] = []
 
@@ -674,6 +675,7 @@ class OutreachWorker:
                         timeout=25.0,
                     )
                     lead_dict["hero_product"] = sorted_ph.get("hero_product") or []
+                    lead_dict["work_captions"] = dict(sorted_ph.get("work_captions") or {})
                     lead_dict["interior_photos"] = sorted_ph.get("interior") or []
                     lead_dict["rejected_photos"] = sorted_ph.get("rejected") or sorted_ph.get("trash") or []
                 except Exception:

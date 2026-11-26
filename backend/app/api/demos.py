@@ -145,6 +145,7 @@ async def _rebuild_demo_impl(demo_id: str, session: AsyncSession) -> DemoOut:
     collected_photos = media_res.get("photos") or []
 
     hp: list[str] = []
+    work_captions: dict[str, str] = {}
     interior: list[str] = []
     rejected: list[str] = []
     if real_photos:
@@ -158,6 +159,7 @@ async def _rebuild_demo_impl(demo_id: str, session: AsyncSession) -> DemoOut:
                 timeout=25.0,
             )
             hp = sorted_photos.get("hero_product") or []
+            work_captions = dict(sorted_photos.get("work_captions") or {})
             interior = sorted_photos.get("interior") or []
             rejected = sorted_photos.get("rejected") or sorted_photos.get("trash") or []
         except Exception:
@@ -166,6 +168,7 @@ async def _rebuild_demo_impl(demo_id: str, session: AsyncSession) -> DemoOut:
     lead.photos = collected_photos
     data["photos"] = collected_photos
     data["hero_product"] = hp
+    data["work_captions"] = work_captions
     data["interior_photos"] = interior
     data["rejected_photos"] = rejected
 

@@ -438,25 +438,65 @@ async def test_monochrome_contrast_and_vision_photo_index_sorting(monkeypatch):
     assert "facade/orig" not in html_hair
     assert "images.unsplash.com" not in html_hair
 
-    # 2. Index-based Vision sorting must discard trash completely
+    # 2. Index-based Vision sorting must discard trash completely AND bind exact photo captions
     async def fake_vision(**kwargs):
-        return '{"hero_product": [1], "interior": [0], "trash": [2, 3]}'
+        return (
+            '{"hero_product": [{"index": 1, "caption": "Нюдовый маникюр"}, '
+            '{"index": 3, "caption": "Работа мастера"}], '
+            '"interior": [0], "trash": [2, 4]}'
+        )
 
     monkeypatch.setattr("app.services.ai_router.ask_ai_vision", fake_vision)
     sorted_res = await sort_business_photos(
         [
             "https://cdn.site/interior.jpg",
-            "https://cdn.site/work.jpg",
+            "https://cdn.site/nails.jpg",
             "https://cdn.site/grandma_face.jpg",
+            "https://cdn.site/portrait_unclear.jpg",
             "https://cdn.site/gloves.jpg",
         ],
         business_category="Бьюти",
         business_name="Салон",
     )
-    assert sorted_res["hero_product"] == ["https://cdn.site/work.jpg"]
+    assert sorted_res["hero_product"] == ["https://cdn.site/nails.jpg", "https://cdn.site/portrait_unclear.jpg"]
+    assert sorted_res["work_captions"] == {
+        "https://cdn.site/nails.jpg": "Нюдовый маникюр",
+        "https://cdn.site/portrait_unclear.jpg": "Работа мастера",
+    }
     assert sorted_res["interior"] == ["https://cdn.site/interior.jpg"]
     assert "https://cdn.site/grandma_face.jpg" not in sorted_res["hero_product"] + sorted_res["interior"]
     assert "https://cdn.site/gloves.jpg" not in sorted_res["hero_product"] + sorted_res["interior"]
+
+    # 3. Carousel cards MUST bind strictly to Vision/stock photo captions, never random text services
+    html_captions = render_jinja_demo(
+        template_id="luxury_editorial",
+        business_dict={
+            "name": "Салон Образ",
+            "category": "Парикмахерская",
+            "city": "Москва",
+            "hero_product": ["https://cdn.site/nails.jpg"],
+            "work_captions": {"https://cdn.site/nails.jpg": "Нюдовый маникюр"},
+            "interior_photos": [],
+        },
+        content_json={
+            "hero_title": "Салон Образ",
+            "hero_subtitle": "Мастерство и уход",
+            "services": [{"category": "Волосы", "name": "Стрижка женская", "price": "2 000 ₽"}],
+        },
+        hero_image="https://cdn.site/nails.jpg",
+        gallery_photos=[],
+    )
+    assert 'alt="Нюдовый маникюр"' in html_captions
+    assert 'alt="Стрижка женская"' not in html_captions
+
+    # 4. Auto style detection must avoid substring traps ('сто', 'дизайн', 'фото')
+    from app.services.design_systems import detect_style_by_category
+    assert detect_style_by_category("Стоматология") == "clean_swiss_trust"
+    assert detect_style_by_category("Ресторан") == "warm_artisan_coffee"
+    assert detect_style_by_category("Ногтевая студия · дизайн ногтей") == "luxury_editorial"
+    assert detect_style_by_category("Фотоэпиляция и косметология") == "luxury_editorial"
+    assert detect_style_by_category("Барбершоп") == "vintage_barber_leather"
+    assert detect_style_by_category("СТО и шиномонтаж") == "dark_cyber_neon"
 
 
 @pytest.mark.asyncio
