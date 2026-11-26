@@ -64,7 +64,30 @@ class TelegramBotRunner:
                 pass
             return
 
-        # 0b. Action: Toggle Autonomous Outreach Worker (outreach_toggle:on|off)
+        # 0b. Action: Toggle Autonomous Outreach Worker (outreach_toggle:on|off) or clear pause (outreach_resume)
+        if cb_data == "outreach_resume":
+            from app.services.outreach_worker import outreach_worker
+            st = await outreach_worker.clear_pause()
+            try:
+                await client.post(
+                    f"{base_url}/answerCallbackQuery",
+                    json={"callback_query_id": cb_id, "text": "▶️ Пауза снята, рассылка возобновлена!"},
+                )
+            except Exception:
+                pass
+            text, markup = self._format_outreach_status(st)
+            await client.post(
+                f"{base_url}/editMessageText",
+                json={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": text,
+                    "parse_mode": "HTML",
+                    "reply_markup": markup,
+                },
+            )
+            return
+
         if cb_data.startswith("outreach_toggle:"):
             target_state = cb_data.split(":", 1)[1] == "on"
             from app.services.outreach_worker import outreach_worker
@@ -393,7 +416,10 @@ class TelegramBotRunner:
             if enabled
             else {"text": "▶️ Включить рассылку", "callback_data": "outreach_toggle:on"}
         )
-        return text, {"inline_keyboard": [[btn]]}
+        rows = [[btn]]
+        if st.get("paused_until"):
+            rows.append([{"text": "🔄 Снять паузу и продолжить", "callback_data": "outreach_resume"}])
+        return text, {"inline_keyboard": rows}
 
     async def _poll_loop(self) -> None:
         token = settings.telegram_bot_token

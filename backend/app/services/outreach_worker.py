@@ -77,6 +77,7 @@ class OutreachWorker:
         self._autonomous_task: asyncio.Task | None = None
         self._userbot_client: Any = None
         self._paused_until: datetime | None = None
+        self._peer_flood_streak: int = 0
         self._last_error: str | None = None
         self._stats: dict[str, Any] = {
             "total_sent": 0,
@@ -111,6 +112,8 @@ class OutreachWorker:
         settings.outreach_enabled = bool(enabled)
         if enabled:
             self._paused_until = None
+            self._peer_flood_streak = 0
+            self._last_error = None
         try:
             async with SessionLocal() as session:
                 st = await session.get(AppSetting, "autonomous_outreach_config")
@@ -122,6 +125,14 @@ class OutreachWorker:
                 await session.commit()
         except Exception as exc:
             logger.debug("Notice saving autonomous_outreach_config: %s", exc)
+        return await self.get_autonomous_status()
+
+    async def clear_pause(self) -> dict[str, Any]:
+        """Manually clear flood pause so the autonomous worker resumes immediately."""
+        self._paused_until = None
+        self._peer_flood_streak = 0
+        self._last_error = None
+        settings.outreach_enabled = True
         return await self.get_autonomous_status()
 
     async def get_autonomous_status(self) -> dict[str, Any]:
@@ -410,8 +421,8 @@ class OutreachWorker:
 
     # ── Pipeline Step 3: Resolve Telegram Contact ─────────────────────────────
 
-    async def resolve_outreach_contact(self, client: Any, item: OutreachLead) -> Any | None:
-        """Resolve personal Telegram User entity by username or phone (ImportContacts -> DeleteContacts)."""
+    async def resolve_outreach_contact(self, client: Any, item: OutreachLead) -> tuple[Any | None, bool]:
+        """Resolve personal Telegram User entity. Returns (entity, imported_as_temp_contact)."""
         from telethon.tl.functions.contacts import DeleteContactsRequest, ImportContactsRequest
         from telethon.tl.types import InputPhoneContact, User
 
@@ -421,7 +432,7 @@ class OutreachWorker:
                 if isinstance(entity, User) and not getattr(entity, "bot", False):
                     item.tg_user_id = int(entity.id)
                     item.tg_username = getattr(entity, "username", None) or item.tg_username
-                    return entity
+                    return entity, False
             except Exception as exc:
                 logger.debug("Username lookup failed for @%s: %s", item.tg_username, exc)
 
@@ -434,19 +445,21 @@ class OutreachWorker:
             )
             res = await client(ImportContactsRequest([contact]))
             users = getattr(res, "users", []) or []
-            try:
-                if users:
-                    await client(DeleteContactsRequest(id=users))
-            except Exception:
-                pass
             for u in users:
                 if isinstance(u, User) and not getattr(u, "bot", False):
                     item.tg_user_id = int(u.id)
                     if getattr(u, "username", None):
                         item.tg_username = u.username
-                    return u
+                    # Keep temporarily until send_message finishes, then delete cleanly
+                    return u, True
+            # No valid user found -> delete any residual contact immediately
+            if users:
+                try:
+                    await client(DeleteContactsRequest(id=users))
+                except Exception:
+                    pass
 
-        return None
+        return None, False
 
     # ── Pipeline Step 5: LLM Pitch Generation ─────────────────────────────────
 
@@ -537,11 +550,15 @@ class OutreachWorker:
                 return "no_client"
 
             try:
-                peer_entity = await self.resolve_outreach_contact(client, item)
+                resolved = await self.resolve_outreach_contact(client, item)
+                if isinstance(resolved, tuple):
+                    peer_entity, temp_imported = resolved
+                else:
+                    peer_entity, temp_imported = resolved, False
             except Exception as exc:
                 from telethon.errors import FloodWaitError, PeerFloodError
                 if isinstance(exc, PeerFloodError):
-                    return await self._handle_peer_flood(session, item, exc)
+                    return await self._handle_peer_flood(session, item, exc, stage="ImportContacts")
                 if isinstance(exc, FloodWaitError):
                     return await self._handle_flood_wait(exc)
                 item.status = "error"
@@ -556,7 +573,16 @@ class OutreachWorker:
                 await session.commit()
                 return "skipped_no_tg"
 
+            async def _cleanup_temp_contact() -> None:
+                if temp_imported:
+                    try:
+                        from telethon.tl.functions.contacts import DeleteContactsRequest
+                        await client(DeleteContactsRequest(id=[peer_entity]))
+                    except Exception:
+                        pass
+
             if not (item.company_name and item.company_name.strip()) or not (item.category and item.category.strip()):
+                await _cleanup_temp_contact()
                 item.status = "skipped_bad_quality"
                 item.error_detail = "Missing company_name or category"
                 session.add(item)
@@ -591,6 +617,7 @@ class OutreachWorker:
                 collected_photos = list(item.photos or [])
 
             if not collected_photos:
+                await _cleanup_temp_contact()
                 item.status = "skipped_bad_quality"
                 item.error_detail = "No quality photos found"
                 session.add(item)
@@ -664,6 +691,7 @@ class OutreachWorker:
 
             try:
                 await client.send_message(peer_entity, pitch_text, link_preview=False)
+                await _cleanup_temp_contact()
                 item.status = "sent"
                 item.sent_at = utcnow()
                 lead_row.status = "sent"
@@ -672,6 +700,7 @@ class OutreachWorker:
                 await session.commit()
 
                 self._stats["total_sent"] += 1
+                self._peer_flood_streak = 0
                 self._last_error = None
 
                 from app.services.lead_notifier import lead_notifier
@@ -689,9 +718,10 @@ class OutreachWorker:
                 return "sent"
 
             except Exception as exc:
+                await _cleanup_temp_contact()
                 from telethon.errors import FloodWaitError, PeerFloodError
                 if isinstance(exc, PeerFloodError):
-                    return await self._handle_peer_flood(session, item, exc)
+                    return await self._handle_peer_flood(session, item, exc, stage="send_message")
                 if isinstance(exc, FloodWaitError):
                     return await self._handle_flood_wait(exc)
                 item.status = "error"
@@ -709,20 +739,31 @@ class OutreachWorker:
         await asyncio.sleep(wait_sec)
         return "flood_wait"
 
-    async def _handle_peer_flood(self, session: AsyncSession, item: OutreachLead, exc: Any) -> str:
-        self._paused_until = utcnow() + timedelta(hours=24)
-        self._last_error = f"PeerFloodError: paused 24h ({exc})"
-        item.status = "error"
-        item.error_detail = f"PeerFloodError: {exc}"
+    async def _handle_peer_flood(
+        self, session: AsyncSession, item: OutreachLead, exc: Any, stage: str = "send"
+    ) -> str:
+        self._peer_flood_streak += 1
+        pause_hours = 2 if self._peer_flood_streak == 1 else 24
+        self._paused_until = utcnow() + timedelta(hours=pause_hours)
+        self._last_error = f"PeerFloodError ({stage}): пауза {pause_hours}ч"
+        # Keep item queued so we can retry it once pause ends
+        item.status = "queued"
+        item.error_detail = f"PeerFloodError ({stage}): {exc}"
         session.add(item)
         await session.commit()
-        logger.error("Autonomous outreach PeerFloodError — paused for 24h!")
+        logger.error("Autonomous outreach PeerFloodError (%s) — paused for %dh!", stage, pause_hours)
         try:
             from app.services.lead_notifier import lead_notifier
             await lead_notifier.send_admin_text(
-                "🚨 <b>СРОЧНО: PeerFloodError на аккаунте аутрича!</b>\n"
-                "Рассылка автоматически поставлена на паузу на <b>24 часа</b>.\n"
-                "Проверьте аккаунт на спам-блок через @SpamBot."
+                f"⚠️ <b>PeerFloodError на этапе <code>{html.escape(stage)}</code></b>\n"
+                f"Рассылка поставлена на паузу на <b>{pause_hours} ч</b>.\n"
+                "Если @SpamBot показывает, что аккаунт чист (это временный лимит на поиск/сообщения незнакомцам), "
+                "можешь снять паузу кнопкой ниже:",
+                reply_markup={
+                    "inline_keyboard": [
+                        [{"text": "▶️ Снять паузу и продолжить", "callback_data": "outreach_resume"}]
+                    ]
+                },
             )
         except Exception:
             pass
@@ -744,9 +785,10 @@ class OutreachWorker:
                         logger.info("Autonomous outreach: sleeping %d min after send", pause // 60)
                         await asyncio.sleep(pause)
                     elif outcome == "skipped_no_tg":
-                        await asyncio.sleep(5)
+                        # Pace ImportContacts lookups so Telegram doesn't trigger PeerFlood
+                        await asyncio.sleep(random.randint(45, 90))
                     elif outcome == "skipped_bad_quality":
-                        await asyncio.sleep(3)
+                        await asyncio.sleep(5)
                     elif outcome in ("disabled", "outside_hours", "paused"):
                         await asyncio.sleep(60)
                     elif outcome == "limit_reached":
