@@ -833,7 +833,24 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      <ParseModal open={parseOpen} onClose={() => setParseOpen(false)} onSubmit={handleParse} meta={meta} />
+      <ParseModal
+        open={parseOpen}
+        onClose={() => setParseOpen(false)}
+        onSubmit={handleParse}
+        onDirectParsed={(parsedLead, parsedDemo) => {
+          setLeads((prev) => [parsedLead, ...prev.filter((item) => item.id !== parsedLead.id)]);
+          setTotal((prev) => prev + 1);
+          void refreshMetaStats();
+          if (parsedDemo) {
+            setDemoModal({ demo: parsedDemo, lead: parsedLead });
+            showToast(`Организация «${parsedLead.name}» добавлена и демо готово!`, "success");
+          } else {
+            setDrawerLead(parsedLead);
+            showToast(`Организация «${parsedLead.name}» добавлена в базу`, "success");
+          }
+        }}
+        meta={meta}
+      />
 
       <LeadDrawer
         lead={drawerLead}

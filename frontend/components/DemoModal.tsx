@@ -49,6 +49,8 @@ export default function DemoModal({
   const [regenerating, setRegenerating] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [customSaving, setCustomSaving] = useState(false);
+  const [refinePrompt, setRefinePrompt] = useState("");
+  const [refining, setRefining] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const initialStyle = (demo as any).style || detectNicheStyle(lead.category);
@@ -72,7 +74,7 @@ export default function DemoModal({
 
   const previewUrl = `${API_URL}/api/demos/${current.id}/raw?v=${encodeURIComponent(current.updated_at)}-${reloadKey}`;
   const fallbackHost = API_URL || (typeof window !== "undefined" ? window.location.origin : "");
-  const displayPublicUrl = current.public_url || `${fallbackHost}/demo/${current.id}`;
+  const displayPublicUrl = current.public_url || `${fallbackHost}/demo/${current.slug || current.id}`;
 
   const handleCopy = async (text: string) => {
     try {
@@ -205,9 +207,28 @@ export default function DemoModal({
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `demo-${lead.name.replace(/[^a-zA-Zа-яА-Я0-9]/g, "_")}.html`;
+    anchor.download = `demo-${current.slug || lead.name.replace(/[^a-zA-Zа-яА-Я0-9]/g, "_")}.html`;
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleRefine = async () => {
+    const trimmed = refinePrompt.trim();
+    if (!trimmed) return;
+    setRefining(true);
+    try {
+      const updated = await api.refineDemo(current.id, trimmed);
+      setCurrent(updated);
+      setHtml(updated.html);
+      setReloadKey((k) => k + 1);
+      onDemoUpdated(updated);
+      setRefinePrompt("");
+      showToast("AI применил правку к лендингу!", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Не удалось докрутить демо", "error");
+    } finally {
+      setRefining(false);
+    }
   };
 
   return (
@@ -384,8 +405,52 @@ export default function DemoModal({
             </div>
           </div>
 
-          {/* Правая колонка: Вкладки (Сообщение / Свой промпт (0 кр) / HTML-код) */}
+          {/* Правая колонка: Панель «Докрутить AI» + Вкладки */}
           <div className="flex min-h-[520px] flex-col bg-[#0a0c15]">
+            <div className="border-b border-white/[0.06] bg-[#11131B] px-5 py-3.5 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-white">
+                  <Wand2 size={13} className="text-amber-400" />
+                  Докрутить AI
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {[
+                    "Сделай акцент на акцию в первом экране",
+                    "Перепиши цены ниже на 15%",
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setRefinePrompt(preset)}
+                      className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-300 transition hover:text-white"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={refinePrompt}
+                  onChange={(e) => setRefinePrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !refining) handleRefine();
+                  }}
+                  placeholder="Например: Сделай акцент на акцию в первом экране и перепиши цены..."
+                  className="input flex-1 !py-2 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={handleRefine}
+                  disabled={refining || !refinePrompt.trim()}
+                  className="btn-primary shrink-0 !py-2"
+                >
+                  {refining ? <Spinner size={13} /> : <Sparkles size={13} />}
+                  Применить правку
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center gap-1 border-b border-white/[0.06] px-5 pt-3">
               <button
                 onClick={() => setTab("message")}

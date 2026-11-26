@@ -111,16 +111,21 @@ async def run_parse_job(job_id: str) -> None:
 
         try:
             params = ParseRequest.model_validate(job.params or {})
-            provider = get_provider(job.source)
-            places = await provider.search(
-                city=params.city,
-                categories=params.categories,
-                query=params.query,
-                limit=min(params.limit, settings.max_parse_limit),
-                latitude=params.latitude,
-                longitude=params.longitude,
-                radius=params.radius,
-            )
+            from app.providers.direct_url import is_direct_org_url, parse_direct_org_url
+
+            if is_direct_org_url(params.query):
+                places = [await parse_direct_org_url(params.query or "", fallback_city=params.city)]
+            else:
+                provider = get_provider(job.source)
+                places = await provider.search(
+                    city=params.city,
+                    categories=params.categories,
+                    query=params.query,
+                    limit=min(params.limit, settings.max_parse_limit),
+                    latitude=params.latitude,
+                    longitude=params.longitude,
+                    radius=params.radius,
+                )
 
             if params.only_no_website:
                 places = [place for place in places if not place.website_url]

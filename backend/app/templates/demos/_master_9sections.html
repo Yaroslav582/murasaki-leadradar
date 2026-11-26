@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ business.name }} — {{ business.category }} {{ city_in }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+{{ style.font_css | safe }}
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg: {{ style.colors.bg }};
+    --card: {{ style.colors.card }};
+    --accent: {{ style.colors.accent }};
+    --text: {{ style.colors.text }};
+    --subtext: {{ style.colors.subtext }};
+    --badge: {{ style.colors.badge_bg }};
+    --border: {{ style.border }};
+    --alt-bg: {{ style.alt_bg }};
+    --accent-fg: {{ style.accent_fg }};
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: {{ style.font_body | safe }};
+    background-color: var(--bg);
+    color: var(--text);
+  }
+  h1, h2, h3, .font-heading {
+    font-family: {{ style.font_heading | safe }};
+  }
+  .reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity .55s ease, transform .55s ease;
+  }
+  .reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+</style>
+</head>
+<body class="antialiased">
+
+<!-- 1. NAVBAR -->
+<header class="sticky top-0 z-40 border-b backdrop-blur-md" style="background-color: {{ style.nav_bg }}; border-color: var(--border);">
+  <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+    <a href="#" class="flex items-center gap-2.5 min-w-0">
+      <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold" style="background-color: var(--accent); color: var(--accent-fg);">
+        {{ (business.name or 'Б')[:1] | upper }}
+      </span>
+      <span class="truncate font-heading text-base font-bold tracking-tight">{{ business.name }}</span>
+    </a>
+
+    <nav class="hidden md:flex items-center gap-6 text-sm font-medium" style="color: var(--subtext);">
+      <a href="#works" class="transition hover:opacity-80">Работы</a>
+      <a href="#services" class="transition hover:opacity-80">Услуги</a>
+      <a href="#reviews" class="transition hover:opacity-80">Отзывы</a>
+      <a href="#contacts" class="transition hover:opacity-80">Контакты</a>
+    </nav>
+
+    <div class="flex items-center gap-2">
+      {% if tel_href %}
+      <a href="{{ tel_href }}" class="hidden sm:inline-flex items-center rounded-lg border px-3 py-2 text-xs font-semibold transition hover:opacity-80" style="border-color: var(--border); background-color: var(--card);">
+        {{ business.phone }}
+      </a>
+      {% endif %}
+      <button type="button" onclick="openBookingModal()" class="rounded-lg px-4 py-2 text-xs font-bold transition hover:opacity-90 cursor-pointer" style="background-color: var(--accent); color: var(--accent-fg);">
+        Записаться
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- 2. HERO SECTION -->
+<section class="py-16 md:py-24">
+  <div class="mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-12">
+    <div class="lg:col-span-6 space-y-6">
+      <div class="inline-flex flex-wrap items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold" style="background-color: var(--badge); border-color: var(--border); color: var(--text);">
+        <span>{{ business.category }}</span>
+        <span style="color: var(--subtext);">·</span>
+        <span>{{ business.city }}</span>
+        {% if business.rating %}
+        <span style="color: var(--subtext);">·</span>
+        <span class="font-bold" style="color: var(--accent);">★ {{ business.rating }}</span>
+        {% endif %}
+      </div>
+
+      <h1 class="text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl md:text-6xl">
+        {{ content.hero_title }}
+      </h1>
+
+      <p class="max-w-xl text-base leading-relaxed sm:text-lg" style="color: var(--subtext);">
+        {{ content.hero_subtitle }}
+      </p>
+
+      <div class="flex flex-wrap items-center gap-3 pt-2">
+        <button type="button" onclick="openBookingModal()" class="inline-flex h-12 items-center justify-center rounded-xl px-7 text-sm font-bold shadow-lg transition hover:opacity-90 cursor-pointer" style="background-color: var(--accent); color: var(--accent-fg);">
+          Записаться онлайн
+        </button>
+        {% if tel_href %}
+        <a href="{{ tel_href }}" class="inline-flex h-12 items-center justify-center rounded-xl border px-6 text-sm font-semibold transition hover:opacity-80" style="border-color: var(--border); background-color: var(--card);">
+          Позвонить
+        </a>
+        {% endif %}
+      </div>
+
+      {% if business.address %}
+      <p class="text-xs sm:text-sm" style="color: var(--subtext);">
+        Адрес: {{ business.address }}{% if business.opening_hours %} · {{ business.opening_hours[0] }}{% endif %}
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="lg:col-span-6">
+      <div class="relative overflow-hidden rounded-2xl border aspect-[4/3] shadow-2xl" style="border-color: var(--border); background-color: var(--card);">
+        <img src="{{ hero_image }}" alt="{{ business.name }}" class="h-full w-full object-cover" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80';">
+        {% if business.rating %}
+        <div class="absolute bottom-4 left-4 flex items-center gap-2.5 rounded-xl border px-3.5 py-2 text-xs font-semibold backdrop-blur-md shadow-lg" style="background-color: {{ style.nav_bg }}; border-color: var(--border);">
+          <span class="text-amber-400 font-bold">★ {{ business.rating }}</span>
+          <span style="color: var(--subtext);">{{ business.reviews_count or 18 }} отзывов на картах</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. TRUST FACTS (4 CARDS) -->
+<section class="border-y py-16 md:py-20 reveal" style="background-color: var(--alt-bg); border-color: var(--border);">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6">
+    <div class="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
+      {% for fact in content.facts[:4] %}
+      <div class="rounded-2xl border p-5 sm:p-6" style="background-color: var(--card); border-color: var(--border);">
+        <p class="font-heading text-2xl font-bold tracking-tight sm:text-3xl" style="color: var(--accent);">{{ fact.value }}</p>
+        <p class="mt-1.5 text-xs sm:text-sm font-medium" style="color: var(--subtext);">{{ fact.label }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- 4A. GALLERY 1: WORKS / MENU CAROUSEL (hero_product) -->
+<section id="works" class="py-16 md:py-24 reveal">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-widest" style="color: var(--accent);">Портфолио и детали</p>
+        <h2 class="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Примеры работ и услуги</h2>
+      </div>
+      <p class="text-xs sm:text-sm" style="color: var(--subtext);">Листайте в сторону, чтобы посмотреть ближе</p>
+    </div>
+
+    <div class="no-scrollbar mt-8 flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2">
+      {% for item in work_cards %}
+      <div class="w-[78%] shrink-0 snap-start overflow-hidden rounded-2xl border sm:w-[44%] lg:w-[31%]" style="background-color: var(--card); border-color: var(--border);">
+        <div class="aspect-[4/3] overflow-hidden">
+          <img src="{{ item.url }}" alt="{{ item.caption }}" class="h-full w-full object-cover transition duration-500 hover:scale-105" loading="lazy">
+        </div>
+        <div class="p-4">
+          <p class="text-sm font-semibold">{{ item.caption }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- 4B. GALLERY 2: ATMOSPHERE & INTERIOR BENTO (interior) -->
+<section class="border-y py-16 md:py-24 reveal" style="background-color: var(--alt-bg); border-color: var(--border);">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6">
+    <p class="text-xs font-bold uppercase tracking-widest" style="color: var(--accent);">Пространство</p>
+    <h2 class="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Атмосфера и интерьер</h2>
+
+    <div class="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4 md:grid-rows-2">
+      {% for photo in interior_photos[:5] %}
+      <div class="overflow-hidden rounded-2xl border {% if loop.first %}col-span-2 row-span-2 aspect-[4/3] md:aspect-auto{% else %}aspect-[4/3]{% endif %}" style="border-color: var(--border); background-color: var(--card);">
+        <img src="{{ photo }}" alt="{{ business.name }} — интерьер {{ loop.index }}" class="h-full w-full object-cover transition duration-500 hover:scale-105" loading="lazy">
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- 5. INTERACTIVE PRICE LIST WITH CATEGORY TABS (6-8 ITEMS) -->
+<section id="services" class="py-16 md:py-24 reveal">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6">
+    <div class="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-widest" style="color: var(--accent);">Прайс-лист</p>
+        <h2 class="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Услуги и стоимость</h2>
+      </div>
+
+      {% if price_categories %}
+      <div class="flex flex-wrap gap-2" id="price-tabs">
+        <button type="button" data-cat="all" class="price-tab rounded-lg border px-3.5 py-2 text-xs font-semibold transition cursor-pointer" style="background-color: var(--accent); color: var(--accent-fg); border-color: var(--accent);">
+          Все
+        </button>
+        {% for cat in price_categories %}
+        <button type="button" data-cat="{{ cat }}" class="price-tab rounded-lg border px-3.5 py-2 text-xs font-semibold transition cursor-pointer" style="background-color: var(--card); color: var(--subtext); border-color: var(--border);">
+          {{ cat }}
+        </button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="mt-8 grid gap-4 md:grid-cols-2" id="price-grid">
+      {% for srv in content.services %}
+      <div data-cat="{{ srv.category or 'Популярное' }}" class="price-item flex flex-col justify-between rounded-2xl border p-5 transition" style="background-color: var(--card); border-color: var(--border);">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            {% if srv.category %}
+            <span class="inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider" style="background-color: var(--badge); color: var(--subtext);">
+              {{ srv.category }}
+            </span>
+            {% endif %}
+            <h3 class="mt-2 text-base font-bold">{{ srv.name }}</h3>
+            {% if srv.desc %}
+            <p class="mt-1 text-xs leading-relaxed sm:text-sm" style="color: var(--subtext);">{{ srv.desc }}</p>
+            {% endif %}
+          </div>
+          <span class="shrink-0 whitespace-nowrap font-heading text-base font-bold sm:text-lg" style="color: var(--accent);">
+            {{ srv.price }}
+          </span>
+        </div>
+        <div class="mt-4 pt-3 border-t flex justify-end" style="border-color: var(--border);">
+          <button type="button" onclick="openBookingModal('{{ srv.name | replace("'", "") }}')" class="text-xs font-semibold transition hover:opacity-80 cursor-pointer" style="color: var(--accent);">
+            Выбрать для записи →
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- 6. PROMO / SPECIAL OFFER -->
+{% if content.promo %}
+<section class="py-8 md:py-12 reveal">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6">
+    <div class="relative overflow-hidden rounded-3xl p-8 sm:p-12 shadow-xl" style="background-color: var(--accent); color: var(--accent-fg);">
+      <div class="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+        <div class="max-w-2xl space-y-3">
+          <span class="inline-block rounded-full bg-black/15 px-3 py-1 text-xs font-bold uppercase tracking-wider">
+            {{ content.promo.badge or 'Спецпредложение' }}
+          </span>
+          <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">
+            {{ content.promo.title }}
+          </h2>
+          <p class="text-sm opacity-90 sm:text-base">
+            {{ content.promo.desc }}
+          </p>
+        </div>
+        <button type="button" onclick="openBookingModal('{{ (content.promo.title or 'Спецпредложение') | replace("'", "") }}')" class="shrink-0 rounded-xl bg-white px-7 py-4 text-sm font-bold text-slate-900 shadow-lg transition hover:scale-[1.02] cursor-pointer">
+          {{ content.promo.cta or 'Забрать бонус' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- 7. REVIEWS (3 CARDS + YANDEX MAPS LINK) -->
+<section id="reviews" class="border-y py-16 md:py-24 reveal" style="background-color: var(--alt-bg); border-color: var(--border);">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-widest" style="color: var(--accent);">Обратная связь</p>
+        <h2 class="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Отзывы клиентов</h2>
+      </div>
+      <a href="{{ map_url }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition hover:opacity-80" style="background-color: var(--card); border-color: var(--border);">
+        Читать все отзывы на Яндекс Картах →
+      </a>
+    </div>
+
+    <div class="mt-8 grid gap-5 md:grid-cols-3">
+      {% for rev in content.reviews[:3] %}
+      <article class="flex flex-col justify-between rounded-2xl border p-6" style="background-color: var(--card); border-color: var(--border);">
+        <div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-amber-400">★★★★★</span>
+            <span style="color: var(--subtext);">{{ rev.date or 'Недавно' }}</span>
+          </div>
+          <p class="mt-4 text-sm leading-relaxed" style="color: var(--text);">«{{ rev.text }}»</p>
+        </div>
+        <p class="mt-5 pt-4 border-t text-xs font-semibold" style="border-color: var(--border); color: var(--subtext);">
+          {{ rev.author }}
+        </p>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- 8. FAQ ACCORDION (4-5 QUESTIONS) -->
+<section class="py-16 md:py-24 reveal">
+  <div class="mx-auto max-w-3xl px-4 sm:px-6">
+    <div class="text-center">
+      <p class="text-xs font-bold uppercase tracking-widest" style="color: var(--accent);">Частые вопросы</p>
+      <h2 class="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Ответы перед визитом</h2>
+    </div>
+
+    <div class="mt-8 space-y-3" id="faq-list">
+      {% for item in content.faq[:5] %}
+      <div class="rounded-2xl border overflow-hidden" style="background-color: var(--card); border-color: var(--border);">
+        <button type="button" class="faq-btn flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-sm font-bold cursor-pointer">
+          <span>{{ item.question }}</span>
+          <span class="faq-icon shrink-0 text-lg font-normal" style="color: var(--accent);">+</span>
+        </button>
+        <div class="faq-body hidden border-t px-5 py-4 text-sm leading-relaxed" style="border-color: var(--border); color: var(--subtext);">
+          {{ item.answer }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- 9. CONTACTS & FOOTER -->
+<footer id="contacts" class="border-t py-16 md:py-20 reveal" style="background-color: var(--alt-bg); border-color: var(--border);">
+  <div class="mx-auto grid max-w-6xl gap-8 px-4 sm:px-6 md:grid-cols-2 md:items-center">
+    <div class="space-y-4">
+      <p class="text-xs font-bold uppercase tracking-widest" style="color: var(--accent);">Контакты</p>
+      <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">{{ business.name }}</h2>
+      <div class="space-y-2 text-sm" style="color: var(--subtext);">
+        <p><strong style="color: var(--text);">Адрес:</strong> {{ business.address or business.city }}</p>
+        {% if business.phone %}
+        <p><strong style="color: var(--text);">Телефон:</strong> <a href="{{ tel_href }}" class="underline">{{ business.phone }}</a></p>
+        {% endif %}
+        {% if business.opening_hours %}
+        <p><strong style="color: var(--text);">График работы:</strong> {{ business.opening_hours | join(', ') }}</p>
+        {% endif %}
+      </div>
+
+      <div class="flex flex-wrap gap-3 pt-2">
+        <button type="button" onclick="openBookingModal()" class="rounded-xl px-6 py-3 text-xs font-bold transition hover:opacity-90 cursor-pointer" style="background-color: var(--accent); color: var(--accent-fg);">
+          Записаться в 2 шага
+        </button>
+        <a href="{{ map_url }}" target="_blank" rel="noopener" class="rounded-xl border px-5 py-3 text-xs font-semibold transition hover:opacity-80" style="background-color: var(--card); border-color: var(--border);">
+          Построить маршрут на карте
+        </a>
+      </div>
+    </div>
+
+    <div class="rounded-2xl border p-6 space-y-4" style="background-color: var(--card); border-color: var(--border);">
+      <h3 class="text-lg font-bold">Быстрая запись через мессенджер</h3>
+      <p class="text-sm leading-relaxed" style="color: var(--subtext);">
+        Выберите нужную услугу и удобный день — заявка автоматически откроется в WhatsApp или Telegram, без звонков и ожидания на линии.
+      </p>
+      <div class="flex flex-wrap gap-3">
+        {% if whatsapp_url %}
+        <a href="{{ whatsapp_url }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-500">
+          Написать в WhatsApp
+        </a>
+        {% endif %}
+        {% if telegram_url %}
+        <a href="{{ telegram_url }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-sky-500">
+          Написать в Telegram
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- BOOKING 2-STEP MODAL -->
+<div id="booking-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+  <div class="w-full max-w-md rounded-2xl border p-6 shadow-2xl" style="background-color: var(--card); border-color: var(--border); color: var(--text);">
+    <div class="flex items-center justify-between border-b pb-4" style="border-color: var(--border);">
+      <div>
+        <p class="text-[11px] font-bold uppercase tracking-wider" style="color: var(--accent);">Онлайн-запись · 2 шага</p>
+        <h3 class="text-lg font-bold">{{ business.name }}</h3>
+      </div>
+      <button type="button" onclick="closeBookingModal()" class="flex h-8 w-8 items-center justify-center rounded-lg border text-sm cursor-pointer" style="border-color: var(--border);">✕</button>
+    </div>
+
+    <div class="mt-5 space-y-5">
+      <div>
+        <label class="block text-xs font-semibold mb-2" style="color: var(--subtext);">Шаг 1. Выберите услугу</label>
+        <select id="booking-service" class="w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none" style="background-color: var(--bg); border-color: var(--border); color: var(--text);">
+          {% for srv in content.services %}
+          <option value="{{ srv.name }} ({{ srv.price }})">{{ srv.name }} — {{ srv.price }}</option>
+          {% endfor %}
+          {% if content.promo %}
+          <option value="{{ content.promo.title }}">{{ content.promo.title }}</option>
+          {% endif %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold mb-2" style="color: var(--subtext);">Шаг 2. Удобное время</label>
+        <div class="grid grid-cols-3 gap-2" id="booking-days">
+          <button type="button" data-day="Сегодня" class="day-btn rounded-xl border px-3 py-2 text-xs font-semibold cursor-pointer" style="background-color: var(--accent); color: var(--accent-fg); border-color: var(--accent);">Сегодня</button>
+          <button type="button" data-day="Завтра" class="day-btn rounded-xl border px-3 py-2 text-xs font-semibold cursor-pointer" style="background-color: var(--bg); color: var(--text); border-color: var(--border);">Завтра</button>
+          <button type="button" data-day="На выходных" class="day-btn rounded-xl border px-3 py-2 text-xs font-semibold cursor-pointer" style="background-color: var(--bg); color: var(--text); border-color: var(--border);">На выходных</button>
+        </div>
+      </div>
+
+      <div class="pt-2 space-y-2.5">
+        <a id="booking-wa-link" href="#" target="_blank" rel="noopener" class="flex w-full items-center justify-center rounded-xl bg-emerald-600 px-5 py-3 text-xs font-bold text-white transition hover:bg-emerald-500">
+          Отправить заявку в WhatsApp
+        </a>
+        <a id="booking-tg-link" href="#" target="_blank" rel="noopener" class="flex w-full items-center justify-center rounded-xl bg-sky-600 px-5 py-3 text-xs font-bold text-white transition hover:bg-sky-500">
+          Отправить заявку в Telegram
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // 1. Price category tabs
+  const tabs = document.querySelectorAll('.price-tab');
+  const items = document.querySelectorAll('.price-item');
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      const cat = tab.getAttribute('data-cat');
+      tabs.forEach(function(t) {
+        t.style.backgroundColor = 'var(--card)';
+        t.style.color = 'var(--subtext)';
+        t.style.borderColor = 'var(--border)';
+      });
+      tab.style.backgroundColor = 'var(--accent)';
+      tab.style.color = 'var(--accent-fg)';
+      tab.style.borderColor = 'var(--accent)';
+      items.forEach(function(it) {
+        const itemCat = it.getAttribute('data-cat');
+        it.style.display = (cat === 'all' || itemCat === cat) ? 'flex' : 'none';
+      });
+    });
+  });
+
+  // 2. FAQ accordion
+  document.querySelectorAll('.faq-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const body = btn.nextElementSibling;
+      const icon = btn.querySelector('.faq-icon');
+      const isOpen = !body.classList.contains('hidden');
+      body.classList.toggle('hidden', isOpen);
+      if (icon) icon.textContent = isOpen ? '+' : '−';
+    });
+  });
+
+  // 3. Scroll reveal via IntersectionObserver
+  const reveals = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.08 });
+    reveals.forEach(function(el) { observer.observe(el); });
+  } else {
+    reveals.forEach(function(el) { el.classList.add('is-visible'); });
+  }
+
+  // 4. Booking 2-step modal
+  const modal = document.getElementById('booking-modal');
+  const serviceSelect = document.getElementById('booking-service');
+  const waLink = document.getElementById('booking-wa-link');
+  const tgLink = document.getElementById('booking-tg-link');
+  const dayBtns = document.querySelectorAll('.day-btn');
+  let selectedDay = 'Сегодня';
+
+  const baseWa = {{ (whatsapp_url or 'https://wa.me/79990000000') | tojson }};
+  const baseTg = {{ (telegram_url or 'https://t.me/Murasaki_website') | tojson }};
+  const bizName = {{ (business.name or 'Компанию') | tojson }};
+
+  function updateBookingLinks() {
+    const srv = serviceSelect ? serviceSelect.value : 'Консультация';
+    const text = 'Здравствуйте! Хочу записаться в ' + bizName + '. Услуга: ' + srv + '. Удобное время: ' + selectedDay + '.';
+    const enc = encodeURIComponent(text);
+    if (waLink) {
+      const sep = baseWa.indexOf('?') !== -1 ? '&' : '?';
+      waLink.href = baseWa + sep + 'text=' + enc;
+    }
+    if (tgLink) {
+      if (baseTg.indexOf('t.me/') !== -1) {
+        const cleanTg = baseTg.split('?')[0];
+        tgLink.href = cleanTg + '?text=' + enc;
+      } else {
+        tgLink.href = 'https://t.me/share/url?url=' + encodeURIComponent(window.location.href) + '&text=' + enc;
+      }
+    }
+  }
+
+  dayBtns.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      selectedDay = btn.getAttribute('data-day') || 'Сегодня';
+      dayBtns.forEach(function(b) {
+        b.style.backgroundColor = 'var(--bg)';
+        b.style.color = 'var(--text)';
+        b.style.borderColor = 'var(--border)';
+      });
+      btn.style.backgroundColor = 'var(--accent)';
+      btn.style.color = 'var(--accent-fg)';
+      btn.style.borderColor = 'var(--accent)';
+      updateBookingLinks();
+    });
+  });
+
+  if (serviceSelect) {
+    serviceSelect.addEventListener('change', updateBookingLinks);
+  }
+
+  window.openBookingModal = function(preselected) {
+    if (preselected && serviceSelect) {
+      for (let i = 0; i < serviceSelect.options.length; i++) {
+        if (serviceSelect.options[i].value.indexOf(preselected) !== -1) {
+          serviceSelect.selectedIndex = i;
+          break;
+        }
+      }
+    }
+    updateBookingLinks();
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+  };
+
+  window.closeBookingModal = function() {
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+  };
+
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) window.closeBookingModal();
+    });
+  }
+  updateBookingLinks();
+})();
+</script>
+</body>
+</html>

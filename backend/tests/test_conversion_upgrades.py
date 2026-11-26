@@ -155,3 +155,88 @@ def test_render_jinja_demo_fixes_title_rating_and_ruble():
     assert "по запросу ₽" not in html_out
     assert "1 500 ₽" in html_out
 
+    # SEO / OpenGraph / JSON-LD LocalBusiness
+    assert 'property="og:title"' in html_out
+    assert 'property="og:description"' in html_out
+    assert '"@type": "LocalBusiness"' in html_out
+
+    # 9-section interactive blocks
+    assert 'id="works"' in html_out
+    assert 'id="services"' in html_out
+    assert 'id="reviews"' in html_out
+    assert 'id="contacts"' in html_out
+    assert 'id="booking-modal"' in html_out
+    assert "IntersectionObserver" in html_out
+
+
+@pytest.mark.asyncio
+async def test_slug_routing_refine_and_direct_url_parse(client, lead, monkeypatch):
+    from app.services.demos import generate_unique_slug, transliterate_slug
+
+    assert transliterate_slug("Монреаль", "Краснодар") == "monreal-krasnodar"
+
+    async with SessionLocal() as session:
+        s1 = await generate_unique_slug(session, "Монреаль", "Краснодар")
+        demo = DemoSite(
+            lead_id=lead.id,
+            slug=s1,
+            title="Демо Монреаль",
+            html="<!DOCTYPE html><html><head><title>Монреаль</title></head><body><h1>Старый заголовок</h1></body></html>",
+            message="hi",
+            published=True,
+        )
+        session.add(demo)
+        await session.commit()
+        await session.refresh(demo)
+        demo_id = demo.id
+        demo_slug = demo.slug
+
+        # Collision check produces -2 suffix
+        s2 = await generate_unique_slug(session, "Монреаль", "Краснодар")
+        assert s2 == f"{s1}-2"
+
+    # Both UUID and slug resolve /demo/{identifier}
+    r_uuid = await client.get(f"/demo/{demo_id}?preview=1")
+    r_slug = await client.get(f"/demo/{demo_slug}?preview=1")
+    assert r_uuid.status_code == 200
+    assert r_slug.status_code == 200
+
+    # Test /api/demo/{id}/refine endpoint
+    async def fake_refine(current_html: str, user_instruction: str, style_id=None, category=None) -> str:
+        return current_html.replace("Старый заголовок", f"Обновлено: {user_instruction}")
+
+    monkeypatch.setattr("app.services.ai_router.refine_demo_html", fake_refine)
+    r_ref = await client.post(f"/api/demo/{demo_slug}/refine", json={"prompt": "Акция 20%"})
+    assert r_ref.status_code == 200
+    assert "Обновлено: Акция 20%" in r_ref.json()["html"]
+    assert r_ref.json()["slug"] == demo_slug
+
+    # Test direct org URL parsing endpoint
+    from app.providers.base import PlaceResult
+    from app.providers.direct_url import is_direct_org_url
+
+    assert is_direct_org_url("https://yandex.ru/maps/org/monreal/123456/") is True
+    assert is_direct_org_url("https://2gis.ru/krasnodar/firm/70000001012345") is True
+    assert is_direct_org_url("стоматология москва") is False
+
+    async def fake_parse_direct(url: str, fallback_city: str = "") -> PlaceResult:
+        return PlaceResult(
+            name="Бомонд",
+            category="Бьюти",
+            city="Новороссийск",
+            address="Новороссийск, ул. Советов, 12",
+            phone="+7 918 000-11-22",
+            source="yandex_web",
+            source_id="998877",
+        )
+
+    monkeypatch.setattr("app.providers.direct_url.parse_direct_org_url", fake_parse_direct)
+    r_parse = await client.post(
+        "/api/parse/url",
+        json={"url": "https://yandex.ru/maps/org/bomond/998877/", "create_demo": False},
+    )
+    assert r_parse.status_code == 200
+    assert r_parse.json()["lead"]["name"] == "Бомонд"
+    assert r_parse.json()["lead"]["city"] == "Новороссийск"
+
+

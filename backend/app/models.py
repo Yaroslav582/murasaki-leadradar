@@ -58,6 +58,7 @@ class DemoSite(Base):
     lead_id: Mapped[str] = mapped_column(
         ForeignKey("leads.id", ondelete="CASCADE"), index=True
     )
+    slug: Mapped[str | None] = mapped_column(String(160), unique=True, index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(255), default="")
     html: Mapped[str] = mapped_column(Text)
     message: Mapped[str] = mapped_column(Text, default="")

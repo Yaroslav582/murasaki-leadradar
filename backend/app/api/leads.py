@@ -39,11 +39,22 @@ async def list_leads(
 ) -> LeadsPage:
     stmt = apply_lead_filters(select(Lead), filters)
     total = await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    rows = await session.scalars(stmt.offset((page - 1) * page_size).limit(page_size))
+    rows = list(await session.scalars(stmt.offset((page - 1) * page_size).limit(page_size)))
+    demo_ids = [r.demo_id for r in rows if getattr(r, "demo_id", None)]
+    slug_map: dict[str, str] = {}
+    if demo_ids:
+        demo_rows = await session.execute(select(DemoSite.id, DemoSite.slug).where(DemoSite.id.in_(demo_ids)))
+        for d_id, d_slug in demo_rows.all():
+            if d_slug:
+                slug_map[d_id] = d_slug
+
     items: list[LeadOut] = []
     for row in rows:
         try:
-            items.append(LeadOut.model_validate(row))
+            item = LeadOut.model_validate(row)
+            if item.demo_id and item.demo_id in slug_map:
+                item.demo_url = public_demo_url(slug_map[item.demo_id])
+            items.append(item)
         except Exception as exc:
             logger.warning("Error validating lead %s: %s", getattr(row, "id", None), exc)
             try:
@@ -81,7 +92,12 @@ async def get_lead(lead_id: str, session: AsyncSession = Depends(get_session)) -
     if lead is None:
         raise HTTPException(status_code=404, detail="Лид не найден")
     try:
-        return LeadOut.model_validate(lead)
+        out = LeadOut.model_validate(lead)
+        if out.demo_id:
+            d_slug = await session.scalar(select(DemoSite.slug).where(DemoSite.id == out.demo_id))
+            if d_slug:
+                out.demo_url = public_demo_url(d_slug)
+        return out
     except Exception as exc:
         logger.warning("Error validating lead %s: %s", lead_id, exc)
         return LeadOut(
@@ -300,11 +316,17 @@ async def save_custom_demo(
             demo.message = payload.message
         if payload.title:
             demo.title = payload.title
+        if not demo.slug:
+            from app.services.demos import generate_unique_slug
+            demo.slug = await generate_unique_slug(session, lead.name, lead.city)
         demo.published = True
         demo.updated_at = utcnow()
     else:
+        from app.services.demos import generate_unique_slug
+        demo_slug = await generate_unique_slug(session, lead.name, lead.city)
         demo = DemoSite(
             lead_id=lead.id,
+            slug=demo_slug,
             title=payload.title or f"Демо для {lead.name}",
             html=final_html,
             message=payload.message or "",
@@ -350,7 +372,7 @@ async def generate_message(
     if lead.demo_id:
         demo = await session.get(DemoSite, lead.demo_id)
         if demo is not None:
-            demo_url = public_demo_url(demo.id)
+            demo_url = public_demo_url(demo.slug or demo.id)
             message = demo.message or await generate_outreach_message(lead_to_dict(lead), demo_url)
             if not demo.message:
                 demo.message = message
@@ -359,4 +381,4 @@ async def generate_message(
             return OutreachOut(message=message, demo_url=demo_url)
 
     demo = await create_demo(session, lead)
-    return OutreachOut(message=demo.message, demo_url=public_demo_url(demo.id))
+    return OutreachOut(message=demo.message, demo_url=public_demo_url(demo.slug or demo.id))

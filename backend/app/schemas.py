@@ -401,6 +401,7 @@ class DemoOut(BaseModel):
 
     id: str
     lead_id: str
+    slug: str | None = None
     title: str
     html: str
     message: str
@@ -424,6 +425,10 @@ class DemoUpdate(BaseModel):
     published: bool | None = None
 
 
+class DemoRefineRequest(BaseModel):
+    prompt: str = Field(..., min_length=2, max_length=2000)
+
+
 class CustomDemoCreate(BaseModel):
     html: str
     message: str | None = None
@@ -433,3 +438,15 @@ class CustomDemoCreate(BaseModel):
 class OutreachOut(BaseModel):
     message: str
     demo_url: str | None = None
+
+
+class ParseDirectUrlRequest(BaseModel):
+    url: str = Field(..., min_length=10, max_length=1000)
+    city: str | None = None
+    create_demo: bool = False
+
+
+class ParseDirectUrlOut(BaseModel):
+    lead: LeadOut
+    created: bool
+    demo: DemoOut | None = None

@@ -173,6 +173,13 @@ export const api = {
     });
   },
 
+  refineDemo(id: string, prompt: string) {
+    return request<Demo>(`/api/demo/${id}/refine`, {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
+    });
+  },
+
   saveCustomDemo(leadId: string, payload: { html: string; message?: string; title?: string }) {
     return request<Demo>(`/api/leads/${leadId}/custom-demo`, {
       method: "POST",
@@ -188,6 +195,13 @@ export const api = {
     return request<ParseJob>("/api/parse", {
       method: "POST",
       body: JSON.stringify(payload),
+    });
+  },
+
+  parseDirectUrl(url: string, createDemo = false, city?: string) {
+    return request<{ lead: Lead; created: boolean; demo: Demo | null }>("/api/parse/url", {
+      method: "POST",
+      body: JSON.stringify({ url, create_demo: createDemo, city: city || null }),
     });
   },
 

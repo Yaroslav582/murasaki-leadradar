@@ -1148,31 +1148,175 @@ def detect_template_id(category: str | None, style_id: str | None = None) -> str
     return "clean_swiss_trust"
 
 
+def build_seo_head_tags(
+    business_dict: dict[str, Any],
+    content_json: dict[str, Any],
+    hero_image: str = "",
+    public_url: str = "",
+) -> str:
+    """Build meta description, OpenGraph tags and Schema.org LocalBusiness JSON-LD."""
+    name = str(business_dict.get("name") or "Компания").strip()
+    category = str(business_dict.get("category") or "Услуги").strip()
+    city = str(business_dict.get("city") or "").strip()
+    address = str(business_dict.get("address") or city).strip()
+    phone = str(business_dict.get("phone") or "").strip()
+    city_in = _city_in(city) if city else ""
+
+    title_str = f"{name} — {category} {city_in}".strip()
+    desc_raw = str(content_json.get("hero_subtitle") or "").strip()
+    if not desc_raw:
+        desc_raw = f"{name}: {category.lower()} {city_in}. Запись онлайн, прайс-лист, отзывы и контакты.".strip()
+    desc_str = desc_raw[:220]
+
+    og_image = (hero_image or "").strip()
+    if not og_image:
+        photos = business_dict.get("photos") or []
+        if photos:
+            og_image = str(photos[0])
+
+    tags = [
+        f'<meta name="description" content="{html.escape(desc_str)}">',
+        '<meta property="og:type" content="business.business">',
+        '<meta property="og:locale" content="ru_RU">',
+        f'<meta property="og:title" content="{html.escape(title_str)}">',
+        f'<meta property="og:description" content="{html.escape(desc_str)}">',
+    ]
+    if og_image:
+        tags.append(f'<meta property="og:image" content="{html.escape(og_image)}">')
+    if public_url:
+        tags.append(f'<meta property="og:url" content="{html.escape(public_url)}">')
+    tags.append('<meta name="twitter:card" content="summary_large_image">')
+
+    schema_obj: dict[str, Any] = {
+        "@context": "https://schema.org",
+        "@type": "LocalBusiness",
+        "name": name,
+        "description": desc_str,
+        "category": category,
+        "address": {
+            "@type": "PostalAddress",
+            "streetAddress": address,
+            "addressLocality": city or "Россия",
+            "addressCountry": "RU",
+        },
+    }
+    if og_image:
+        schema_obj["image"] = og_image
+    if phone:
+        schema_obj["telephone"] = phone
+    if public_url:
+        schema_obj["url"] = public_url
+    lat = business_dict.get("latitude")
+    lon = business_dict.get("longitude")
+    if lat is not None and lon is not None:
+        schema_obj["geo"] = {"@type": "GeoCoordinates", "latitude": lat, "longitude": lon}
+
+    rating = business_dict.get("rating")
+    reviews_count = business_dict.get("reviews_count") or 0
+    if rating:
+        try:
+            schema_obj["aggregateRating"] = {
+                "@type": "AggregateRating",
+                "ratingValue": round(float(rating), 1),
+                "reviewCount": max(1, int(reviews_count)),
+            }
+        except (TypeError, ValueError):
+            pass
+
+    hours = business_dict.get("opening_hours") or []
+    if hours:
+        schema_obj["openingHours"] = hours[:7]
+
+    json_ld = json.dumps(schema_obj, ensure_ascii=False).replace("</", "<\\/")
+    tags.append(f'<script type="application/ld+json">{json_ld}</script>')
+    return "\n".join(tags)
+
+
+def inject_seo_and_head(
+    html_text: str,
+    business_dict: dict[str, Any],
+    content_json: dict[str, Any],
+    hero_image: str = "",
+    public_url: str = "",
+) -> str:
+    """Ensure clean <title>, meta description, OpenGraph and LocalBusiness JSON-LD in <head>."""
+    if not html_text:
+        return html_text
+
+    name = str(business_dict.get("name") or "Компания")
+    category = str(business_dict.get("category") or "Услуги")
+    city = str(business_dict.get("city") or "")
+    city_in = _city_in(city) if city else ""
+
+    # Clean up any stray single-brace template placeholders
+    html_text = (
+        html_text.replace("{ business.name }", html.escape(name))
+        .replace("{business.name}", html.escape(name))
+        .replace("{ business.category }", html.escape(category))
+        .replace("{business.category}", html.escape(category))
+        .replace("{ city_in }", html.escape(city_in))
+        .replace("{city_in}", html.escape(city_in))
+    )
+
+    if 'property="og:title"' in html_text or 'application/ld+json' in html_text:
+        return html_text
+
+    seo_block = build_seo_head_tags(business_dict, content_json, hero_image, public_url)
+    head_close = html_text.lower().find("</head>")
+    if head_close != -1:
+        return html_text[:head_close] + "\n" + seo_block + "\n" + html_text[head_close:]
+    return seo_block + "\n" + html_text
+
+
 def render_jinja_demo(
     template_id: str,
     business_dict: dict[str, Any],
     content_json: dict[str, Any],
     hero_image: str,
     gallery_photos: list[str],
+    public_url: str = "",
 ) -> str:
-    """Renders one of the Jinja2 templates with business data and structured AI JSON."""
-    from app.services.design_systems import STYLE_ALIASES
+    """Renders the 9-section production landing page using style tokens from DESIGN.md."""
+    from app.services.design_systems import get_style
+    from app.services.media_collector import get_niche_fallback
 
-    # Resolve aliases if legacy name used
-    canonical_id = STYLE_ALIASES.get(template_id, template_id)
-    template_name = f"{canonical_id}.html"
-    try:
-        tmpl = jinja_env.get_template(template_name)
-    except Exception:
-        try:
-            tmpl = jinja_env.get_template(f"{template_id}.html")
-        except Exception:
-            tmpl = jinja_env.get_template("clean_swiss_trust.html")
+    category = business_dict.get("category") or "Бизнес"
+    style_meta = get_style(template_id, category)
+    colors = style_meta.get("preview_colors") or {}
+    tone = style_meta.get("tone") or "light"
+    is_dark = tone in ("dark", "vibrant", "graphite")
+
+    accent = colors.get("accent") or "#2563EB"
+    accent_fg = "#09090B" if accent.lower() in ("#d4ff00", "#facc15", "#a3e635", "#ffffff") else "#FFFFFF"
+    style_ctx = {
+        "colors": {
+            "bg": colors.get("bg") or ("#0D0E12" if is_dark else "#F8FAFC"),
+            "card": colors.get("card") or ("#161822" if is_dark else "#FFFFFF"),
+            "accent": accent,
+            "text": colors.get("text") or ("#F8FAFC" if is_dark else "#0F172A"),
+            "subtext": colors.get("subtext") or ("#94A3B8" if is_dark else "#475569"),
+            "badge_bg": colors.get("badge_bg") or ("#1F2433" if is_dark else "#F1F5F9"),
+        },
+        "font_css": style_meta.get("font_css") or "",
+        "font_heading": style_meta.get("font_heading") or "'Inter', sans-serif",
+        "font_body": style_meta.get("font_body") or "'Inter', sans-serif",
+        "border": "rgba(255,255,255,0.10)" if is_dark else "rgba(15,23,42,0.10)",
+        "alt_bg": "rgba(255,255,255,0.025)" if is_dark else "rgba(15,23,42,0.025)",
+        "nav_bg": "rgba(13,14,18,0.86)" if is_dark else "rgba(255,255,255,0.88)",
+        "accent_fg": accent_fg,
+    }
 
     phone_raw = business_dict.get("phone")
     tel_href = format_tel_href(phone_raw)
     socials = business_dict.get("social_links") or {}
-    primary_cta = socials.get("whatsapp") or socials.get("telegram") or tel_href or "#"
+    wa_digits = re.sub(r"\D", "", str(socials.get("whatsapp") or phone_raw or ""))
+    if len(wa_digits) == 11 and wa_digits.startswith("8"):
+        wa_digits = "7" + wa_digits[1:]
+    elif len(wa_digits) == 10:
+        wa_digits = "7" + wa_digits
+    whatsapp_url = socials.get("whatsapp") or (f"https://wa.me/{wa_digits}" if len(wa_digits) >= 11 else "")
+    telegram_url = socials.get("telegram") or ""
+    primary_cta = whatsapp_url or telegram_url or tel_href or "#contacts"
     city = business_dict.get("city") or "Россия"
     city_in = _city_in(city)
 
@@ -1184,34 +1328,84 @@ def render_jinja_demo(
             pass
 
     safe_content = dict(content_json or {})
+    price_categories: list[str] = []
     if isinstance(safe_content.get("services"), list):
         cleaned_services = []
         for srv in safe_content["services"]:
             if not isinstance(srv, dict):
-                cleaned_services.append(srv)
                 continue
             item = dict(srv)
             price = str(item.get("price") or "").strip()
+            # Clean accidental double ruble signs
+            price = re.sub(r"(?:₽\s*){2,}", "₽", price).strip()
             if price and re.fullmatch(r"[\d\s.,\-–]+", price):
                 price = f"{price} ₽"
             item["price"] = price
+            cat_label = str(item.get("category") or "Популярное").strip()
+            item["category"] = cat_label
+            if cat_label not in price_categories:
+                price_categories.append(cat_label)
             cleaned_services.append(item)
         safe_content["services"] = cleaned_services
 
+    safe_content.setdefault("usp_list", [])
+    safe_content.setdefault("services", [])
+    safe_content.setdefault("reviews", [])
+    safe_content.setdefault("faq", [])
+    safe_content.setdefault("promo", None)
+
+    if not safe_content.get("facts"):
+        safe_content["facts"] = [
+            {"value": f"{safe_business.get('rating') or 4.9} ★", "label": "Рейтинг на картах"},
+            {"value": f"{safe_business.get('reviews_count') or 18}+", "label": "Отзывов клиентов"},
+            {"value": "100%", "label": "Фиксированная смета"},
+            {"value": "10 мин", "label": "Ответ в мессенджере"},
+        ]
+
+    niche_fb = get_niche_fallback(category)
+    fb_gallery = list(niche_fb.get("gallery") or [])
+    raw_hero_product = list(business_dict.get("hero_product") or [])
+    raw_interior = list(business_dict.get("interior_photos") or [])
+
+    all_photos = list(gallery_photos or [])
+    work_urls = raw_hero_product or ([hero_image] if hero_image else []) + all_photos[:3]
+    work_urls = [u for u in dict.fromkeys(work_urls) if u] or fb_gallery[:3]
+
+    work_cards = []
+    service_names = [s.get("name") for s in safe_content.get("services", []) if isinstance(s, dict)]
+    for idx, url in enumerate(work_urls[:6]):
+        caption = service_names[idx] if idx < len(service_names) else f"{category} · пример #{idx + 1}"
+        work_cards.append({"url": url, "caption": caption})
+
+    interior_urls = raw_interior or all_photos[3:8] or fb_gallery[1:6] or work_urls
+    interior_urls = [u for u in dict.fromkeys(interior_urls) if u]
+
+    tmpl = jinja_env.get_template("_master_9sections.html")
     rendered = tmpl.render(
         business=safe_business,
         content=safe_content,
-        hero_image=hero_image,
-        gallery_photos=gallery_photos,
+        style=style_ctx,
+        hero_image=hero_image or work_urls[0],
+        gallery_photos=all_photos,
+        work_cards=work_cards,
+        interior_photos=interior_urls,
+        price_categories=price_categories,
         tel_href=tel_href,
+        whatsapp_url=whatsapp_url,
+        telegram_url=telegram_url,
         primary_cta_href=primary_cta,
         map_url=business_dict.get("yandex_map_url") or f"https://yandex.ru/maps/?text={quote(business_dict.get('name', '') + ' ' + city)}",
         city_in=city_in,
     )
+    rendered = inject_seo_and_head(rendered, safe_business, safe_content, hero_image or work_urls[0], public_url)
     return inject_murasaki_badge(rendered, business_dict.get("name") or "")
 
 
-async def generate_landing_html(lead: dict, style_id: str | None = None) -> tuple[str, str]:
+async def generate_landing_html(
+    lead: dict,
+    style_id: str | None = None,
+    public_url: str = "",
+) -> tuple[str, str]:
     """
     Generates an HTML landing page via structured AI JSON + dedicated Jinja2 templates
     powered by VoltAgent/awesome-design-md design systems:
@@ -1251,6 +1445,7 @@ async def generate_landing_html(lead: dict, style_id: str | None = None) -> tupl
             content_json=content_json,
             hero_image=hero_img or "",
             gallery_photos=gallery_imgs,
+            public_url=public_url,
         )
         return html_code, "jinja2_llm"
     except Exception as exc:
@@ -1271,6 +1466,7 @@ async def generate_landing_html(lead: dict, style_id: str | None = None) -> tupl
         content_json=fallback_json,
         hero_image=hero_img or "",
         gallery_photos=gallery_imgs,
+        public_url=public_url,
     )
     return html_code, "jinja2_template"
 

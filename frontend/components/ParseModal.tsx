@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Check, Coins, Compass, Database, Globe2, Map, MapPin, Radar, Search, Sparkles, Store, Users, X } from "lucide-react";
-import type { Meta, ParseRequest } from "@/lib/types";
+import { Bot, Check, Coins, Compass, Database, Globe2, Link2, Map, MapPin, Radar, Search, Sparkles, Store, Users, X } from "lucide-react";
+import { api } from "@/lib/api";
+import type { Demo, Lead, Meta, ParseRequest } from "@/lib/types";
 import { CATEGORY_STYLES, POPULAR_CITIES } from "@/lib/utils";
 import Modal from "./Modal";
 import { Spinner } from "./ui";
@@ -131,17 +132,22 @@ export default function ParseModal({
   open,
   onClose,
   onSubmit,
+  onDirectParsed,
   meta,
 }: {
   open: boolean;
   onClose: () => void;
   onSubmit: (payload: ParseRequest) => Promise<void>;
+  onDirectParsed?: (lead: Lead, demo: Demo | null) => void;
   meta: Meta | null;
 }) {
   const [source, setSource] = useState<ParseRequest["source"]>("demo");
   const [city, setCity] = useState("Москва");
   const [categories, setCategories] = useState<string[]>(["Бьюти", "Рестораны"]);
   const [query, setQuery] = useState("");
+  const [directUrl, setDirectUrl] = useState("");
+  const [directDemo, setDirectDemo] = useState(true);
+  const [directLoading, setDirectLoading] = useState(false);
   const [limit, setLimit] = useState(30);
   const [onlyNoWebsite, setOnlyNoWebsite] = useState(true);
   const [enrich, setEnrich] = useState(false);
@@ -219,6 +225,26 @@ export default function ParseModal({
     }
   };
 
+  const handleDirectParse = async () => {
+    const trimmed = directUrl.trim();
+    if (!trimmed) {
+      setError("Вставьте ссылку на карточку организации в Яндекс Картах или 2ГИС");
+      return;
+    }
+    setDirectLoading(true);
+    setError(null);
+    try {
+      const res = await api.parseDirectUrl(trimmed, directDemo, city.trim() || undefined);
+      setDirectUrl("");
+      onDirectParsed?.(res.lead, res.demo);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось распарсить ссылку");
+    } finally {
+      setDirectLoading(false);
+    }
+  };
+
   return (
     <Modal open={open} onClose={onClose} className="max-w-2xl">
       <div className="max-h-[90vh] overflow-y-auto rounded-3xl border border-white/10 bg-[#0a0c15] shadow-2xl">
@@ -238,6 +264,42 @@ export default function ParseModal({
         </div>
 
         <div className="space-y-6 px-6 py-5">
+          {/* Точечный парсинг по прямой ссылке */}
+          <section className="rounded-2xl border border-[#22252A] bg-[#121417] p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="label flex items-center gap-1.5 text-zinc-200">
+                <Link2 size={13} /> Точечный парсинг по прямой ссылке
+              </p>
+              <span className="text-[10px] text-zinc-400">Яндекс Карты / 2ГИС</span>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={directUrl}
+                onChange={(e) => setDirectUrl(e.target.value)}
+                placeholder="https://yandex.ru/maps/org/... или https://2gis.ru/.../firm/..."
+                className="input flex-1"
+              />
+              <button
+                type="button"
+                onClick={handleDirectParse}
+                disabled={directLoading || !directUrl.trim()}
+                className="btn-primary shrink-0"
+              >
+                {directLoading ? <Spinner size={14} /> : <Sparkles size={14} />}
+                {directLoading ? "Парсим..." : directDemo ? "Спарсить + демо" : "Спарсить"}
+              </button>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
+              <input
+                type="checkbox"
+                checked={directDemo}
+                onChange={(e) => setDirectDemo(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-white/20 accent-zinc-100"
+              />
+              Сразу сгенерировать демо-сайт для этой компании
+            </label>
+          </section>
+
           <section className="space-y-3">
             <p className="label">Источник данных</p>
             <div className="grid gap-2 sm:grid-cols-2">

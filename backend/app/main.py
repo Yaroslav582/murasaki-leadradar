@@ -182,13 +182,9 @@ async def public_demo(
     preview: int = 0,
     session: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
-    target_id = demo_id.strip()
-    demo = await session.get(DemoSite, target_id)
-    if demo is None:
-        stmt = select(DemoSite).where(DemoSite.lead_id == target_id).order_by(DemoSite.created_at.desc())
-        res = await session.execute(stmt)
-        demo = res.scalars().first()
+    from app.services.demos import public_demo_url, resolve_demo_by_identifier
 
+    demo = await resolve_demo_by_identifier(session, demo_id, allow_lead_fallback=True)
     if demo is None or not demo.published:
         raise HTTPException(status_code=404, detail="Демо не найдено")
 
@@ -209,14 +205,13 @@ async def public_demo(
         if should_notify:
             lead = await session.get(Lead, demo.lead_id)
             lead_name = lead.name if lead else demo.title
-            from app.services.demos import public_demo_url
             from app.services.lead_notifier import lead_notifier
             asyncio.create_task(
                 lead_notifier.notify_demo_viewed(
                     lead_name=lead_name,
                     demo_id=demo.id,
                     views_count=demo.views_count,
-                    demo_url=public_demo_url(demo.id),
+                    demo_url=public_demo_url(demo.slug or demo.id),
                     lead_id=demo.lead_id,
                 )
             )

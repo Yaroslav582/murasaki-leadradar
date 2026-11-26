@@ -105,6 +105,7 @@ export interface DesignStyle {
 export interface Demo {
   id: string;
   lead_id: string;
+  slug?: string | null;
   title: string;
   html: string;
   message: string;

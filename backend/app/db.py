@@ -175,6 +175,8 @@ async def init_db() -> None:
             "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS followup_step INTEGER DEFAULT 0;",
             "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS next_followup_at TIMESTAMPTZ;",
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS style VARCHAR(64);",
+            "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS slug VARCHAR(160);",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_demo_sites_slug ON demo_sites (slug);",
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0;",
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS last_viewed_at TIMESTAMPTZ;",
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS preview_image_url VARCHAR(500);",
@@ -300,6 +302,7 @@ async def init_db() -> None:
                 existing_demo_cols = {row[1] for row in res}
                 if existing_demo_cols:
                     new_demo_cols = [
+                        ("slug", "VARCHAR(160)"),
                         ("style", "VARCHAR(64)"),
                         ("views_count", "INTEGER DEFAULT 0"),
                         ("last_viewed_at", "DATETIME"),
@@ -308,6 +311,12 @@ async def init_db() -> None:
                     for col_name, col_def in new_demo_cols:
                         if col_name not in existing_demo_cols:
                             sync_conn.exec_driver_sql(f"ALTER TABLE demo_sites ADD COLUMN {col_name} {col_def}")
+                    try:
+                        sync_conn.exec_driver_sql(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS ix_demo_sites_slug ON demo_sites (slug)"
+                        )
+                    except Exception:
+                        pass
             except Exception as exc:
                 logger.debug("SQLite secondary migration notice: %s", exc)
 
