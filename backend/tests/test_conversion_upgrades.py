@@ -422,7 +422,11 @@ async def test_monochrome_contrast_and_vision_photo_index_sorting(monkeypatch):
         content_json={
             "hero_title": "Парикмахерская Dolce Vita",
             "hero_subtitle": "Стрижки и окрашивание",
-            "services": [{"category": "Стрижки", "name": "Стрижка женская", "price": "1 200 ₽"}],
+            "services": [
+                {"category": "Стрижки", "name": "Женская стрижка", "price": "1 200 ₽"},
+                {"category": "Стрижки", "name": "Мужская стрижка", "price": "900 ₽"},
+                {"category": "Окрашивание", "name": "Окрашивание корней", "price": "2 500 ₽"},
+            ],
         },
         hero_image="https://avatars.mds.yandex.net/get-altay/123/facade/orig",
         gallery_photos=[],

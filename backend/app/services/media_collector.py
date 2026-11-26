@@ -82,17 +82,20 @@ def detect_subniche(
     services: list[Any] | None = None,
 ) -> str:
     """Resolve granular visual sub-niche from category, business name, and service titles."""
+    primary_text = f"{category or ''} {business_name or ''}".lower()
     srv_text = " ".join(
         str(s.get("name") or s.get("category") or "") if isinstance(s, dict) else str(s)
         for s in (services or [])
-    )
-    text = f"{category or ''} {business_name or ''} {srv_text}".lower()
+    ).lower()
+    text = f"{primary_text} {srv_text}"
 
-    if any(k in text for k in ("барбер", "barber")) or (
-        "мужск" in text and any(k in text for k in ("стриж", "бород", "парикмах"))
+    # 1. Explicit barbershop (avoid misclassifying unisex hair salons that list "Мужская стрижка")
+    is_unisex_salon = any(k in text for k in ("женск", "окрашиван", "мелирован", "укладк", "причес", "балаяж", "шатуш"))
+    if any(k in primary_text for k in ("барбер", "barber", "мужская парикмахерская")) or (
+        not is_unisex_salon and ("мужск" in primary_text and any(k in primary_text for k in ("стриж", "бород")))
     ):
         return "barber"
-    if any(k in text for k in ("маникюр", "педикюр", "ногт", "ногтев", "nail", "гель-лак")):
+    if any(k in text for k in ("маникюр", "педикюр", "ногт", "ногтев", "nail", "гель-лак")) and "парикмах" not in primary_text:
         return "nails"
     if any(k in text for k in ("парикмах", "волос", "колорист", "окрашиван", "мелирован", "укладк", "стриж", "кератин", "причес", "hair")):
         return "hair"
