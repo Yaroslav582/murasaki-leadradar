@@ -240,3 +240,142 @@ async def test_slug_routing_refine_and_direct_url_parse(client, lead, monkeypatc
     assert r_parse.json()["lead"]["city"] == "Новороссийск"
 
 
+@pytest.mark.asyncio
+async def test_autonomous_outreach_pipeline_dedup_limits_and_toggle(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app.config import settings
+    from app.models import OutreachLead
+    from app.providers.base import PlaceResult
+    from app.services.outreach_worker import MSK_TZ, normalize_ru_phone, outreach_worker
+
+    assert normalize_ru_phone("8 (918) 123-45-67") == "+79181234567"
+    assert normalize_ru_phone("9181234567") == "+79181234567"
+
+    # Work window check (11:00 - 18:00 MSK)
+    assert outreach_worker.is_in_work_window(datetime(2026, 11, 26, 11, 30, tzinfo=MSK_TZ)) is True
+    assert outreach_worker.is_in_work_window(datetime(2026, 11, 26, 18, 0, tzinfo=MSK_TZ)) is False
+    assert outreach_worker.is_in_work_window(datetime(2026, 11, 26, 9, 0, tzinfo=MSK_TZ)) is False
+
+    # Toggle API
+    r_tog = await client.post("/api/outreach/toggle", json={"enabled": True})
+    assert r_tog.status_code == 200
+    assert r_tog.json()["enabled"] is True
+
+    r_st = await client.get("/api/outreach/status")
+    assert r_st.status_code == 200
+    assert r_st.json()["autonomous"]["enabled"] is True
+
+    # Replenish queue deduplication (skip with website + skip duplicate phone/org_id)
+    async def fake_yandex_search(self, **kwargs):
+        return [
+            PlaceResult(
+                name="Есть Сайт",
+                category="Бьюти",
+                city="Новороссийск",
+                phone="+7 918 111-11-11",
+                website_url="https://has-site.ru",
+                source="yandex_web",
+                source_id="org_has_site",
+            ),
+            PlaceResult(
+                name="Салон Без Сайта",
+                category="Бьюти",
+                city="Новороссийск",
+                phone="8 (918) 222-33-44",
+                website_url=None,
+                photos=["https://example.com/p1.jpg"],
+                source="yandex_web",
+                source_id="org_clean_1",
+            ),
+            PlaceResult(
+                name="Дубль Телефона",
+                category="Бьюти",
+                city="Новороссийск",
+                phone="+7 918 222-33-44",
+                website_url=None,
+                source="yandex_web",
+                source_id="org_dup_phone",
+            ),
+        ]
+
+    monkeypatch.setattr("app.providers.yandex_web.YandexMapsWebProvider.search", fake_yandex_search)
+
+    async with SessionLocal() as session:
+        added = await outreach_worker.replenish_queue(session)
+        assert added == 1
+
+    # Mock work window, client, resolve, media, pitch, notifier for full step run
+    monkeypatch.setattr(outreach_worker, "is_in_work_window", lambda now=None: True)
+    settings.outreach_enabled = True
+
+    class FakeClient:
+        async def send_message(self, peer, text, link_preview=False):
+            return {"peer": peer, "text": text}
+
+    async def fake_get_client():
+        return FakeClient()
+
+    async def fake_resolve(c, item):
+        item.tg_user_id = 123456789
+        item.tg_username = "salon_owner"
+        return object()
+
+    async def fake_collect(lead_dict, max_items=10):
+        return {"photos": ["https://example.com/p1.jpg"], "logo_url": None}
+
+    async def fake_landing(lead, style_id=None, public_url=""):
+        return f"<!DOCTYPE html><html><head><title>{lead['name']}</title></head><body>{public_url}</body></html>", "mock"
+
+    async def fake_pitch(item, demo_url):
+        return f"Привет, {item.company_name}! Демо: {demo_url} (5 000 ₽)"
+
+    admin_alerts = []
+
+    async def fake_admin_text(text, reply_markup=None):
+        admin_alerts.append(text)
+        return 1
+
+    monkeypatch.setattr(outreach_worker, "_get_userbot_client", fake_get_client)
+    monkeypatch.setattr(outreach_worker, "resolve_outreach_contact", fake_resolve)
+    monkeypatch.setattr("app.services.media_collector.collect_media", fake_collect)
+    monkeypatch.setattr("app.services.landing.generate_landing_html", fake_landing)
+    monkeypatch.setattr(outreach_worker, "generate_autonomous_pitch", fake_pitch)
+    monkeypatch.setattr("app.services.lead_notifier.lead_notifier.send_admin_text", fake_admin_text)
+
+    outcome = await outreach_worker.run_autonomous_step()
+    assert outcome == "sent"
+    assert len(admin_alerts) == 1
+    assert "Салон Без Сайта" in admin_alerts[0]
+
+    # Verify DB state
+    async with SessionLocal() as session:
+        from sqlalchemy import select
+        row = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "org_clean_1"))
+        assert row is not None
+        assert row.status == "sent"
+        assert row.demo_url is not None
+        assert row.sent_at is not None
+
+        # Check skipped_no_tg when resolve returns None
+        no_tg_item = OutreachLead(
+            yandex_org_id="org_no_tg",
+            company_name="Без Телеграма",
+            category="Бьюти",
+            city="Новороссийск",
+            phone="+79180000001",
+            status="queued",
+        )
+        session.add(no_tg_item)
+        await session.commit()
+
+    async def fake_resolve_none(c, item):
+        return None
+
+    monkeypatch.setattr(outreach_worker, "resolve_outreach_contact", fake_resolve_none)
+    assert await outreach_worker.run_autonomous_step() == "skipped_no_tg"
+
+    # Turn off back so other tests are unaffected
+    await outreach_worker.set_autonomous_enabled(False)
+
+
+

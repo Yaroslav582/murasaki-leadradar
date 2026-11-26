@@ -524,6 +524,12 @@ export const api = {
     });
   },
   getOutreachStatus() {
-    return request<{ total_sent: number; total_failed: number; is_running: boolean; current_lead: string | null }>("/api/outreach/status");
+    return request<any>("/api/outreach/status");
+  },
+  toggleAutonomousOutreach(enabled: boolean) {
+    return request<any>("/api/outreach/toggle", {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    });
   },
 };

@@ -152,7 +152,14 @@ class Settings(BaseSettings):
     # Warmup & Outreach settings
     warmup_trusted_channels: str = "@telegram,@durov,@thebell_io,@rbc_news,@ria_novosti"
     warmup_max_daily_actions: int = 50
+    outreach_enabled: bool = False
+    outreach_session_string: str | None = None
+    outreach_work_hours_start: int = 11
+    outreach_work_hours_end: int = 18
     outreach_daily_limit: int = 12
+    outreach_min_delay_min: int = 15
+    outreach_max_delay_min: int = 40
+    outreach_target_queries: str = "Салон красоты Новороссийск,Автосервис Новороссийск,Кофейня Краснодар"
     outreach_min_delay: int = 180
     outreach_max_delay: int = 600
 

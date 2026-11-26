@@ -52,4 +52,21 @@ async def start_outreach(
 
 @router.get("/outreach/status")
 async def get_outreach_status() -> dict[str, Any]:
-    return outreach_worker.stats
+    auto_status = await outreach_worker.get_autonomous_status()
+    return {**outreach_worker.stats, "autonomous": auto_status}
+
+
+class OutreachToggleRequest(BaseModel):
+    enabled: bool
+
+
+@router.post("/outreach/toggle")
+async def toggle_autonomous_outreach(payload: OutreachToggleRequest) -> dict[str, Any]:
+    return await outreach_worker.set_autonomous_enabled(payload.enabled)
+
+
+@router.post("/outreach/step")
+async def trigger_autonomous_step() -> dict[str, Any]:
+    outcome = await outreach_worker.run_autonomous_step()
+    status_info = await outreach_worker.get_autonomous_status()
+    return {"outcome": outcome, **status_info}

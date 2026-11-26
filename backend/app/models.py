@@ -363,4 +363,30 @@ class JoinQueue(Base):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class OutreachLead(Base):
+    """Autonomous background outreach queue & deduplication table."""
+    __tablename__ = "outreach_leads"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    yandex_org_id: Mapped[str | None] = mapped_column(String(128), unique=True, index=True, nullable=True)
+    company_name: Mapped[str] = mapped_column(String(255), default="")
+    category: Mapped[str] = mapped_column(String(120), default="")
+    city: Mapped[str] = mapped_column(String(120), default="")
+    address: Mapped[str] = mapped_column(String(500), default="")
+    phone: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    tg_username: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
+    tg_user_id: Mapped[int | None] = mapped_column(BigInteger, index=True, nullable=True)
+    rating: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reviews_count: Mapped[int] = mapped_column(Integer, default=0)
+    photos: Mapped[list] = mapped_column(JSON, default=list)
+    demo_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    demo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # queued | demo_generated | sent | skipped_no_tg | skipped_bad_quality | error
+    status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
+    message_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 

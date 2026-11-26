@@ -64,6 +64,34 @@ class TelegramBotRunner:
                 pass
             return
 
+        # 0b. Action: Toggle Autonomous Outreach Worker (outreach_toggle:on|off)
+        if cb_data.startswith("outreach_toggle:"):
+            target_state = cb_data.split(":", 1)[1] == "on"
+            from app.services.outreach_worker import outreach_worker
+            st = await outreach_worker.set_autonomous_enabled(target_state)
+            try:
+                await client.post(
+                    f"{base_url}/answerCallbackQuery",
+                    json={
+                        "callback_query_id": cb_id,
+                        "text": "▶️ Авто-рассылка включена" if target_state else "⏸ Авто-рассылка выключена",
+                    },
+                )
+            except Exception:
+                pass
+            text, markup = self._format_outreach_status(st)
+            await client.post(
+                f"{base_url}/editMessageText",
+                json={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": text,
+                    "parse_mode": "HTML",
+                    "reply_markup": markup,
+                },
+            )
+            return
+
         # 0. Action: Trigger test lead from button
         if cb_data == "cmd:test_lead":
             try:
@@ -337,6 +365,32 @@ class TelegramBotRunner:
                 },
             )
 
+    def _format_outreach_status(self, st: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        enabled = bool(st.get("enabled"))
+        status_line = "🟢 <b>Включён</b>" if enabled else "🔴 <b>Выключен</b>"
+        sess_line = "✅ Подключена" if st.get("session_configured") else "⚠️ Не задана (OUTREACH_SESSION_STRING)"
+        window_line = "✅ В рабочем окне" if st.get("in_work_window") else "🌙 Вне окна"
+        paused_line = f"\n⏸ <b>Пауза до:</b> {html.escape(str(st['paused_until']))}" if st.get("paused_until") else ""
+        err_line = f"\n⚠️ <b>Последняя ошибка:</b> <code>{html.escape(str(st['last_error'])[:180])}</code>" if st.get("last_error") else ""
+
+        text = (
+            "🤖 <b>Автономный аутрич-воркер</b>\n\n"
+            f"• Статус: {status_line}\n"
+            f"• Сессия юзербота: {sess_line}\n"
+            f"• Рабочее окно: {html.escape(str(st.get('work_hours', '11:00–18:00 МСК')))} ({window_line})\n"
+            f"• Отправлено сегодня: <b>{st.get('sent_today', 0)} / {st.get('daily_limit', 12)}</b>\n"
+            f"• В очереди (<code>queued</code>): <b>{st.get('queued_count', 0)}</b>\n"
+            f"• Всего отправлено: <b>{st.get('total_sent', 0)}</b> · Пропущено (нет TG / фото): "
+            f"<b>{st.get('skipped_no_tg', 0)} / {st.get('skipped_bad_quality', 0)}</b>"
+            f"{paused_line}{err_line}"
+        )
+        btn = (
+            {"text": "⏸ Выключить рассылку", "callback_data": "outreach_toggle:off"}
+            if enabled
+            else {"text": "▶️ Включить рассылку", "callback_data": "outreach_toggle:on"}
+        )
+        return text, {"inline_keyboard": [[btn]]}
+
     async def _poll_loop(self) -> None:
         token = settings.telegram_bot_token
         base_url = f"https://api.telegram.org/bot{token}"
@@ -386,6 +440,20 @@ class TelegramBotRunner:
 
                         if text.startswith("/test_lead") or text.startswith("/demo_lead"):
                             await self._handle_test_lead_command(client, base_url, chat_id)
+
+                        elif text.startswith("/outreach_status"):
+                            from app.services.outreach_worker import outreach_worker
+                            st = await outreach_worker.get_autonomous_status()
+                            status_text, status_markup = self._format_outreach_status(st)
+                            await client.post(
+                                f"{base_url}/sendMessage",
+                                json={
+                                    "chat_id": chat_id,
+                                    "text": status_text,
+                                    "parse_mode": "HTML",
+                                    "reply_markup": status_markup,
+                                },
+                            )
 
                         elif text.startswith("/settings") or text.startswith("/radar") or text.startswith("/autopost"):
                             await client.post(

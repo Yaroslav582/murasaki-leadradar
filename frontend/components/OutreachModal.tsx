@@ -40,6 +40,7 @@ export default function OutreachModal({
   const [delayMin, setDelayMin] = useState(180);
   const [delayMax, setDelayMax] = useState(600);
   const [submitting, setSubmitting] = useState(false);
+  const [togglingAuto, setTogglingAuto] = useState(false);
   const [status, setStatus] = useState<any>(null);
 
   useEffect(() => {
@@ -108,6 +109,48 @@ export default function OutreachModal({
             <X size={14} />
           </button>
         </div>
+
+        {/* Autonomous Background Outreach Status & Toggle */}
+        {status?.autonomous && (
+          <div className="rounded-xl border border-[#22252A] bg-[#121417] p-3 flex items-center justify-between gap-3 text-xs">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${status.autonomous.enabled ? "bg-emerald-400" : "bg-zinc-500"}`} />
+                <span className="font-semibold text-[#F4F4F5]">
+                  Авто-рассылка 24/7 ({status.autonomous.work_hours})
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] text-[#A1A1AA]">
+                Сегодня: <span className="font-mono text-[#F4F4F5]">{status.autonomous.sent_today}/{status.autonomous.daily_limit}</span>
+                {" · "}Очередь: <span className="font-mono text-[#F4F4F5]">{status.autonomous.queued_count}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={togglingAuto}
+              onClick={async () => {
+                setTogglingAuto(true);
+                try {
+                  const next = !status.autonomous.enabled;
+                  const updated = await api.toggleAutonomousOutreach(next);
+                  setStatus((prev: any) => ({ ...prev, autonomous: updated }));
+                  showToast(next ? "Автономная рассылка включена" : "Автономная рассылка поставлена на паузу", "success");
+                } catch (e) {
+                  showToast(e instanceof Error ? e.message : "Ошибка переключения", "error");
+                } finally {
+                  setTogglingAuto(false);
+                }
+              }}
+              className={`shrink-0 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition ${
+                status.autonomous.enabled
+                  ? "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20"
+                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+              }`}
+            >
+              {togglingAuto ? "..." : status.autonomous.enabled ? "Выключить" : "Включить"}
+            </button>
+          </div>
+        )}
 
         {/* Lead Count Card */}
         <div className="rounded-xl border border-white/[0.07] bg-[#242731] p-3 flex items-center justify-between text-xs">

@@ -375,5 +375,31 @@ class LeadNotifier:
                     logger.warning("Error dispatching demo view alert to %d: %s", chat_id, exc)
         return sent_count
 
+    async def send_admin_text(self, text: str, reply_markup: dict[str, Any] | None = None) -> int:
+        """Send an arbitrary HTML notification/report/reply-forward to all owner/admin chats."""
+        recipients = await self.get_recipients()
+        if not recipients or not (self.bot_token or settings.telegram_bot_token):
+            return 0
+
+        url = self._get_api_url("sendMessage")
+        sent_count = 0
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for chat_id in recipients:
+                try:
+                    payload: dict[str, Any] = {
+                        "chat_id": chat_id,
+                        "text": text,
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": True,
+                    }
+                    if reply_markup:
+                        payload["reply_markup"] = reply_markup
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        sent_count += 1
+                except Exception as exc:
+                    logger.warning("Error dispatching admin text to %d: %s", chat_id, exc)
+        return sent_count
+
 
 lead_notifier = LeadNotifier()

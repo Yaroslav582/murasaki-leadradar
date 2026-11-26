@@ -128,9 +128,11 @@ async def lifespan(app: FastAPI):
         logger.warning("Failed to initialize warmup worker from DB: %s", w_exc)
     keep_alive_service.start()
     outreach_worker.start_followup_loop()
+    outreach_worker.start_autonomous_loop()
     try:
         yield
     finally:
+        outreach_worker.stop_autonomous_loop()
         outreach_worker.stop_followup_loop()
         keep_alive_service.stop()
         warmup_worker.stop()
