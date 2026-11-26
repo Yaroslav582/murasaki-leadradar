@@ -165,10 +165,27 @@ class OutreachWorker:
             )
 
         session_str = (getattr(settings, "outreach_session_string", None) or "").strip()
+        session_label = "OUTREACH_SESSION_STRING (.env)" if session_str else None
+        if not session_str:
+            async with SessionLocal() as session:
+                acc = await session.scalar(
+                    select(TgAccount)
+                    .where(
+                        TgAccount.status.in_(["active", "warming"]),
+                        TgAccount.session_string.isnot(None),
+                        TgAccount.session_string != "",
+                    )
+                    .order_by(TgAccount.daily_actions_count.asc(), TgAccount.updated_at.asc())
+                    .limit(1)
+                )
+                if acc:
+                    session_label = f"@{acc.username}" if acc.username else acc.phone
+
         return {
             "enabled": bool(getattr(settings, "outreach_enabled", False)),
             "is_running": bool(self._autonomous_task and not self._autonomous_task.done()),
-            "session_configured": bool(session_str and settings.telegram_api_id and settings.telegram_api_hash),
+            "session_configured": bool(session_str or session_label),
+            "session_label": session_label,
             "in_work_window": self.is_in_work_window(now_m),
             "work_hours": f"{settings.outreach_work_hours_start:02d}:00–{settings.outreach_work_hours_end:02d}:00 МСК",
             "paused_until": self._paused_until.isoformat() if self._paused_until else None,
@@ -184,48 +201,70 @@ class OutreachWorker:
     # ── Telethon Userbot Client & Incoming Reply Forwarder ────────────────────
 
     async def _get_userbot_client(self) -> Any | None:
-        session_str = (getattr(settings, "outreach_session_string", None) or "").strip()
-        if not session_str:
-            return None
-        if not settings.telegram_api_id or not settings.telegram_api_hash:
-            logger.warning("Autonomous outreach: TELEGRAM_API_ID / TELEGRAM_API_HASH not configured")
-            return None
-
-        if self._userbot_client is not None:
-            try:
-                if not self._userbot_client.is_connected():
-                    await self._userbot_client.connect()
-                if await self._userbot_client.is_user_authorized():
-                    return self._userbot_client
-            except Exception:
-                self._userbot_client = None
-
         from telethon import TelegramClient, events
         from telethon.sessions import StringSession
 
-        proxy_cfg = None
-        if settings.proxy_url and settings.proxy_url.strip():
-            try:
-                from urllib.parse import urlparse
-                p = urlparse(settings.proxy_url.strip())
-                if p.hostname and p.port:
-                    proxy_cfg = (p.scheme or "socks5", p.hostname, p.port, True, p.username, p.password)
-            except Exception:
-                proxy_cfg = None
+        session_str = (getattr(settings, "outreach_session_string", None) or "").strip()
+        client: Any = None
 
-        client = TelegramClient(
-            StringSession(session_str),
-            int(settings.telegram_api_id),
-            settings.telegram_api_hash,
-            proxy=proxy_cfg,
-            device_model="Samsung Galaxy S23",
-            system_version="Android 14",
-            app_version="10.8.0",
-        )
-        await client.connect()
-        if not await client.is_user_authorized():
-            logger.error("Autonomous outreach: OUTREACH_SESSION_STRING is unauthorized or expired")
-            return None
+        if session_str:
+            if self._userbot_client is not None:
+                try:
+                    if not self._userbot_client.is_connected():
+                        await self._userbot_client.connect()
+                    if await self._userbot_client.is_user_authorized():
+                        return self._userbot_client
+                except Exception:
+                    self._userbot_client = None
+
+            api_id = int(settings.telegram_api_id or 2040)
+            api_hash = settings.telegram_api_hash or "b18441a1ff607e10a989891a5462e627"
+
+            proxy_cfg = None
+            if settings.proxy_url and settings.proxy_url.strip():
+                try:
+                    from urllib.parse import urlparse
+                    p = urlparse(settings.proxy_url.strip())
+                    if p.hostname and p.port:
+                        proxy_cfg = (p.scheme or "socks5", p.hostname, p.port, True, p.username, p.password)
+                except Exception:
+                    proxy_cfg = None
+
+            client = TelegramClient(
+                StringSession(session_str),
+                api_id,
+                api_hash,
+                proxy=proxy_cfg,
+                device_model="Samsung Galaxy S23",
+                system_version="Android 14",
+                app_version="10.8.0",
+            )
+            await client.connect()
+            if not await client.is_user_authorized():
+                logger.error("Autonomous outreach: OUTREACH_SESSION_STRING is unauthorized or expired")
+                return None
+        else:
+            # Auto-fallback: pick active account from tg_accounts pool (tab "Аккаунты")
+            async with SessionLocal() as db:
+                acc = await account_pool.get_available_account(db)
+                if acc is None:
+                    acc = await db.scalar(
+                        select(TgAccount)
+                        .where(
+                            TgAccount.status.in_(["active", "warming"]),
+                            TgAccount.session_string.isnot(None),
+                            TgAccount.session_string != "",
+                        )
+                        .limit(1)
+                    )
+                if not acc or not acc.session_string:
+                    return None
+                client = await account_pool.get_client_for_account(acc)
+                if not client.is_connected():
+                    await client.connect()
+                if not await client.is_user_authorized():
+                    logger.warning("Autonomous outreach: pool account %s is not authorized", acc.phone)
+                    return None
 
         if not getattr(client, "_outreach_reply_handler_attached", False):
             client._outreach_reply_handler_attached = True

@@ -368,7 +368,11 @@ class TelegramBotRunner:
     def _format_outreach_status(self, st: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         enabled = bool(st.get("enabled"))
         status_line = "🟢 <b>Включён</b>" if enabled else "🔴 <b>Выключен</b>"
-        sess_line = "✅ Подключена" if st.get("session_configured") else "⚠️ Не задана (OUTREACH_SESSION_STRING)"
+        sess_label = st.get("session_label")
+        if st.get("session_configured"):
+            sess_line = f"✅ Подключена (<code>{html.escape(str(sess_label))}</code>)" if sess_label else "✅ Подключена"
+        else:
+            sess_line = "⚠️ Не задана (добавьте аккаунт во вкладке «Аккаунты» или OUTREACH_SESSION_STRING)"
         window_line = "✅ В рабочем окне" if st.get("in_work_window") else "🌙 Вне окна"
         paused_line = f"\n⏸ <b>Пауза до:</b> {html.escape(str(st['paused_until']))}" if st.get("paused_until") else ""
         err_line = f"\n⚠️ <b>Последняя ошибка:</b> <code>{html.escape(str(st['last_error'])[:180])}</code>" if st.get("last_error") else ""
