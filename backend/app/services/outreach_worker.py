@@ -421,6 +421,23 @@ class OutreachWorker:
 
     # ── Pipeline Step 3: Resolve Telegram Contact ─────────────────────────────
 
+    async def _find_channel_admin(self, client: Any, channel_username: str) -> Any | None:
+        """Resolve personal admin User from a channel's public t.me preview, or None."""
+        from telethon.tl.types import User
+        from app.services.telegram_channel_scraper import scrape_telegram_channel
+
+        info = await scrape_telegram_channel(channel_username, limit_photos=0)
+        admin_username = info.get("admin_username")
+        if not admin_username:
+            return None
+        try:
+            admin_entity = await client.get_entity(admin_username)
+            if isinstance(admin_entity, User) and not getattr(admin_entity, "bot", False):
+                return admin_entity
+        except Exception as exc:
+            logger.debug("Admin lookup failed for @%s (from @%s): %s", admin_username, channel_username, exc)
+        return None
+
     async def resolve_outreach_contact(self, client: Any, item: OutreachLead) -> tuple[Any | None, bool]:
         """Resolve personal Telegram User entity. Returns (entity, imported_as_temp_contact)."""
         from telethon.tl.functions.contacts import DeleteContactsRequest, ImportContactsRequest
@@ -433,6 +450,16 @@ class OutreachWorker:
                     item.tg_user_id = int(entity.id)
                     item.tg_username = getattr(entity, "username", None) or item.tg_username
                     return entity, False
+
+                # Non-user entity (channel/group) or bot -> try finding personal admin handle
+                admin_entity = await self._find_channel_admin(client, item.tg_username)
+                if admin_entity is not None:
+                    item.tg_user_id = int(admin_entity.id)
+                    item.tg_username = getattr(admin_entity, "username", None) or item.tg_username
+                    return admin_entity, False
+
+                item.error_detail = "Канал/бот без личного юзернейма админа"
+                return None, False
             except Exception as exc:
                 logger.debug("Username lookup failed for @%s: %s", item.tg_username, exc)
 

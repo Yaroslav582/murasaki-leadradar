@@ -428,5 +428,96 @@ async def test_monochrome_contrast_and_vision_photo_index_sorting(monkeypatch):
     assert "https://cdn.site/gloves.jpg" not in sorted_res["hero_product"] + sorted_res["interior"]
 
 
+@pytest.mark.asyncio
+async def test_channel_admin_extraction_and_outreach_filtering(monkeypatch):
+    from bs4 import BeautifulSoup
+    from telethon.tl.types import User
+    from app.models import OutreachLead
+    from app.services.outreach_worker import OutreachWorker
+    from app.services.telegram_channel_scraper import _extract_admin_username
+
+    # 1. Extract admin from bio, skipping self, emails, and bots
+    bio_html = """
+    <div class="tgme_channel_info_description">
+      Канал @beauty_channel. Бот: @booking_bot. Почта: info@salon.ru.
+      Запись к менеджеру: @anna_manager
+    </div>
+    """
+    soup = BeautifulSoup(bio_html, "html.parser")
+    assert _extract_admin_username(soup, "beauty_channel") == "anna_manager"
+
+    # 2. Fallback to post links when bio has no personal handle
+    post_html = """
+    <div class="tgme_channel_info_description">Только новости @beauty_channel</div>
+    <div class="tgme_widget_message_text">Запись через <a href="https://t.me/owner_kate">менеджера</a></div>
+    """
+    assert _extract_admin_username(BeautifulSoup(post_html, "html.parser"), "beauty_channel") == "owner_kate"
+
+    # 3. Channel without personal admin returns None
+    no_admin_html = """
+    <div class="tgme_channel_info_description">Наш канал @beauty_channel и бот @salon_helper_bot</div>
+    """
+    assert _extract_admin_username(BeautifulSoup(no_admin_html, "html.parser"), "beauty_channel") is None
+
+    # 4. resolve_outreach_contact redirects channel -> admin User without calling ImportContactsRequest
+    class FakeChannel:
+        id = 999
+
+    class FakeClient:
+        def __init__(self, entities):
+            self.entities = entities
+            self.called_requests = []
+
+        async def get_entity(self, handle):
+            return self.entities[handle]
+
+        async def __call__(self, req):
+            self.called_requests.append(req)
+            raise AssertionError("ImportContactsRequest must not be called for channels")
+
+    admin_user = User(id=777111, username="anna_manager", bot=False)
+
+    async def fake_scrape_with_admin(username, limit_photos=0):
+        return {"avatar_url": None, "photos": [], "admin_username": "anna_manager"}
+
+    monkeypatch.setattr("app.services.telegram_channel_scraper.scrape_telegram_channel", fake_scrape_with_admin)
+    worker = OutreachWorker()
+
+    lead_with_admin = OutreachLead(
+        id=1,
+        company_name="Studio",
+        tg_username="beauty_channel",
+        phone="+79991112233",
+        message_text="hi",
+    )
+    client_ok = FakeClient({"beauty_channel": FakeChannel(), "anna_manager": admin_user})
+    entity, temp_imported = await worker.resolve_outreach_contact(client_ok, lead_with_admin)
+    assert entity is admin_user
+    assert temp_imported is False
+    assert lead_with_admin.tg_username == "anna_manager"
+    assert lead_with_admin.tg_user_id == 777111
+    assert client_ok.called_requests == []
+
+    # 5. Channel without admin is filtered out immediately (no ImportContacts fallback)
+    async def fake_scrape_no_admin(username, limit_photos=0):
+        return {"avatar_url": None, "photos": [], "admin_username": None}
+
+    monkeypatch.setattr("app.services.telegram_channel_scraper.scrape_telegram_channel", fake_scrape_no_admin)
+    lead_no_admin = OutreachLead(
+        id=2,
+        company_name="ChannelOnly",
+        tg_username="beauty_channel",
+        phone="+79991112233",
+        message_text="hi",
+    )
+    client_skip = FakeClient({"beauty_channel": FakeChannel()})
+    entity2, temp2 = await worker.resolve_outreach_contact(client_skip, lead_no_admin)
+    assert entity2 is None
+    assert temp2 is False
+    assert lead_no_admin.error_detail
+    assert client_skip.called_requests == []
+
+
+
 
 

@@ -17,6 +17,10 @@ TG_URL_REGEX = re.compile(
     r"(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:s/)?([A-Za-z0-9_]{4,40})",
     re.I,
 )
+TG_ADMIN_HANDLE_REGEX = re.compile(
+    r"(?:(?<![A-Za-z0-9_.])@|(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/)([A-Za-z][A-Za-z0-9_]{4,31})(?![A-Za-z0-9_])",
+    re.I,
+)
 BG_IMAGE_REGEX = re.compile(r"url\(['\"]?(https?://[^'\")]+)['\"]?\)", re.I)
 
 TG_SYSTEM_EXCLUDES = {
@@ -43,6 +47,39 @@ def extract_tg_username(raw: str | None) -> str | None:
     return name
 
 
+def _extract_admin_username(soup: BeautifulSoup, channel_username: str) -> str | None:
+    """Find first personal admin/manager @username in channel bio or recent posts."""
+    own = channel_username.lower()
+
+    def _scan_element(elem: Any) -> str | None:
+        chunks = [elem.get_text(" ", strip=True)]
+        for link in elem.find_all("a"):
+            href = link.get("href")
+            if href:
+                chunks.append(str(href))
+        for text in chunks:
+            for match in TG_ADMIN_HANDLE_REGEX.finditer(text):
+                cand = match.group(1)
+                low = cand.lower()
+                if low == own or low in TG_SYSTEM_EXCLUDES or low.endswith("bot"):
+                    continue
+                return cand
+        return None
+
+    for selector in (".tgme_channel_info_description", ".tgme_page_description"):
+        for elem in soup.select(selector):
+            found = _scan_element(elem)
+            if found:
+                return found
+
+    for elem in reversed(soup.select(".tgme_widget_message_text")):
+        found = _scan_element(elem)
+        if found:
+            return found
+
+    return None
+
+
 async def scrape_telegram_channel(
     channel_url_or_username: str,
     limit_photos: int = 6,
@@ -52,10 +89,11 @@ async def scrape_telegram_channel(
     Extracts:
       - Channel avatar (.tgme_page_photo_image img or background-image)
       - Direct photo URLs from recent posts (.tgme_widget_message_photo_wrap)
+      - Admin/manager username from channel bio or recent posts
     """
     username = extract_tg_username(channel_url_or_username)
     if not username:
-        return {"avatar_url": None, "photos": []}
+        return {"avatar_url": None, "photos": [], "admin_username": None}
 
     target_url = f"https://t.me/s/{username}"
     headers = {
@@ -67,6 +105,7 @@ async def scrape_telegram_channel(
 
     avatar_url: str | None = None
     photos: list[str] = []
+    admin_username: str | None = None
     seen: set[str] = set()
 
     try:
@@ -79,9 +118,10 @@ async def scrape_telegram_channel(
             resp = await client.get(target_url)
             if resp.status_code != 200:
                 logger.debug("TG preview for %s returned status %s", username, resp.status_code)
-                return {"avatar_url": None, "photos": []}
+                return {"avatar_url": None, "photos": [], "admin_username": None}
 
             soup = BeautifulSoup(resp.text, "html.parser")
+            admin_username = _extract_admin_username(soup, username)
 
             # 1. Channel avatar
             avatar_wrap = soup.select_one(".tgme_page_photo_image")
@@ -96,23 +136,24 @@ async def scrape_telegram_channel(
                         avatar_url = bg_match.group(1).strip()
 
             # 2. Photos from recent messages (.tgme_widget_message_photo_wrap)
-            photo_wraps = soup.select(".tgme_widget_message_photo_wrap")
-            for wrap in photo_wraps:
-                if len(photos) >= limit_photos:
-                    break
-                style_attr = wrap.get("style", "")
-                bg_match = BG_IMAGE_REGEX.search(style_attr)
-                img_url: str | None = None
-                if bg_match:
-                    img_url = bg_match.group(1).strip()
-                else:
-                    img_elem = wrap.find("img")
-                    if img_elem and img_elem.get("src"):
-                        img_url = str(img_elem["src"]).strip()
+            if limit_photos > 0:
+                photo_wraps = soup.select(".tgme_widget_message_photo_wrap")
+                for wrap in photo_wraps:
+                    if len(photos) >= limit_photos:
+                        break
+                    style_attr = wrap.get("style", "")
+                    bg_match = BG_IMAGE_REGEX.search(style_attr)
+                    img_url: str | None = None
+                    if bg_match:
+                        img_url = bg_match.group(1).strip()
+                    else:
+                        img_elem = wrap.find("img")
+                        if img_elem and img_elem.get("src"):
+                            img_url = str(img_elem["src"]).strip()
 
-                if img_url and img_url.startswith("http") and img_url not in seen:
-                    seen.add(img_url)
-                    photos.append(img_url)
+                    if img_url and img_url.startswith("http") and img_url not in seen:
+                        seen.add(img_url)
+                        photos.append(img_url)
 
     except Exception as exc:
         logger.debug("Could not scrape TG channel %s: %s", username, exc)
@@ -120,5 +161,6 @@ async def scrape_telegram_channel(
     return {
         "avatar_url": avatar_url,
         "photos": photos,
+        "admin_username": admin_username,
     }
 
