@@ -131,7 +131,8 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
     # 2. Vision AI sorting (distributes into hero_product, interior, trash)
     hp: list[str] = []
     interior: list[str] = []
-    if len(collected_photos) > 1:
+    vision_ran = False
+    if collected_photos:
         try:
             from app.services.ai_router import sort_business_photos
             sorted_photos = await asyncio.wait_for(
@@ -140,11 +141,12 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
                     business_category=lead.category or "",
                     business_name=lead.name or "",
                 ),
-                timeout=7.0,
+                timeout=25.0,
             )
             hp = sorted_photos.get("hero_product") or []
             interior = sorted_photos.get("interior") or []
             ordered_photos = hp + [p for p in interior if p not in hp]
+            vision_ran = True
             lead.photos = ordered_photos if ordered_photos else collected_photos
             if sorted_photos.get("logo") and not lead.logo_url:
                 lead.logo_url = sorted_photos["logo"]
@@ -155,9 +157,9 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
         lead.photos = collected_photos
 
     data = lead_to_dict(lead)
-    if hp or interior:
-        data["hero_product"] = hp or collected_photos[:4]
-        data["interior_photos"] = interior or collected_photos[4:8] or collected_photos[:4]
+    if vision_ran:
+        data["hero_product"] = hp
+        data["interior_photos"] = interior
     demo_id = new_id()
 
     from app.services.design_systems import resolve_style_id

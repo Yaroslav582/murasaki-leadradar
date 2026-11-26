@@ -508,6 +508,27 @@ async def ask_ai_json(
 
 
 # ── Vision & Photo Sorting Engine ─────────────────────────────────────────────
+async def _fetch_image_data_uri(client: httpx.AsyncClient, url: str) -> str | None:
+    """Download an image with browser Referer and encode as base64 data URI if >= 6 KB."""
+    import base64
+    try:
+        resp = await client.get(url, follow_redirects=True)
+        if resp.status_code >= 400:
+            return None
+        ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+        if not ctype.startswith("image/"):
+            return None
+        if ctype in ("image/svg+xml", "image/x-icon"):
+            return None
+        raw = resp.content
+        if len(raw) < 6000 or len(raw) > 4_500_000:
+            return None
+        b64 = base64.b64encode(raw).decode("ascii")
+        return f"data:{ctype};base64,{b64}"
+    except Exception:
+        return None
+
+
 async def ask_ai_vision(
     prompt: str,
     image_urls: list[str],
@@ -519,17 +540,37 @@ async def ask_ai_vision(
     """
     Unified entry point for multimodal Vision calls across Murasaki LeadRadar.
     Reads VISION_MODELS_CHAIN from .env and tries models strictly in order.
-    Automatically handles rate limiting, timeouts, and transparent fallbacks.
     """
     await rate_limiter.check_and_increment()
 
-    timeout = 20.0
+    timeout = 24.0
     valid_images = [u.strip() for u in image_urls if u and isinstance(u, str) and u.strip().startswith("http")]
 
-    # Build multimodal OpenAI messages payload
+    # Download images locally as base64 data URIs so Yandex/VK CDN doesn't block Vision providers
+    proxy = _get_proxy_url()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+        "Referer": "https://yandex.ru/",
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    }
+    resolved_payloads: list[tuple[int, str]] = []
+    async with httpx.AsyncClient(headers=headers, timeout=8.0, proxy=proxy) as img_client:
+        downloaded = await asyncio.gather(
+            *(_fetch_image_data_uri(img_client, u) for u in valid_images),
+            return_exceptions=True,
+        )
+    for idx, res in enumerate(downloaded):
+        if isinstance(res, str) and res.startswith("data:image/"):
+            resolved_payloads.append((idx, res))
+        else:
+            # Fallback to original URL only if not obviously broken
+            resolved_payloads.append((idx, valid_images[idx]))
+
+    # Build multimodal OpenAI messages payload with explicit index labels
     user_content: list[dict[str, Any]] = [{"type": "text", "text": prompt.strip()}]
-    for u in valid_images:
-        user_content.append({"type": "image_url", "image_url": {"url": u}})
+    for idx, img_src in resolved_payloads:
+        user_content.append({"type": "text", "text": f"Фото #{idx}:"})
+        user_content.append({"type": "image_url", "image_url": {"url": img_src}})
 
     messages: list[dict[str, Any]] = []
     if system_prompt and system_prompt.strip():
@@ -624,7 +665,13 @@ async def sort_business_photos(
       - interior: premises, facade, atmosphere, indoor design
       - trash: screenshots of chats, price lists with text, documents, blurry/unfitting photos (discarded)
     """
-    valid_photos = [p for p in photo_urls if isinstance(p, str) and p.startswith("http")]
+    valid_photos = [
+        p.strip()
+        for p in photo_urls
+        if isinstance(p, str)
+        and p.strip().startswith("http")
+        and not any(bad in p.lower() for bad in ("avatar", "logo", "favicon", "sticker", "emoji", "/icon"))
+    ]
     if not valid_photos:
         return {
             "hero_product": [],
@@ -636,92 +683,89 @@ async def sort_business_photos(
             "rejected": [],
         }
 
-    if len(valid_photos) == 1:
-        single = valid_photos[0]
-        return {
-            "hero_product": [single],
-            "interior": [],
-            "trash": [],
-            "hero": single,
-            "gallery": [single],
-            "logo": None,
-            "rejected": [],
-        }
-
+    target_batch = valid_photos[:10]
     prompt = (
-        f"Ты — профессиональный арт-директор и UI/UX дизайнер современных конверсионных сайтов.\n"
-        f"Проанализируй предоставленные фотографии компании «{business_name or 'Бизнес'}» (сфера: {business_category or 'Сфера услуг'}).\n\n"
-        "Твоя задача — рассортировать переданные фотографии строго по 3 категориям:\n"
-        "1. 'hero_product': крупные планы работ, товаров, блюд, процедур, готовых результатов "
-        "(идеально для главного экрана и галереи работ).\n"
-        "2. 'interior': помещение, фасад, ресепшн, зона ожидания, общая атмосфера и оборудование.\n"
-        "3. 'trash': скриншоты переписок, прайс-листы с текстом, чеки, размытые, некачественные или нерелевантные фото (не показываем на сайте).\n\n"
-        "СТРОГИЕ ПРАВИЛА:\n"
-        "- Используй ТОЛЬКО переданные URL, строго без выдумывания сторонних ссылок.\n"
-        "- Верни СТРОГО валидный JSON без дополнительного текста:\n"
-        '{\n'
-        '  "hero_product": ["url1", "url2"],\n'
-        '  "interior": ["url3", "url4"],\n'
-        '  "trash": ["url_trash"]\n'
-        '}'
+        f"Ты — строгий арт-директор сайта для бизнеса «{business_name or 'Бизнес'}» "
+        f"(сфера: {business_category or 'Сфера услуг'}).\n"
+        f"Тебе переданы пронумерованные фотографии от Фото #0 до Фото #{len(target_batch) - 1}.\n\n"
+        "ВНИМАТЕЛЬНО ПОСМОТРИ НА КАЖДОЕ ФОТО И РАССОРТИРУЙ ПО ИНДЕКСАМ:\n"
+        "1. hero_product (Примеры работ / услуги / продукт / блюда):\n"
+        "   - СЮДА ТОЛЬКО: готовые результаты работы мастеров (причёска, ногти, машина в боксе), блюда/кофе, товары, процесс оказания услуги.\n"
+        "   - ЗАПРЕЩЕНО в hero_product: пустые помещения, улицы, парковки, вывески снаружи, лица клиентов крупным планом, перчатки/расходники!\n"
+        "2. interior (Атмосфера и интерьер):\n"
+        "   - СЮДА ТОЛЬКО: эстетичный общий план интерьера зала, рабочего кабинета, кресел, стойки ресепшена, красивого фасада.\n"
+        "   - ЗАПРЕЩЕНО в interior: портреты/лица людей крупным планом, руки в перчатках, тюбики/баночки крупным планом, грязные углы, документы!\n"
+        "3. trash (БРАК — удаляем с сайта):\n"
+        "   - СЮДА ОБЯЗАТЕЛЬНО: любые лица людей/селфи крупным планом, руки в медицинских/рабочих перчатках, случайные инструменты/расходники, "
+        "некрасивая улица/парковка/лестница, скриншоты, прайс-листы с текстом, чеки, размытые или тёмные фото.\n\n"
+        "Если сомневаешься в эстетике фото — отправляй его в trash! Лучше оставить категорию пустой, чем показать плохое фото.\n"
+        "Верни СТРОГО JSON с числовыми индексами (0, 1, 2...):\n"
+        '{"hero_product": [1, 3], "interior": [0], "trash": [2, 4]}'
     )
 
     try:
         raw_json = await ask_ai_vision(
             prompt=prompt,
-            image_urls=valid_photos[:12],
-            system_prompt="Отвечай строго в формате JSON без markdown разметки и пояснений.",
-            max_tokens=1000,
-            temperature=0.2,
+            image_urls=target_batch,
+            system_prompt="Отвечай строго в формате JSON с массивами числовых индексов без markdown и пояснений.",
+            max_tokens=600,
+            temperature=0.1,
             expect_json=True,
         )
         parsed = extract_json_payload(raw_json)
-        if isinstance(parsed, dict) and ("hero_product" in parsed or "hero" in parsed or "interior" in parsed):
-            raw_hp = parsed.get("hero_product") or []
-            if not raw_hp and parsed.get("hero"):
-                raw_hp = [parsed["hero"]] + (parsed.get("gallery") or [])
+        if isinstance(parsed, dict):
+            def _pick(items: Any) -> list[str]:
+                out: list[str] = []
+                if not isinstance(items, list):
+                    return out
+                for val in items:
+                    idx: int | None = None
+                    if isinstance(val, int):
+                        idx = val
+                    elif isinstance(val, str):
+                        if val in target_batch:
+                            if val not in out:
+                                out.append(val)
+                            continue
+                        m = re.search(r"\d+", val)
+                        if m:
+                            idx = int(m.group(0))
+                    if idx is not None and 0 <= idx < len(target_batch):
+                        url = target_batch[idx]
+                        if url not in out:
+                            out.append(url)
+                return out
 
-            raw_int = parsed.get("interior") or []
-            raw_trash = parsed.get("trash") or parsed.get("rejected") or []
+            hero_product = _pick(parsed.get("hero_product") or [])
+            interior = [u for u in _pick(parsed.get("interior") or []) if u not in hero_product]
+            trash = _pick(parsed.get("trash") or parsed.get("rejected") or [])
 
-            hero_product = [p for p in raw_hp if p in valid_photos]
-            interior = [p for p in raw_int if p in valid_photos and p not in hero_product]
-            trash = [p for p in raw_trash if p in valid_photos]
-
-            # If classification was empty, populate from remaining valid photos
-            unassigned = [p for p in valid_photos if p not in hero_product and p not in interior and p not in trash]
-            if not hero_product and unassigned:
-                hero_product.append(unassigned.pop(0))
-            if not interior and unassigned:
-                interior.extend(unassigned)
-
-            hero = hero_product[0] if hero_product else (interior[0] if interior else valid_photos[0])
+            # Do NOT force trash/rejected photos back into sections!
+            hero = hero_product[0] if hero_product else (interior[0] if interior else None)
             gallery = (hero_product[1:] + interior)[:6]
-            if not gallery:
-                gallery = [hero]
-
-            logger.info("Vision photo sorting succeeded: hero_product=%d, interior=%d, trash=%d", len(hero_product), len(interior), len(trash))
+            logger.info(
+                "Vision photo sorting succeeded: hero_product=%d, interior=%d, trash=%d",
+                len(hero_product), len(interior), len(trash),
+            )
             return {
                 "hero_product": hero_product,
                 "interior": interior,
                 "trash": trash,
                 "hero": hero,
                 "gallery": gallery,
-                "logo": parsed.get("logo") if parsed.get("logo") in valid_photos else None,
+                "logo": parsed.get("logo") if parsed.get("logo") in target_batch else None,
                 "rejected": trash,
             }
     except Exception as exc:
-        logger.warning("Vision photo sorting unavailable or failed (%s). Using deterministic heuristic fallback.", exc)
+        logger.warning("Vision photo sorting unavailable or failed (%s). Using clean fallback.", exc)
 
-    # Deterministic heuristic fallback
-    hero = valid_photos[0]
-    gallery = [p for p in valid_photos[1:7] if p != hero]
+    # Conservative fallback if Vision is offline: leave empty so niche curated Unsplash photos are used cleanly
     return {
-        "hero_product": [hero] + gallery[:2],
-        "interior": gallery[2:],
+        "hero_product": [],
+        "interior": [],
         "trash": [],
-        "hero": hero,
-        "gallery": gallery if gallery else [hero],
+        "hero": None,
+        "gallery": [],
         "logo": None,
         "rejected": [],
     }

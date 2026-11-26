@@ -1268,6 +1268,25 @@ def inject_seo_and_head(
     return seo_block + "\n" + html_text
 
 
+def _is_light_hex(hex_color: str | None) -> bool:
+    """Return True when a hex color has high perceived brightness (needs dark text)."""
+    if not hex_color or not isinstance(hex_color, str):
+        return False
+    val = hex_color.strip().lstrip("#")
+    if len(val) == 3:
+        val = "".join(ch * 2 for ch in val)
+    if len(val) != 6:
+        return False
+    try:
+        r = int(val[0:2], 16)
+        g = int(val[2:4], 16)
+        b = int(val[4:6], 16)
+    except ValueError:
+        return False
+    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+    return luminance > 0.58
+
+
 def render_jinja_demo(
     template_id: str,
     business_dict: dict[str, Any],
@@ -1284,17 +1303,31 @@ def render_jinja_demo(
     style_meta = get_style(template_id, category)
     colors = style_meta.get("preview_colors") or {}
     tone = style_meta.get("tone") or "light"
-    is_dark = tone in ("dark", "vibrant", "graphite")
+    bg_color = colors.get("bg") or ("#0D0E12" if tone in ("dark", "vibrant", "graphite") else "#F8FAFC")
+    is_dark = not _is_light_hex(bg_color)
+    card_color = colors.get("card") or ("#161822" if is_dark else "#FFFFFF")
+    card_is_dark = not _is_light_hex(card_color)
+
+    text_color = colors.get("text") or ("#F8FAFC" if card_is_dark else "#0F172A")
+    if card_is_dark and not _is_light_hex(text_color):
+        text_color = "#F8FAFC"
+    elif not card_is_dark and _is_light_hex(text_color):
+        text_color = "#0F172A"
 
     accent = colors.get("accent") or "#2563EB"
-    accent_fg = "#09090B" if accent.lower() in ("#d4ff00", "#facc15", "#a3e635", "#ffffff") else "#FFFFFF"
+    accent_light = _is_light_hex(accent)
+    accent_fg = "#09090B" if accent_light else "#FFFFFF"
+    promo_btn_bg = "#09090B" if accent_light else "#FFFFFF"
+    promo_btn_fg = "#FFFFFF" if accent_light else "#09090B"
+    promo_badge_bg = "rgba(0,0,0,0.10)" if accent_light else "rgba(255,255,255,0.18)"
+
     style_ctx = {
         "colors": {
-            "bg": colors.get("bg") or ("#0D0E12" if is_dark else "#F8FAFC"),
-            "card": colors.get("card") or ("#161822" if is_dark else "#FFFFFF"),
+            "bg": bg_color,
+            "card": card_color,
             "accent": accent,
-            "text": colors.get("text") or ("#F8FAFC" if is_dark else "#0F172A"),
-            "subtext": colors.get("subtext") or ("#94A3B8" if is_dark else "#475569"),
+            "text": text_color,
+            "subtext": colors.get("subtext") or ("#94A3B8" if card_is_dark else "#475569"),
             "badge_bg": colors.get("badge_bg") or ("#1F2433" if is_dark else "#F1F5F9"),
         },
         "font_css": style_meta.get("font_css") or "",
@@ -1304,6 +1337,9 @@ def render_jinja_demo(
         "alt_bg": "rgba(255,255,255,0.025)" if is_dark else "rgba(15,23,42,0.025)",
         "nav_bg": "rgba(13,14,18,0.86)" if is_dark else "rgba(255,255,255,0.88)",
         "accent_fg": accent_fg,
+        "promo_btn_bg": promo_btn_bg,
+        "promo_btn_fg": promo_btn_fg,
+        "promo_badge_bg": promo_badge_bg,
     }
 
     phone_raw = business_dict.get("phone")
@@ -1363,13 +1399,19 @@ def render_jinja_demo(
         ]
 
     niche_fb = get_niche_fallback(category)
-    fb_gallery = list(niche_fb.get("gallery") or [])
+    fb_gallery = [u for u in (niche_fb.get("gallery") or []) if u]
+    fb_hero = niche_fb.get("hero") or (fb_gallery[0] if fb_gallery else "")
+    has_explicit_split = "hero_product" in business_dict or "interior_photos" in business_dict
     raw_hero_product = list(business_dict.get("hero_product") or [])
     raw_interior = list(business_dict.get("interior_photos") or [])
 
     all_photos = list(gallery_photos or [])
-    work_urls = raw_hero_product or ([hero_image] if hero_image else []) + all_photos[:3]
-    work_urls = [u for u in dict.fromkeys(work_urls) if u] or fb_gallery[:3]
+    if has_explicit_split:
+        work_urls = [u for u in dict.fromkeys(raw_hero_product) if u] or fb_gallery[:3]
+        interior_urls = [u for u in dict.fromkeys(raw_interior) if u] or fb_gallery[1:6] or ([fb_hero] if fb_hero else [])
+    else:
+        work_urls = [u for u in dict.fromkeys(([hero_image] if hero_image else []) + all_photos[:3]) if u] or fb_gallery[:3]
+        interior_urls = [u for u in dict.fromkeys(all_photos[3:8]) if u] or fb_gallery[1:6] or work_urls
 
     work_cards = []
     service_names = [s.get("name") for s in safe_content.get("services", []) if isinstance(s, dict)]
@@ -1377,15 +1419,14 @@ def render_jinja_demo(
         caption = service_names[idx] if idx < len(service_names) else f"{category} · пример #{idx + 1}"
         work_cards.append({"url": url, "caption": caption})
 
-    interior_urls = raw_interior or all_photos[3:8] or fb_gallery[1:6] or work_urls
-    interior_urls = [u for u in dict.fromkeys(interior_urls) if u]
+    effective_hero = (raw_hero_product[0] if raw_hero_product else None) or hero_image or (work_urls[0] if work_urls else fb_hero)
 
     tmpl = jinja_env.get_template("_master_9sections.html")
     rendered = tmpl.render(
         business=safe_business,
         content=safe_content,
         style=style_ctx,
-        hero_image=hero_image or work_urls[0],
+        hero_image=effective_hero,
         gallery_photos=all_photos,
         work_cards=work_cards,
         interior_photos=interior_urls,
@@ -1397,7 +1438,7 @@ def render_jinja_demo(
         map_url=business_dict.get("yandex_map_url") or f"https://yandex.ru/maps/?text={quote(business_dict.get('name', '') + ' ' + city)}",
         city_in=city_in,
     )
-    rendered = inject_seo_and_head(rendered, safe_business, safe_content, hero_image or work_urls[0], public_url)
+    rendered = inject_seo_and_head(rendered, safe_business, safe_content, effective_hero, public_url)
     return inject_murasaki_badge(rendered, business_dict.get("name") or "")
 
 

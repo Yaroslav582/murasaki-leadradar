@@ -600,6 +600,21 @@ class OutreachWorker:
             item.photos = collected_photos[:10]
             lead_dict["photos"] = item.photos
 
+            try:
+                from app.services.ai_router import sort_business_photos
+                sorted_ph = await asyncio.wait_for(
+                    sort_business_photos(
+                        collected_photos,
+                        business_category=item.category,
+                        business_name=item.company_name,
+                    ),
+                    timeout=25.0,
+                )
+                lead_dict["hero_product"] = sorted_ph.get("hero_product") or []
+                lead_dict["interior_photos"] = sorted_ph.get("interior") or []
+            except Exception:
+                pass
+
             lead_row = Lead(
                 name=item.company_name,
                 category=item.category,

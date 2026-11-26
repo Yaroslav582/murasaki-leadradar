@@ -378,4 +378,55 @@ async def test_autonomous_outreach_pipeline_dedup_limits_and_toggle(client, monk
     await outreach_worker.set_autonomous_enabled(False)
 
 
+@pytest.mark.asyncio
+async def test_monochrome_contrast_and_vision_photo_index_sorting(monkeypatch):
+    from app.services.ai_router import sort_business_photos
+    from app.services.landing import render_jinja_demo
+
+    # 1. Monochrome Slate Studio has accent #F8FAFC (light) -> text on accent & promo button must be dark (#09090B)
+    html_mono = render_jinja_demo(
+        template_id="monochrome_slate_studio",
+        business_dict={
+            "name": "Студия Кадр",
+            "category": "Фотостудии",
+            "city": "Москва",
+            "hero_product": ["https://example.com/work1.jpg"],
+            "interior_photos": [],
+        },
+        content_json={
+            "hero_title": "Фотостудия",
+            "hero_subtitle": "Съёмки в центре",
+            "services": [{"category": "Съёмка", "name": "Портрет", "price": "5 000 ₽"}],
+            "promo": {"badge": "Акция", "title": "Скидка 10%", "desc": "На первую съёмку", "cta": "Забрать"},
+        },
+        hero_image="https://example.com/work1.jpg",
+        gallery_photos=[],
+    )
+    assert "--accent-fg: #09090B;" in html_mono
+    assert "background-color: #09090B; color: #FFFFFF;" in html_mono
+    # Empty interior_photos should fall back to clean niche URLs, not work1.jpg
+    assert "https://images.unsplash.com/" in html_mono
+
+    # 2. Index-based Vision sorting must discard trash completely
+    async def fake_vision(**kwargs):
+        return '{"hero_product": [1], "interior": [0], "trash": [2, 3]}'
+
+    monkeypatch.setattr("app.services.ai_router.ask_ai_vision", fake_vision)
+    sorted_res = await sort_business_photos(
+        [
+            "https://cdn.site/interior.jpg",
+            "https://cdn.site/work.jpg",
+            "https://cdn.site/grandma_face.jpg",
+            "https://cdn.site/gloves.jpg",
+        ],
+        business_category="Бьюти",
+        business_name="Салон",
+    )
+    assert sorted_res["hero_product"] == ["https://cdn.site/work.jpg"]
+    assert sorted_res["interior"] == ["https://cdn.site/interior.jpg"]
+    assert "https://cdn.site/grandma_face.jpg" not in sorted_res["hero_product"] + sorted_res["interior"]
+    assert "https://cdn.site/gloves.jpg" not in sorted_res["hero_product"] + sorted_res["interior"]
+
+
+
 
