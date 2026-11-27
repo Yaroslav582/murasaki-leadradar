@@ -1301,8 +1301,8 @@ async def test_og_image_view_tracking_smart_followup_and_priority(monkeypatch):
         assert g_row.status == "replied" and g_row.has_reply is True
         assert d_row.status == "ignored"
 
-        # 5. Shared daily limit (12/day total across sent + followups) blocks further sends
-        for idx in range(10):
+        # 5. Shared daily limit (15/day total across sent + followups) blocks further sends
+        for idx in range(int(settings.outreach_daily_limit) - 2):
             session.add(
                 OutreachLead(
                     yandex_org_id=f"cap_{idx}",

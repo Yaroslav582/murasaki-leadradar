@@ -1275,9 +1275,8 @@ class OutreachWorker:
                     logger.debug("Could not park limited account: %s", park_exc)
                 self._last_recovery_probe[parked_id] = utcnow()
             else:
-                # Temporary new-chat flood: cool the account down and keep it in rotation.
-                base = max(10, int(settings.outreach_peer_flood_cooldown_min))
-                cooldown_min = min(360, base * (2 ** max(0, self._peer_flood_streak - 1)))
+                # Temporary new-chat flood: short flat cooldown (no 2h+ exponential pause).
+                cooldown_min = max(5, int(settings.outreach_peer_flood_cooldown_min))
                 try:
                     acc = await session.get(TgAccount, parked_id)
                     if acc:
@@ -1316,10 +1315,10 @@ class OutreachWorker:
                 account_label,
             )
         else:
-            if self._userbot_uses_env_session:
-                pause_min = cooldown_min or (120 if self._peer_flood_streak == 1 else 1440)
+            if persistent:
+                pause_min = 1440 if self._userbot_uses_env_session else 360
             else:
-                pause_min = cooldown_min or 30
+                pause_min = cooldown_min or max(5, int(settings.outreach_peer_flood_cooldown_min))
             self._paused_until = utcnow() + timedelta(minutes=pause_min)
             self._last_error = (
                 f"PEER_FLOOD ({stage}): аккаунт {account_label} временно ограничен Telegram "
