@@ -170,6 +170,8 @@ async def init_db() -> None:
             "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS warmup_preset VARCHAR(24) DEFAULT 'optimal';",
             "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS auto_warmup BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS daily_actions_reset_at TIMESTAMPTZ;",
+            "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS daily_outreach_count INTEGER DEFAULT 0;",
+            "ALTER TABLE tg_accounts ADD COLUMN IF NOT EXISTS daily_outreach_reset_at TIMESTAMPTZ;",
             "ALTER TABLE proxies ADD COLUMN IF NOT EXISTS user_id BIGINT;",
             "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS ai_auto_reply_enabled BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS followup_step INTEGER DEFAULT 0;",
@@ -279,6 +281,8 @@ async def init_db() -> None:
                         ("warmup_preset", "VARCHAR(24) DEFAULT 'optimal'"),
                         ("auto_warmup", "BOOLEAN DEFAULT 0"),
                         ("daily_actions_reset_at", "DATETIME"),
+                        ("daily_outreach_count", "INTEGER DEFAULT 0"),
+                        ("daily_outreach_reset_at", "DATETIME"),
                     ]
                     for col_name, col_def in new_acc_cols:
                         if col_name not in existing_acc_cols:

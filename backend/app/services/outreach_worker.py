@@ -76,9 +76,15 @@ class OutreachWorker:
         self._followup_task: asyncio.Task | None = None
         self._autonomous_task: asyncio.Task | None = None
         self._userbot_client: Any = None
+        self._userbot_account_id: str | None = None
+        self._userbot_account_label: str | None = None
+        self._userbot_uses_env_session: bool = False
         self._paused_until: datetime | None = None
         self._peer_flood_streak: int = 0
         self._last_error: str | None = None
+        self._last_limit_alert: dict[str, datetime] = {}
+        self._last_recovery_probe: dict[str, datetime] = {}
+        self._last_spambot_check: dict[str, datetime] = {}
         self._stats: dict[str, Any] = {
             "total_sent": 0,
             "total_failed": 0,
@@ -133,6 +139,26 @@ class OutreachWorker:
         self._peer_flood_streak = 0
         self._last_error = None
         settings.outreach_enabled = True
+        # The resume button means "I checked @SpamBot, the account is fine" —
+        # un-park accounts and clear temporary cooldowns so it tries again right away.
+        try:
+            async with SessionLocal() as session:
+                res = await session.execute(
+                    select(TgAccount).where(
+                        or_(TgAccount.status == "spamblock", TgAccount.flood_until.isnot(None))
+                    )
+                )
+                for acc in res.scalars().all():
+                    if acc.status in ("spamblock", "floodwait"):
+                        acc.status = "active"
+                    acc.flood_until = None
+                    acc.updated_at = utcnow()
+                    session.add(acc)
+                await session.commit()
+        except Exception as exc:
+            logger.debug("Notice clearing spamblock state: %s", exc)
+        self._last_recovery_probe.clear()
+        self._last_spambot_check.clear()
         return await self.get_autonomous_status()
 
     async def get_autonomous_status(self) -> dict[str, Any]:
@@ -174,6 +200,23 @@ class OutreachWorker:
                 )
                 or 0
             )
+            available_accounts = int(
+                await session.scalar(
+                    select(func.count(TgAccount.id)).where(
+                        TgAccount.status.in_(["active", "warming"]),
+                        TgAccount.session_string.isnot(None),
+                        TgAccount.session_string != "",
+                    )
+                )
+                or 0
+            )
+            account_status: str | None = None
+            account_flood_until: str | None = None
+            if self._userbot_account_id:
+                acc = await session.get(TgAccount, self._userbot_account_id)
+                if acc:
+                    account_status = acc.status
+                    account_flood_until = acc.flood_until.isoformat() if acc.flood_until else None
 
         session_str = (getattr(settings, "outreach_session_string", None) or "").strip()
         session_label = "OUTREACH_SESSION_STRING (.env)" if session_str else None
@@ -206,10 +249,84 @@ class OutreachWorker:
             "total_sent": total_sent,
             "skipped_no_tg": skipped_no_tg,
             "skipped_bad_quality": skipped_bad_quality,
+            "available_accounts": available_accounts,
+            "account_status": account_status,
+            "account_flood_until": account_flood_until,
             "last_error": self._last_error,
         }
 
     # ── Telethon Userbot Client & Incoming Reply Forwarder ────────────────────
+
+    async def _probe_limited_account(self, session: AsyncSession) -> TgAccount | None:
+        """Re-check accounts parked by Telegram via @SpamBot.
+
+        Returns a recovered account (now messages strangers again) or None.
+        Probes are throttled per account so @SpamBot is not hammered.
+        """
+        now = utcnow()
+        probe_interval = timedelta(hours=max(1, int(settings.outreach_peer_flood_probe_hours)))
+        stmt = (
+            select(TgAccount)
+            .where(
+                TgAccount.status.in_(["spamblock", "floodwait"]),
+                TgAccount.session_string.isnot(None),
+                TgAccount.session_string != "",
+            )
+            .order_by(TgAccount.updated_at.asc())
+            .limit(10)
+        )
+        accounts = list((await session.execute(stmt)).scalars().all())
+        for acc in accounts:
+            due = acc.flood_until
+            if due is not None and due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
+            # Hard flood-wait is still running — respect it, don't even probe.
+            if acc.status == "floodwait" and due is not None and due > now:
+                continue
+            last = self._last_recovery_probe.get(acc.id)
+            if last is not None and last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            if last is not None and now - last < probe_interval:
+                continue
+            self._last_recovery_probe[acc.id] = now
+            try:
+                res = await account_pool.check_account_health(session, acc)
+            except Exception as exc:
+                logger.debug("Account health probe failed for %s: %s", acc.phone, exc)
+                res = {}
+            if res.get("status") == "active":
+                logger.info("Account %s recovered from Telegram spam limit, resuming", acc.phone)
+                self._last_error = None
+                self._paused_until = None
+                self._peer_flood_streak = 0
+                try:
+                    from app.services.lead_notifier import lead_notifier
+                    label = f"@{acc.username}" if acc.username else acc.phone
+                    await lead_notifier.send_admin_text(
+                        f"✅ <b>Аккаунт {html.escape(label)} снова может писать!</b>\n"
+                        "Ограничение Telegram снято — рассылка продолжается автоматически."
+                    )
+                except Exception:
+                    pass
+                return acc
+            # Still limited: push flood_until forward so it is not probed again instantly.
+            acc.flood_until = now + probe_interval
+            session.add(acc)
+            try:
+                await session.commit()
+            except Exception:
+                pass
+        return None
+
+    async def _try_recover_accounts(self) -> bool:
+        """Probe parked accounts while the worker is paused; True if one recovered."""
+        try:
+            async with SessionLocal() as db:
+                acc = await self._probe_limited_account(db)
+                return acc is not None
+        except Exception as exc:
+            logger.debug("Recovery probe notice: %s", exc)
+            return False
 
     async def _get_userbot_client(self) -> Any | None:
         from telethon import TelegramClient, events
@@ -219,6 +336,9 @@ class OutreachWorker:
         client: Any = None
 
         if session_str:
+            self._userbot_account_id = None
+            self._userbot_account_label = "OUTREACH_SESSION_STRING"
+            self._userbot_uses_env_session = True
             if self._userbot_client is not None:
                 try:
                     if not self._userbot_client.is_connected():
@@ -255,27 +375,39 @@ class OutreachWorker:
                 logger.error("Autonomous outreach: OUTREACH_SESSION_STRING is unauthorized or expired")
                 return None
         else:
-            # Auto-fallback: pick active account from tg_accounts pool (tab "Аккаунты")
+            # Auto-fallback: pick a healthy account from tg_accounts pool (tab "Аккаунты").
+            # Accounts parked by Telegram (spamblock/floodwait) and accounts that already
+            # hit today's cold-DM budget are skipped, so one bad account can't block the pipeline.
+            self._userbot_uses_env_session = False
             async with SessionLocal() as db:
-                acc = await account_pool.get_available_account(db)
+                acc = await account_pool.get_available_account(
+                    db, max_daily_outreach=int(settings.outreach_account_daily_limit)
+                )
                 if acc is None:
-                    acc = await db.scalar(
-                        select(TgAccount)
-                        .where(
-                            TgAccount.status.in_(["active", "warming"]),
-                            TgAccount.session_string.isnot(None),
-                            TgAccount.session_string != "",
-                        )
-                        .limit(1)
-                    )
+                    # Everything is parked: re-check via @SpamBot and resume if the limit lifted.
+                    acc = await self._probe_limited_account(db)
                 if not acc or not acc.session_string:
+                    logger.warning(
+                        "Autonomous outreach: no usable account in pool (all are parked by Telegram)"
+                    )
+                    self._userbot_account_id = None
+                    self._userbot_account_label = None
                     return None
                 client = await account_pool.get_client_for_account(acc)
                 if not client.is_connected():
                     await client.connect()
                 if not await client.is_user_authorized():
                     logger.warning("Autonomous outreach: pool account %s is not authorized", acc.phone)
+                    try:
+                        acc.status = "banned"
+                        await db.commit()
+                    except Exception:
+                        pass
+                    self._userbot_account_id = None
+                    self._userbot_account_label = None
                     return None
+                self._userbot_account_id = acc.id
+                self._userbot_account_label = f"@{acc.username}" if acc.username else acc.phone
 
         if not getattr(client, "_outreach_reply_handler_attached", False):
             client._outreach_reply_handler_attached = True
@@ -529,6 +661,133 @@ class OutreachWorker:
             "Если интересно — напишите здесь или в @Murasaki_website."
         )
 
+    async def _prepare_demo(
+        self, session: AsyncSession, item: OutreachLead
+    ) -> tuple[Lead | None, str | None, str | None, str | None]:
+        """Build a landing demo + pitch for a lead, or reuse one from a previous attempt.
+
+        Reusing matters: a PeerFlood/FloodWait happens *after* the demo was generated,
+        so retrying must not burn another LLM landing and create duplicate Lead/Demo rows.
+
+        Returns ``(lead_row, demo_url, pitch_text, skip_reason)``. When ``skip_reason``
+        is set the lead cannot be used (missing quality photos).
+        """
+        if item.demo_url and item.message_text:
+            lead_row = None
+            if item.demo_id:
+                lead_row = await session.scalar(select(Lead).where(Lead.demo_id == item.demo_id))
+            if lead_row is not None:
+                logger.info("Autonomous outreach: reusing existing demo for '%s'", item.company_name)
+                return lead_row, item.demo_url, item.message_text, None
+
+        from app.services.demos import generate_unique_slug, public_demo_url
+        from app.services.design_systems import resolve_style_id
+        from app.services.landing import generate_landing_html
+        from app.services.media_collector import collect_media
+
+        lead_dict = {
+            "id": item.id,
+            "name": item.company_name,
+            "category": item.category,
+            "city": item.city,
+            "address": item.address,
+            "phone": item.phone,
+            "website_url": None,
+            "has_website": False,
+            "rating": item.rating,
+            "reviews_count": item.reviews_count,
+            "social_links": {"telegram": f"https://t.me/{item.tg_username}"} if item.tg_username else {},
+            "opening_hours": [],
+            "photos": list(item.photos or []),
+        }
+
+        try:
+            media_res = await collect_media(lead_dict, max_items=10)
+            collected_photos = media_res.get("photos") or list(item.photos or [])
+            real_photos = media_res.get("real_photos") if "real_photos" in media_res else collected_photos
+        except Exception:
+            collected_photos = list(item.photos or [])
+            real_photos = [
+                p for p in collected_photos
+                if "images.unsplash.com" not in p and "/static/stock/" not in p
+            ]
+
+        if not collected_photos:
+            return None, None, None, "No quality photos found"
+
+        item.photos = collected_photos[:10]
+        lead_dict["photos"] = item.photos
+        lead_dict["hero_product"] = []
+        lead_dict["work_captions"] = {}
+        lead_dict["interior_photos"] = []
+        lead_dict["rejected_photos"] = []
+
+        if real_photos:
+            try:
+                from app.services.ai_router import sort_business_photos
+                sorted_ph = await asyncio.wait_for(
+                    sort_business_photos(
+                        real_photos,
+                        business_category=item.category,
+                        business_name=item.company_name,
+                    ),
+                    timeout=25.0,
+                )
+                lead_dict["hero_product"] = sorted_ph.get("hero_product") or []
+                lead_dict["work_captions"] = dict(sorted_ph.get("work_captions") or {})
+                lead_dict["interior_photos"] = sorted_ph.get("interior") or []
+                lead_dict["rejected_photos"] = sorted_ph.get("rejected") or sorted_ph.get("trash") or []
+            except Exception:
+                pass
+
+        lead_row = Lead(
+            name=item.company_name,
+            category=item.category,
+            city=item.city,
+            address=item.address,
+            phone=item.phone,
+            has_website=False,
+            rating=item.rating,
+            reviews_count=item.reviews_count,
+            social_links=lead_dict["social_links"],
+            source="yandex_web",
+            source_id=item.yandex_org_id,
+            status="new",
+            photos=item.photos,
+        )
+        session.add(lead_row)
+        await session.flush()
+
+        effective_style = resolve_style_id(None, item.category)
+        demo_slug = await generate_unique_slug(session, item.company_name, item.city)
+        demo_url = public_demo_url(demo_slug)
+        demo_id = new_id()
+
+        html_code, _engine = await generate_landing_html(
+            lead_dict, style_id=effective_style, public_url=demo_url
+        )
+
+        pitch_text = await self.generate_autonomous_pitch(item, demo_url)
+
+        demo = DemoSite(
+            id=demo_id,
+            lead_id=lead_row.id,
+            slug=demo_slug,
+            title=f"Демо для {item.company_name}",
+            html=html_code,
+            message=pitch_text,
+            published=True,
+            style=effective_style,
+        )
+        session.add(demo)
+        lead_row.demo_id = demo.id
+        item.demo_id = demo.id
+        item.demo_url = demo_url
+        item.status = "demo_generated"
+        item.message_text = pitch_text
+        await session.commit()
+        return lead_row, demo_url, pitch_text, None
+
     # ── Single Autonomous Iteration ───────────────────────────────────────────
 
     async def run_autonomous_step(self) -> str:
@@ -538,7 +797,10 @@ class OutreachWorker:
 
         now_utc = utcnow()
         if self._paused_until and now_utc < self._paused_until:
-            return "paused"
+            # While paused, keep re-checking accounts parked by Telegram so the worker
+            # resumes on its own as soon as the spam limit is lifted.
+            if not await self._try_recover_accounts():
+                return "paused"
         self._paused_until = None
 
         now_m = msk_now()
@@ -566,7 +828,9 @@ class OutreachWorker:
             item = await session.scalar(
                 select(OutreachLead)
                 .where(OutreachLead.status == "queued")
-                .order_by(OutreachLead.created_at.asc())
+                # Prefer leads with a public @username: no ImportContacts needed,
+                # which is what most often triggers the new-chat anti-spam.
+                .order_by(OutreachLead.tg_username.is_(None).asc(), OutreachLead.created_at.asc())
                 .limit(1)
             )
             if item is None:
@@ -600,6 +864,14 @@ class OutreachWorker:
                 await session.commit()
                 return "skipped_no_tg"
 
+            # ImportContacts lookup is a Telegram action too — count it against the
+            # account's daily budget, otherwise it never gets throttled.
+            if temp_imported and self._userbot_account_id:
+                try:
+                    await account_pool.record_outreach_action(session, self._userbot_account_id)
+                except Exception as rec_exc:
+                    logger.debug("record_action notice: %s", rec_exc)
+
             async def _cleanup_temp_contact() -> None:
                 if temp_imported:
                     try:
@@ -616,127 +888,38 @@ class OutreachWorker:
                 await session.commit()
                 return "skipped_bad_quality"
 
-            from app.services.demos import generate_unique_slug, public_demo_url
-            from app.services.design_systems import resolve_style_id
-            from app.services.landing import generate_landing_html
-            from app.services.media_collector import collect_media
-
-            lead_dict = {
-                "id": item.id,
-                "name": item.company_name,
-                "category": item.category,
-                "city": item.city,
-                "address": item.address,
-                "phone": item.phone,
-                "website_url": None,
-                "has_website": False,
-                "rating": item.rating,
-                "reviews_count": item.reviews_count,
-                "social_links": {"telegram": f"https://t.me/{item.tg_username}"} if item.tg_username else {},
-                "opening_hours": [],
-                "photos": list(item.photos or []),
-            }
-
-            try:
-                media_res = await collect_media(lead_dict, max_items=10)
-                collected_photos = media_res.get("photos") or list(item.photos or [])
-                real_photos = media_res.get("real_photos") if "real_photos" in media_res else collected_photos
-            except Exception:
-                collected_photos = list(item.photos or [])
-                real_photos = [
-                    p for p in collected_photos
-                    if "images.unsplash.com" not in p and "/static/stock/" not in p
-                ]
-
-            if not collected_photos:
+            lead_row, demo_url, pitch_text, skip_reason = await self._prepare_demo(session, item)
+            if skip_reason or not (demo_url and pitch_text):
                 await _cleanup_temp_contact()
                 item.status = "skipped_bad_quality"
-                item.error_detail = "No quality photos found"
+                item.error_detail = skip_reason or "Demo generation failed"
                 session.add(item)
                 await session.commit()
                 return "skipped_bad_quality"
 
-            item.photos = collected_photos[:10]
-            lead_dict["photos"] = item.photos
-            lead_dict["hero_product"] = []
-            lead_dict["work_captions"] = {}
-            lead_dict["interior_photos"] = []
-            lead_dict["rejected_photos"] = []
-
-            if real_photos:
-                try:
-                    from app.services.ai_router import sort_business_photos
-                    sorted_ph = await asyncio.wait_for(
-                        sort_business_photos(
-                            real_photos,
-                            business_category=item.category,
-                            business_name=item.company_name,
-                        ),
-                        timeout=25.0,
-                    )
-                    lead_dict["hero_product"] = sorted_ph.get("hero_product") or []
-                    lead_dict["work_captions"] = dict(sorted_ph.get("work_captions") or {})
-                    lead_dict["interior_photos"] = sorted_ph.get("interior") or []
-                    lead_dict["rejected_photos"] = sorted_ph.get("rejected") or sorted_ph.get("trash") or []
-                except Exception:
-                    pass
-
-            lead_row = Lead(
-                name=item.company_name,
-                category=item.category,
-                city=item.city,
-                address=item.address,
-                phone=item.phone,
-                has_website=False,
-                rating=item.rating,
-                reviews_count=item.reviews_count,
-                social_links=lead_dict["social_links"],
-                source="yandex_web",
-                source_id=item.yandex_org_id,
-                status="new",
-                photos=item.photos,
-            )
-            session.add(lead_row)
-            await session.flush()
-
-            effective_style = resolve_style_id(None, item.category)
-            demo_slug = await generate_unique_slug(session, item.company_name, item.city)
-            demo_url = public_demo_url(demo_slug)
-            demo_id = new_id()
-
-            html_code, _engine = await generate_landing_html(
-                lead_dict, style_id=effective_style, public_url=demo_url
-            )
-
-            pitch_text = await self.generate_autonomous_pitch(item, demo_url)
-
-            demo = DemoSite(
-                id=demo_id,
-                lead_id=lead_row.id,
-                slug=demo_slug,
-                title=f"Демо для {item.company_name}",
-                html=html_code,
-                message=pitch_text,
-                published=True,
-                style=effective_style,
-            )
-            session.add(demo)
-            lead_row.demo_id = demo.id
-            item.demo_id = demo.id
-            item.demo_url = demo_url
-            item.status = "demo_generated"
-            item.message_text = pitch_text
-            await session.commit()
+            # Don't import a contact and message it in the same instant — that burst is
+            # exactly what Telegram's new-chat anti-spam flags. Look like a human.
+            if temp_imported:
+                await asyncio.sleep(random.uniform(20.0, 45.0))
 
             try:
                 await client.send_message(peer_entity, pitch_text, link_preview=False)
                 await _cleanup_temp_contact()
                 item.status = "sent"
                 item.sent_at = utcnow()
-                lead_row.status = "sent"
+                if lead_row is not None:
+                    lead_row.status = "sent"
+                    session.add(lead_row)
                 session.add(item)
-                session.add(lead_row)
                 await session.commit()
+
+                # Count the cold DM against this account's daily budget so one
+                # account cannot burn through the whole daily limit by itself.
+                if self._userbot_account_id:
+                    try:
+                        await account_pool.record_outreach_action(session, self._userbot_account_id)
+                    except Exception as rec_exc:
+                        logger.debug("record_action notice: %s", rec_exc)
 
                 self._stats["total_sent"] += 1
                 self._peer_flood_streak = 0
@@ -745,11 +928,12 @@ class OutreachWorker:
                 from app.services.lead_notifier import lead_notifier
                 new_sent_count = sent_today + 1
                 tg_label = f"@{item.tg_username}" if item.tg_username else f"id:{item.tg_user_id}"
+                account_line = f"\n📱 <b>Аккаунт:</b> <code>{html.escape(self._userbot_account_label or '—')}</code>"
                 report = (
                     "📨 <b>Авто-аутрич: сообщение отправлено</b>\n"
                     f"🏢 <b>Компания:</b> {html.escape(item.company_name)} ({html.escape(item.city)})\n"
                     f"🏷 <b>Ниша:</b> {html.escape(item.category)}\n"
-                    f"👤 <b>Контакт:</b> <code>{html.escape(tg_label)}</code>\n"
+                    f"👤 <b>Контакт:</b> <code>{html.escape(tg_label)}</code>{account_line}\n"
                     f"🔗 <b>Демо:</b> {html.escape(demo_url)}\n"
                     f"📊 <b>Лимит за сегодня:</b> {new_sent_count}/{daily_limit}"
                 )
@@ -758,11 +942,37 @@ class OutreachWorker:
 
             except Exception as exc:
                 await _cleanup_temp_contact()
-                from telethon.errors import FloodWaitError, PeerFloodError
+                from telethon.errors import (
+                    ChatWriteForbiddenError,
+                    FloodWaitError,
+                    InputUserDeactivatedError,
+                    PeerFloodError,
+                    UserIsBlockedError,
+                    UserNotMutualContactError,
+                    UserPrivacyRestrictedError,
+                )
                 if isinstance(exc, PeerFloodError):
                     return await self._handle_peer_flood(session, item, exc, stage="send_message")
                 if isinstance(exc, FloodWaitError):
                     return await self._handle_flood_wait(exc)
+                if isinstance(
+                    exc,
+                    (
+                        UserPrivacyRestrictedError,
+                        UserNotMutualContactError,
+                        UserIsBlockedError,
+                        InputUserDeactivatedError,
+                        ChatWriteForbiddenError,
+                    ),
+                ):
+                    # Not a flood: this particular lead simply can't be messaged.
+                    # Drop it from the queue instead of retrying it forever.
+                    item.status = "skipped_no_tg"
+                    item.error_detail = f"Нельзя написать в ЛС: {exc}"
+                    session.add(item)
+                    await session.commit()
+                    logger.info("Outreach lead '%s' is not messageable: %s", item.company_name, exc)
+                    return "skipped_no_tg"
                 item.status = "error"
                 item.error_detail = str(exc)
                 session.add(item)
@@ -775,29 +985,72 @@ class OutreachWorker:
         wait_sec = int(getattr(exc, "seconds", 120)) + 60
         self._last_error = f"FloodWaitError: sleeping {wait_sec}s"
         logger.warning("Autonomous outreach FloodWaitError: sleeping %d seconds", wait_sec)
+        if self._userbot_account_id:
+            try:
+                async with SessionLocal() as db:
+                    acc = await db.get(TgAccount, self._userbot_account_id)
+                    if acc:
+                        acc.status = "floodwait"
+                        acc.flood_until = utcnow() + timedelta(seconds=wait_sec)
+                        acc.updated_at = utcnow()
+                        db.add(acc)
+                        await db.commit()
+            except Exception as mark_exc:
+                logger.debug("Could not record FloodWait on account: %s", mark_exc)
+        # A multi-hour wait must not block the loop task: pause instead of sleeping.
+        if wait_sec > 900:
+            self._paused_until = utcnow() + timedelta(seconds=wait_sec)
+            return "flood_wait"
         await asyncio.sleep(wait_sec)
         return "flood_wait"
 
-    async def _handle_peer_flood(
-        self, session: AsyncSession, item: OutreachLead, exc: Any, stage: str = "send"
-    ) -> str:
-        self._peer_flood_streak += 1
-        pause_hours = 2 if self._peer_flood_streak == 1 else 24
-        self._paused_until = utcnow() + timedelta(hours=pause_hours)
-        self._last_error = f"PeerFloodError ({stage}): пауза {pause_hours}ч"
-        # Keep item queued so we can retry it once pause ends
-        item.status = "queued"
-        item.error_detail = f"PeerFloodError ({stage}): {exc}"
-        session.add(item)
-        await session.commit()
-        logger.error("Autonomous outreach PeerFloodError (%s) — paused for %dh!", stage, pause_hours)
+    async def _spambot_verdict(self, account_id: str) -> str:
+        """Ask @SpamBot whether the account is really blocked.
+
+        Returns ``"limited"`` (persistent spam block), ``"clean"`` (no block —
+        PEER_FLOOD is just the dynamic anti-spam for new chats) or ``"unknown"``.
+        Throttled: at most one check per 30 minutes per account.
+        """
+        now = utcnow()
+        last = self._last_spambot_check.get(account_id)
+        if last is not None and last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        if last is not None and now - last < timedelta(minutes=30):
+            return "unknown"
+        self._last_spambot_check[account_id] = now
+        try:
+            async with SessionLocal() as db:
+                acc = await db.get(TgAccount, account_id)
+                if not acc:
+                    return "unknown"
+                res = await account_pool.check_account_health(db, acc)
+                status = res.get("status")
+            if status in ("spamblock", "banned"):
+                return "limited"
+            if status == "active":
+                return "clean"
+        except Exception as exc:
+            logger.debug("SpamBot verdict failed for %s: %s", account_id, exc)
+        return "unknown"
+
+    async def _notify_peer_flood(self, account_label: str, stage: str, detail: str) -> None:
+        """Alert the admin about a *persistent* spam block, at most once per few hours."""
+        key = f"{account_label}:{stage}"
+        now = utcnow()
+        last = self._last_limit_alert.get(key)
+        if last is not None and last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        if last is not None and now - last < timedelta(hours=6):
+            return
+        self._last_limit_alert[key] = now
         try:
             from app.services.lead_notifier import lead_notifier
             await lead_notifier.send_admin_text(
-                f"⚠️ <b>PeerFloodError на этапе <code>{html.escape(stage)}</code></b>\n"
-                f"Рассылка поставлена на паузу на <b>{pause_hours} ч</b>.\n"
-                "Если @SpamBot показывает, что аккаунт чист (это временный лимит на поиск/сообщения незнакомцам), "
-                "можешь снять паузу кнопкой ниже:",
+                f"⚠️ <b>@SpamBot подтвердил ограничение аккаунта <code>{html.escape(account_label)}</code></b>\n"
+                f"Ошибка <code>PEER_FLOOD</code> на этапе <code>{html.escape(stage)}</code>.\n\n"
+                "С этого аккаунта холодные сообщения сейчас невозможны. Рассылка продолжится "
+                "с другого аккаунта, если он добавлен, либо автоматически после снятия лимита.\n\n"
+                f"🔍 <b>Ответ Telegram:</b> <code>{html.escape(detail[:200])}</code>",
                 reply_markup={
                     "inline_keyboard": [
                         [{"text": "▶️ Снять паузу и продолжить", "callback_data": "outreach_resume"}]
@@ -806,7 +1059,135 @@ class OutreachWorker:
             )
         except Exception:
             pass
+
+    async def _handle_peer_flood(
+        self, session: AsyncSession, item: OutreachLead, exc: Any, stage: str = "send"
+    ) -> str:
+        """Handle PEER_FLOOD: distinguish a real spam block from a temporary new-chat flood.
+
+        Telegram returns PEER_FLOOD ("cannot message non-contacts") both when the account
+        is genuinely spam-limited *and* when it is just sending to too many new people
+        too fast (even though @SpamBot shows no restriction). Only the former needs the
+        account to be parked; the latter is a short cooldown.
+        """
+        self._peer_flood_streak += 1
+        self._stats["total_failed"] += 1
+        detail = str(exc)
+        account_label = self._userbot_account_label or (
+            "OUTREACH_SESSION_STRING" if self._userbot_uses_env_session else "unknown"
+        )
+
+        # Keep the lead queued: it was not sent, another attempt will pick it up.
+        item.status = "queued"
+        item.error_detail = f"PeerFloodError ({stage}): {detail}"
+        session.add(item)
+        await session.commit()
+
+        verdict = "unknown"
+        if self._userbot_account_id:
+            verdict = await self._spambot_verdict(self._userbot_account_id)
+        persistent = verdict == "limited"
+
+        cooldown_min = 0
+        if self._userbot_account_id:
+            parked_id = self._userbot_account_id
+            if persistent:
+                try:
+                    await account_pool.mark_spam_limited(session, parked_id, hours=24)
+                except Exception as park_exc:
+                    logger.debug("Could not park limited account: %s", park_exc)
+                self._last_recovery_probe[parked_id] = utcnow()
+            else:
+                # Temporary new-chat flood: cool the account down and keep it in rotation.
+                base = max(10, int(settings.outreach_peer_flood_cooldown_min))
+                cooldown_min = min(360, base * (2 ** max(0, self._peer_flood_streak - 1)))
+                try:
+                    acc = await session.get(TgAccount, parked_id)
+                    if acc:
+                        if acc.status == "spamblock":
+                            acc.status = "active"
+                        acc.flood_until = utcnow() + timedelta(minutes=cooldown_min)
+                        acc.updated_at = utcnow()
+                        session.add(acc)
+                        await session.commit()
+                except Exception as cool_exc:
+                    logger.debug("Could not cool down account: %s", cool_exc)
+            self._userbot_account_id = None
+            self._userbot_client = None
+
+        # Is another account ready to take over right now?
+        next_available = False
+        try:
+            async with SessionLocal() as db:
+                nxt = await account_pool.get_available_account(
+                    db, max_daily_outreach=int(settings.outreach_account_daily_limit)
+                )
+                if nxt is None:
+                    nxt = await self._probe_limited_account(db)
+                next_available = nxt is not None
+        except Exception as probe_exc:
+            logger.debug("Account availability check failed: %s", probe_exc)
+
+        if next_available:
+            self._paused_until = None
+            self._last_error = (
+                f"PEER_FLOOD ({stage}): аккаунт {account_label} на паузе, переключаюсь на другой"
+            )
+            logger.warning(
+                "Autonomous outreach PEER_FLOOD (%s) on %s — switching to another account",
+                stage,
+                account_label,
+            )
+        else:
+            if self._userbot_uses_env_session:
+                pause_min = cooldown_min or (120 if self._peer_flood_streak == 1 else 1440)
+            else:
+                pause_min = cooldown_min or 30
+            self._paused_until = utcnow() + timedelta(minutes=pause_min)
+            self._last_error = (
+                f"PEER_FLOOD ({stage}): аккаунт {account_label} временно ограничен Telegram "
+                f"по новым чатам, пауза {pause_min} мин"
+                if not persistent
+                else f"PEER_FLOOD ({stage}): аккаунт {account_label} заблокирован Telegram"
+            )
+            logger.warning(
+                "Autonomous outreach PEER_FLOOD (%s) on %s — %s, paused %d min",
+                stage,
+                account_label,
+                "persistent spam block" if persistent else "temporary new-chat flood",
+                pause_min,
+            )
+
+        # Don't spam the admin with temporary floods — they are visible in /outreach_status.
+        if persistent:
+            await self._notify_peer_flood(account_label, stage, detail)
         return "peer_flood"
+
+    async def requeue_peer_flood_leads(self) -> int:
+        """Put leads back in the queue if they failed only because of a temporary PEER_FLOOD.
+
+        Older worker versions marked them as ``error`` and never retried them.
+        """
+        try:
+            async with SessionLocal() as session:
+                res = await session.execute(
+                    select(OutreachLead).where(
+                        OutreachLead.status == "error",
+                        OutreachLead.error_detail.ilike("%peerflood%"),
+                    )
+                )
+                rows = list(res.scalars().all())
+                for row in rows:
+                    row.status = "queued"
+                    row.error_detail = None
+                    session.add(row)
+                if rows:
+                    await session.commit()
+                    logger.info("Re-queued %d lead(s) previously lost to PEER_FLOOD", len(rows))
+                return len(rows)
+        except Exception as exc:
+            logger.debug("PeerFlood re-queue notice: %s", exc)
+            return 0
 
     def start_autonomous_loop(self) -> None:
         if self._autonomous_task and not self._autonomous_task.done():
@@ -814,6 +1195,7 @@ class OutreachWorker:
 
         async def _loop() -> None:
             await self.load_autonomous_state_from_db()
+            await self.requeue_peer_flood_leads()
             while True:
                 try:
                     outcome = await self.run_autonomous_step()
@@ -832,8 +1214,12 @@ class OutreachWorker:
                         await asyncio.sleep(60)
                     elif outcome == "limit_reached":
                         await asyncio.sleep(600)
+                    elif outcome in ("peer_flood", "no_client", "flood_wait"):
+                        # New-chat anti-spam / no account left: back off, don't open
+                        # a new chat every couple of minutes.
+                        await asyncio.sleep(300)
                     else:
-                        await asyncio.sleep(120)
+                        await asyncio.sleep(300)
                 except asyncio.CancelledError:
                     break
                 except Exception as exc:
@@ -953,7 +1339,9 @@ class OutreachWorker:
                     logger.warning("Outreach aborted due to credits error: %s", spend_err)
                     break
 
-                account = await account_pool.get_available_account(session, user_id)
+                account = await account_pool.get_available_account(
+                    session, user_id, max_daily_outreach=int(settings.outreach_account_daily_limit)
+                )
                 if not account:
                     logger.warning("No available TG accounts in pool for outreach")
                     failed += 1
@@ -1019,7 +1407,7 @@ class OutreachWorker:
                         session.add(msg)
 
                         lead.status = "sent"
-                        await account_pool.record_action(session, account.id)
+                        await account_pool.record_outreach_action(session, account.id)
                         await session.commit()
 
                         sent += 1
@@ -1074,7 +1462,23 @@ class OutreachWorker:
                     next_at = None
 
                 account = await session.get(TgAccount, dialog.account_id)
-                if not account or account.status != "active":
+                if not account:
+                    dialog.next_followup_at = None
+                    session.add(dialog)
+                    await session.commit()
+                    continue
+                flood_until = account.flood_until
+                if flood_until is not None and flood_until.tzinfo is None:
+                    flood_until = flood_until.replace(tzinfo=timezone.utc)
+                if account.status in ("floodwait", "spamblock") or (
+                    flood_until is not None and flood_until > now
+                ):
+                    # Account is temporarily limited by Telegram: postpone, don't cancel.
+                    dialog.next_followup_at = now + timedelta(hours=12)
+                    session.add(dialog)
+                    await session.commit()
+                    continue
+                if account.status != "active":
                     dialog.next_followup_at = None
                     session.add(dialog)
                     await session.commit()
@@ -1106,6 +1510,13 @@ class OutreachWorker:
                         await asyncio.sleep(random.uniform(15.0, 40.0))
                 except Exception as exc:
                     logger.warning("Follow-up failed for dialog %s: %s", dialog.id, exc)
+                    from telethon.errors import PeerFloodError
+
+                    if isinstance(exc, PeerFloodError):
+                        try:
+                            await account_pool.mark_spam_limited(session, account.id, hours=24)
+                        except Exception:
+                            pass
                     dialog.next_followup_at = now + timedelta(hours=12)
                     session.add(dialog)
                     await session.commit()

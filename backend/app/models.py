@@ -238,6 +238,9 @@ class TgAccount(Base):
     flood_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     daily_actions_count: Mapped[int] = mapped_column(Integer, default=0)
     daily_actions_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Separate cold-DM budget: warmup/follow-ups must not consume the outreach limit.
+    daily_outreach_count: Mapped[int] = mapped_column(Integer, default=0)
+    daily_outreach_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     warmup_level: Mapped[int] = mapped_column(Integer, default=0)  # 0-100
     warmup_preset: Mapped[str] = mapped_column(String(24), default="optimal")  # light | optimal | active
     auto_warmup: Mapped[bool] = mapped_column(Boolean, default=False)

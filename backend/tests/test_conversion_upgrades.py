@@ -379,6 +379,285 @@ async def test_autonomous_outreach_pipeline_dedup_limits_and_toggle(client, monk
 
 
 @pytest.mark.asyncio
+async def test_outreach_peer_flood_parks_account_and_reuses_demo(monkeypatch):
+    """PEER_FLOOD must park the account, keep the lead queued and not rebuild the demo."""
+    from sqlalchemy import delete, func, select
+    from telethon.errors import PeerFloodError
+
+    from app.models import DemoSite, OutreachLead, TgAccount
+    from app.config import settings
+    from app.services.outreach_worker import outreach_worker
+
+    async with SessionLocal() as session:
+        await session.execute(delete(OutreachLead))
+        await session.execute(delete(TgAccount))
+        acc = TgAccount(
+            phone="+79990000001",
+            username="limited_acc",
+            session_string="fake-session",
+            status="active",
+        )
+        session.add(acc)
+        session.add(
+            OutreachLead(
+                yandex_org_id="org_flood_1",
+                company_name="Кофейня Флуд",
+                category="Кофейня",
+                city="Новороссийск",
+                phone="+79180000123",
+                status="queued",
+            )
+        )
+        await session.commit()
+        acc_id = acc.id
+
+    monkeypatch.setattr(outreach_worker, "is_in_work_window", lambda now=None: True)
+    monkeypatch.setattr(outreach_worker, "replenish_queue", _noop_replenish)
+    settings.outreach_enabled = True
+    outreach_worker._paused_until = None
+    outreach_worker._userbot_account_id = acc_id
+    outreach_worker._userbot_account_label = "@limited_acc"
+    outreach_worker._userbot_uses_env_session = False
+    outreach_worker._last_limit_alert.clear()
+    outreach_worker._last_recovery_probe.clear()
+
+    class FloodClient:
+        async def send_message(self, peer, text, link_preview=False):
+            raise PeerFloodError(None)
+
+    async def fake_get_client():
+        return FloodClient()
+
+    async def fake_resolve(c, item):
+        item.tg_user_id = 123456789
+        item.tg_username = "coffee_owner"
+        return object()
+
+    async def fake_collect(lead_dict, max_items=10):
+        return {"photos": ["https://example.com/p1.jpg"], "logo_url": None}
+
+    async def fake_landing(lead, style_id=None, public_url=""):
+        return f"<!DOCTYPE html><html><head><title>{lead['name']}</title></head><body>{public_url}</body></html>", "mock"
+
+    async def fake_pitch(item, demo_url):
+        return f"Привет, {item.company_name}! Демо: {demo_url} (5 000 ₽)"
+
+    admin_alerts = []
+
+    async def fake_admin_text(text, reply_markup=None):
+        admin_alerts.append(text)
+        return 1
+
+    monkeypatch.setattr(outreach_worker, "_get_userbot_client", fake_get_client)
+    monkeypatch.setattr(outreach_worker, "resolve_outreach_contact", fake_resolve)
+    monkeypatch.setattr("app.services.media_collector.collect_media", fake_collect)
+    monkeypatch.setattr("app.services.landing.generate_landing_html", fake_landing)
+    monkeypatch.setattr(outreach_worker, "generate_autonomous_pitch", fake_pitch)
+    monkeypatch.setattr("app.services.lead_notifier.lead_notifier.send_admin_text", fake_admin_text)
+
+    # @SpamBot confirms a real block -> account must be parked for a long time.
+    async def verdict_limited(account_id):
+        return "limited"
+
+    monkeypatch.setattr(outreach_worker, "_spambot_verdict", verdict_limited)
+
+    outcome = await outreach_worker.run_autonomous_step()
+    assert outcome == "peer_flood"
+
+    async with SessionLocal() as session:
+        acc = await session.get(TgAccount, acc_id)
+        assert acc is not None
+        assert acc.status == "spamblock"
+        assert acc.flood_until is not None
+
+        lead = await session.scalar(
+            select(OutreachLead).where(OutreachLead.yandex_org_id == "org_flood_1")
+        )
+        assert lead is not None
+        assert lead.status == "queued"  # not lost, will be retried by a healthy account
+        assert lead.demo_url
+        demo_id = lead.demo_id
+        demos_before = int(await session.scalar(select(func.count(DemoSite.id))) or 0)
+
+    assert any("PEER_FLOOD" in text or "ограничил" in text for text in admin_alerts)
+
+    # Second iteration: no healthy account left -> no processing, no duplicate demo.
+    async def no_client():
+        return None
+
+    monkeypatch.setattr(outreach_worker, "_get_userbot_client", no_client)
+    outreach_worker._paused_until = None
+    outcome2 = await outreach_worker.run_autonomous_step()
+    assert outcome2 == "no_client"
+
+    async with SessionLocal() as session:
+        lead = await session.scalar(
+            select(OutreachLead).where(OutreachLead.yandex_org_id == "org_flood_1")
+        )
+        assert lead.demo_id == demo_id
+        demos_after = int(await session.scalar(select(func.count(DemoSite.id))) or 0)
+        assert demos_after == demos_before
+
+    await outreach_worker.set_autonomous_enabled(False)
+    outreach_worker._userbot_account_id = None
+    outreach_worker._userbot_account_label = None
+
+
+@pytest.mark.asyncio
+async def test_outreach_peer_flood_temporary_when_spambot_clean(monkeypatch):
+    """If @SpamBot says "clean", PEER_FLOOD is a temporary new-chat limit, not a block."""
+    from datetime import timezone
+
+    from sqlalchemy import delete, select
+    from telethon.errors import PeerFloodError
+
+    from app.config import settings
+    from app.models import OutreachLead, TgAccount, utcnow
+    from app.services.outreach_worker import outreach_worker
+    async with SessionLocal() as session:
+        await session.execute(delete(OutreachLead))
+        await session.execute(delete(TgAccount))
+        acc = TgAccount(
+            phone="+79990000004",
+            username="clean_acc",
+            session_string="fake-session",
+            status="active",
+        )
+        session.add(acc)
+        session.add(
+            OutreachLead(
+                yandex_org_id="org_flood_2",
+                company_name="Кофейня Вторая",
+                category="Кофейня",
+                city="Краснодар",
+                phone="+79180000456",
+                status="queued",
+            )
+        )
+        await session.commit()
+        acc_id = acc.id
+
+    monkeypatch.setattr(outreach_worker, "is_in_work_window", lambda now=None: True)
+    monkeypatch.setattr(outreach_worker, "replenish_queue", _noop_replenish)
+    settings.outreach_enabled = True
+    outreach_worker._paused_until = None
+    outreach_worker._userbot_account_id = acc_id
+    outreach_worker._userbot_account_label = "@clean_acc"
+    outreach_worker._userbot_uses_env_session = False
+    outreach_worker._peer_flood_streak = 0
+    outreach_worker._last_limit_alert.clear()
+    outreach_worker._last_recovery_probe.clear()
+
+    class FloodClient:
+        async def send_message(self, peer, text, link_preview=False):
+            raise PeerFloodError(None)
+
+    async def fake_get_client():
+        return FloodClient()
+
+    async def fake_resolve(c, item):
+        item.tg_user_id = 123456789
+        item.tg_username = "coffee_owner2"
+        return object()
+
+    async def fake_collect(lead_dict, max_items=10):
+        return {"photos": ["https://example.com/p1.jpg"], "logo_url": None}
+
+    async def fake_landing(lead, style_id=None, public_url=""):
+        return f"<!DOCTYPE html><html><head><title>{lead['name']}</title></head><body>{public_url}</body></html>", "mock"
+
+    async def fake_pitch(item, demo_url):
+        return f"Привет, {item.company_name}! Демо: {demo_url} (5 000 ₽)"
+
+    admin_alerts = []
+
+    async def fake_admin_text(text, reply_markup=None):
+        admin_alerts.append(text)
+        return 1
+
+    async def verdict_clean(account_id):
+        return "clean"
+
+    monkeypatch.setattr(outreach_worker, "_get_userbot_client", fake_get_client)
+    monkeypatch.setattr(outreach_worker, "resolve_outreach_contact", fake_resolve)
+    monkeypatch.setattr("app.services.media_collector.collect_media", fake_collect)
+    monkeypatch.setattr("app.services.landing.generate_landing_html", fake_landing)
+    monkeypatch.setattr(outreach_worker, "generate_autonomous_pitch", fake_pitch)
+    monkeypatch.setattr("app.services.lead_notifier.lead_notifier.send_admin_text", fake_admin_text)
+    monkeypatch.setattr(outreach_worker, "_spambot_verdict", verdict_clean)
+
+    outcome = await outreach_worker.run_autonomous_step()
+    assert outcome == "peer_flood"
+
+    async with SessionLocal() as session:
+        acc = await session.get(TgAccount, acc_id)
+        assert acc is not None
+        # Not parked: the account is only cooling down after a new-chat flood.
+        assert acc.status == "active"
+        assert acc.flood_until is not None
+        flood_until = acc.flood_until
+        if flood_until.tzinfo is None:
+            flood_until = flood_until.replace(tzinfo=timezone.utc)
+        assert flood_until > utcnow()
+
+        lead = await session.scalar(
+            select(OutreachLead).where(OutreachLead.yandex_org_id == "org_flood_2")
+        )
+        assert lead is not None
+        assert lead.status == "queued"
+
+    # Temporary floods must not spam the admin with "PeerFloodError" DMs.
+    assert admin_alerts == []
+    assert "временно" in str(outreach_worker._last_error).lower()
+
+    settings.outreach_enabled = False
+    outreach_worker._userbot_account_id = None
+    outreach_worker._userbot_account_label = None
+    outreach_worker._paused_until = None
+
+
+async def _noop_replenish(session) -> int:
+    return 0
+
+
+@pytest.mark.asyncio
+async def test_requeue_peer_flood_error_leads():
+    """Leads marked as `error` by older versions on PEER_FLOOD are retried again."""
+    from sqlalchemy import delete, select
+
+    from app.models import OutreachLead
+    from app.services.outreach_worker import outreach_worker
+
+    async with SessionLocal() as session:
+        await session.execute(delete(OutreachLead))
+        session.add(
+            OutreachLead(
+                yandex_org_id="org_requeue_1",
+                company_name="Старый Флуд",
+                category="Кофейня",
+                city="Краснодар",
+                phone="+79180000789",
+                status="error",
+                error_detail="PeerFloodError: The account is limited (spam-reported)",
+            )
+        )
+        await session.commit()
+
+    count = await outreach_worker.requeue_peer_flood_leads()
+    assert count == 1
+
+    async with SessionLocal() as session:
+        lead = await session.scalar(
+            select(OutreachLead).where(OutreachLead.yandex_org_id == "org_requeue_1")
+        )
+        assert lead is not None
+        assert lead.status == "queued"
+        assert lead.error_detail is None
+        await session.execute(delete(OutreachLead))
+        await session.commit()
+
+
+@pytest.mark.asyncio
 async def test_monochrome_contrast_and_vision_photo_index_sorting(monkeypatch):
     from app.services.ai_router import sort_business_photos
     from app.services.landing import render_jinja_demo
@@ -592,3 +871,69 @@ async def test_channel_admin_extraction_and_outreach_filtering(monkeypatch):
 
 
 
+
+
+@pytest.mark.asyncio
+async def test_outreach_account_daily_budget_and_reset():
+    """Cold-DM budget is tracked separately per account and rolls over daily."""
+    from datetime import timedelta
+
+    from sqlalchemy import delete
+
+    from app.config import settings
+    from app.models import TgAccount, utcnow
+    from app.services.account_pool import account_pool
+
+    async with SessionLocal() as session:
+        await session.execute(delete(TgAccount))
+        full = TgAccount(
+            phone="+79990000002",
+            session_string="s1",
+            status="active",
+            daily_actions_count=1,
+            daily_actions_reset_at=utcnow(),
+            daily_outreach_count=int(settings.outreach_account_daily_limit),
+            daily_outreach_reset_at=utcnow(),
+        )
+        fresh = TgAccount(
+            phone="+79990000003",
+            session_string="s2",
+            status="active",
+            daily_actions_count=1,
+            daily_actions_reset_at=utcnow(),
+        )
+        session.add_all([full, fresh])
+        await session.commit()
+        full_id = full.id
+
+        cap = int(settings.outreach_account_daily_limit)
+        picked = await account_pool.get_available_account(session, max_daily_outreach=cap)
+        assert picked is not None and picked.phone == "+79990000003"
+
+        # Only the fully-used account remains -> nothing available for outreach.
+        await session.delete(fresh)
+        await session.commit()
+        assert await account_pool.get_available_account(session, max_daily_outreach=cap) is None
+
+        # A stale reset marker rolls the counter over and makes it available again.
+        acc = await session.get(TgAccount, full_id)
+        acc.daily_outreach_reset_at = utcnow() - timedelta(days=1)
+        acc.daily_actions_reset_at = utcnow() - timedelta(days=1)
+        await session.commit()
+        picked2 = await account_pool.get_available_account(session, max_daily_outreach=cap)
+        assert picked2 is not None
+        assert picked2.id == full_id
+        assert picked2.daily_outreach_count == 0
+
+        # Expired floodwait should auto-recover to active cleanly
+        acc.status = "floodwait"
+        acc.flood_until = utcnow() - timedelta(minutes=5)
+        await session.commit()
+        picked3 = await account_pool.get_available_account(session, max_daily_outreach=cap)
+        assert picked3 is not None
+        assert picked3.id == full_id
+        assert picked3.status == "active"
+        assert picked3.flood_until is None
+
+        await session.execute(delete(TgAccount))
+        await session.commit()

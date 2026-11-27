@@ -400,6 +400,26 @@ class TelegramBotRunner:
         paused_line = f"\n⏸ <b>Пауза до:</b> {html.escape(str(st['paused_until']))}" if st.get("paused_until") else ""
         err_line = f"\n⚠️ <b>Последняя ошибка:</b> <code>{html.escape(str(st['last_error'])[:180])}</code>" if st.get("last_error") else ""
 
+        acc_status = st.get("account_status")
+        available_accounts = int(st.get("available_accounts") or 0)
+        if acc_status == "spamblock":
+            acc_line = (
+                "\n🚫 <b>@SpamBot подтвердил ограничение аккаунта</b>: он не может писать незнакомым. "
+                "Добавьте другой аккаунт или дождитесь снятия лимита."
+            )
+        elif st.get("account_flood_until"):
+            acc_line = (
+                "\n⏳ <b>Временный лимит Telegram на новые чаты</b> — аккаунт вернётся в работу после "
+                f"<code>{html.escape(str(st['account_flood_until']))}</code>. Это не блокировка."
+            )
+        elif acc_status in ("floodwait", "banned"):
+            acc_line = f"\n⏳ <b>Аккаунт:</b> {html.escape(str(acc_status))}"
+        elif st.get("session_configured") and available_accounts == 0:
+            acc_line = "\n⚠️ <b>Нет доступных аккаунтов</b> для рассылки."
+        else:
+            acc_line = ""
+        pause_html = f"{paused_line}{acc_line}{err_line}"
+
         text = (
             "🤖 <b>Автономный аутрич-воркер</b>\n\n"
             f"• Статус: {status_line}\n"
@@ -409,7 +429,7 @@ class TelegramBotRunner:
             f"• В очереди (<code>queued</code>): <b>{st.get('queued_count', 0)}</b>\n"
             f"• Всего отправлено: <b>{st.get('total_sent', 0)}</b> · Пропущено (нет TG / фото): "
             f"<b>{st.get('skipped_no_tg', 0)} / {st.get('skipped_bad_quality', 0)}</b>"
-            f"{paused_line}{err_line}"
+            f"{pause_html}"
         )
         btn = (
             {"text": "⏸ Выключить рассылку", "callback_data": "outreach_toggle:off"}
@@ -417,7 +437,7 @@ class TelegramBotRunner:
             else {"text": "▶️ Включить рассылку", "callback_data": "outreach_toggle:on"}
         )
         rows = [[btn]]
-        if st.get("paused_until"):
+        if st.get("paused_until") or acc_status == "spamblock" or available_accounts == 0:
             rows.append([{"text": "🔄 Снять паузу и продолжить", "callback_data": "outreach_resume"}])
         return text, {"inline_keyboard": rows}
 

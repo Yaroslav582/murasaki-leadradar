@@ -285,16 +285,93 @@ class AccountPool:
                 pass
         self._active_clients.clear()
 
+    async def reset_daily_counters_if_needed(self, session: AsyncSession) -> int:
+        """Zeros per-day action counters for accounts whose counters belong to a previous day.
+
+        Without this the counters only ever grow (warmup + outreach), so an account
+        is eventually excluded from the pool forever.
+        """
+        now = utcnow()
+        today = now.date()
+
+        def _stale(reset_at: datetime | None) -> bool:
+            if reset_at is None:
+                return True
+            if reset_at.tzinfo is None:
+                reset_at = reset_at.replace(tzinfo=timezone.utc)
+            return reset_at.astimezone(timezone.utc).date() < today
+
+        res = await session.execute(
+            select(TgAccount).where(TgAccount.session_string.isnot(None))
+        )
+        reset = 0
+        for acc in res.scalars().all():
+            changed = False
+            if _stale(acc.daily_actions_reset_at):
+                acc.daily_actions_count = 0
+                acc.daily_actions_reset_at = now
+                changed = True
+            if _stale(acc.daily_outreach_reset_at):
+                acc.daily_outreach_count = 0
+                acc.daily_outreach_reset_at = now
+                changed = True
+            if changed:
+                session.add(acc)
+                reset += 1
+        if reset:
+            await session.commit()
+            logger.info("Reset daily action counters for %d account(s)", reset)
+        return reset
+
     async def get_available_account(
-        self, session: AsyncSession, user_id: Optional[str] = None
+        self,
+        session: AsyncSession,
+        user_id: Optional[str] = None,
+        max_daily_actions: Optional[int] = None,
+        max_daily_outreach: Optional[int] = None,
     ) -> Optional[TgAccount]:
         """Finds the next ready-to-use account (active, not flooded, not exceeded daily limits)."""
         now = utcnow()
-        stmt = (
-            select(TgAccount)
-            .where(TgAccount.status.in_(["active", "warming"]))
-            .order_by(TgAccount.daily_actions_count.asc(), TgAccount.updated_at.asc())
+        await self.reset_daily_counters_if_needed(session)
+
+        # Auto-restore accounts whose temporary floodwait window has already expired
+        fw_res = await session.execute(
+            select(TgAccount).where(
+                TgAccount.status == "floodwait",
+                TgAccount.flood_until.isnot(None),
+            )
         )
+        restored = 0
+        for fw_acc in fw_res.scalars().all():
+            due = fw_acc.flood_until
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
+            if due <= now:
+                fw_acc.status = "active"
+                fw_acc.flood_until = None
+                fw_acc.updated_at = now
+                session.add(fw_acc)
+                restored += 1
+        if restored:
+            await session.commit()
+            logger.info("Auto-restored %d account(s) after expired floodwait", restored)
+
+        actions_cap = int(
+            max_daily_actions
+            if max_daily_actions is not None
+            else settings.warmup_max_daily_actions
+        )
+        stmt = select(TgAccount).where(TgAccount.status.in_(["active", "warming"]))
+        if max_daily_outreach is not None:
+            stmt = stmt.order_by(
+                TgAccount.daily_outreach_count.asc(),
+                TgAccount.daily_actions_count.asc(),
+                TgAccount.updated_at.asc(),
+            )
+        else:
+            stmt = stmt.order_by(
+                TgAccount.daily_actions_count.asc(), TgAccount.updated_at.asc()
+            )
         if user_id:
             stmt = stmt.where(TgAccount.user_id == user_id)
 
@@ -302,13 +379,43 @@ class AccountPool:
         accounts = res.scalars().all()
 
         for acc in accounts:
-            if acc.flood_until and acc.flood_until > now:
+            if acc.flood_until:
+                due = acc.flood_until
+                if due.tzinfo is None:
+                    due = due.replace(tzinfo=timezone.utc)
+                if due > now:
+                    continue
+            if acc.daily_actions_count >= actions_cap:
                 continue
-            if acc.daily_actions_count >= settings.warmup_max_daily_actions:
+            if max_daily_outreach is not None and acc.daily_outreach_count >= int(max_daily_outreach):
                 continue
             return acc
 
         return None
+
+    async def mark_spam_limited(
+        self, session: AsyncSession, account_id: str, hours: int = 24
+    ) -> Optional[TgAccount]:
+        """Parks an account that Telegram restricted (PEER_FLOOD / spam block).
+
+        The account is excluded from ``get_available_account`` until ``flood_until``
+        passes and a @SpamBot re-check reports it clean again.
+        """
+        acc = await session.get(TgAccount, account_id)
+        if not acc:
+            return None
+        acc.status = "spamblock"
+        acc.flood_until = utcnow() + timedelta(hours=max(1, int(hours)))
+        acc.updated_at = utcnow()
+        session.add(acc)
+        await session.commit()
+        await session.refresh(acc)
+        logger.warning(
+            "Account %s parked as spamblock until %s (Telegram PEER_FLOOD limit)",
+            acc.phone,
+            acc.flood_until,
+        )
+        return acc
 
     async def rotate_on_error(
         self, session: AsyncSession, account_id: str, exc: Exception
@@ -348,7 +455,24 @@ class AccountPool:
         acc = await session.get(TgAccount, account_id)
         if acc:
             acc.daily_actions_count += 1
+            if acc.daily_actions_reset_at is None:
+                acc.daily_actions_reset_at = utcnow()
             acc.updated_at = utcnow()
+            session.add(acc)
+            await session.commit()
+
+    async def record_outreach_action(self, session: AsyncSession, account_id: str) -> None:
+        """Increments the dedicated cold-DM counter for an account (and the general one)."""
+        acc = await session.get(TgAccount, account_id)
+        if acc:
+            acc.daily_actions_count += 1
+            acc.daily_outreach_count += 1
+            if acc.daily_actions_reset_at is None:
+                acc.daily_actions_reset_at = utcnow()
+            if acc.daily_outreach_reset_at is None:
+                acc.daily_outreach_reset_at = utcnow()
+            acc.updated_at = utcnow()
+            session.add(acc)
             await session.commit()
 
     async def check_proxy_health(self, proxy: Proxy) -> bool:
@@ -403,15 +527,28 @@ class AccountPool:
                 msgs = await client.get_messages("@SpamBot", limit=1)
                 if msgs and msgs[0].text:
                     resp = msgs[0].text.lower()
-                    if "свободен от каких-либо ограничений" in resp or "good news" in resp:
+                    if (
+                        "свободен от каких-либо ограничений" in resp
+                        or "good news" in resp
+                        or "no limits" in resp
+                        or "free as a bird" in resp
+                    ):
                         status = "active"
-                    elif "к сожалению" in resp or "ограничен" in resp or "limit" in resp:
+                    elif (
+                        "к сожалению" in resp
+                        or "ограничен" in resp
+                        or "limit" in resp
+                        or "non-contact" in resp
+                        or "spam" in resp
+                    ):
                         status = "spamblock"
                         status_text = "Обнаружен спам-блок по ответу @SpamBot"
             except Exception as sb_err:
                 logger.info("SpamBot check skipped/failed: %s", sb_err)
 
             account.status = status
+            if status == "active":
+                account.flood_until = None
             await session.commit()
             return {"status": status, "info": status_text, "user": me.first_name}
         except Exception as err:

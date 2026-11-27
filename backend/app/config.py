@@ -162,6 +162,14 @@ class Settings(BaseSettings):
     outreach_target_queries: str = "Салон красоты Новороссийск,Автосервис Новороссийск,Кофейня Краснодар"
     outreach_min_delay: int = 180
     outreach_max_delay: int = 600
+    # Cold DMs a single account may send per day (Telegram throttles accounts
+    # that open too many new chats). More accounts => more total capacity.
+    outreach_account_daily_limit: int = 3
+    # Base cooldown after a PEER_FLOOD on new chats (doubles on every repeat,
+    # capped at 6h). Used only when @SpamBot says the account is NOT blocked.
+    outreach_peer_flood_cooldown_min: int = 45
+    # How often a genuinely blocked account is re-checked via @SpamBot.
+    outreach_peer_flood_probe_hours: int = 6
 
     # AI Auto-Blogger for Telegram Channel
     channel_blog_enabled: bool = True
