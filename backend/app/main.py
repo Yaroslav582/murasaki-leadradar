@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from sqlalchemy import select
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api import api_router
 from app.config import settings
 from app.db import get_session, init_db
-from app.models import DemoSite, Lead, utcnow
+from app.models import DemoSite, Lead, OutreachLead, utcnow
 from app.seed import seed_demo_data, seed_telegram_data
 from app.services.account_pool import account_pool
 from app.services.bot_runner import bot_runner
@@ -177,6 +177,36 @@ async def health() -> dict:
     return {"status": "ok", "app": settings.app_name}
 
 
+@app.get("/demo/{demo_id}/og.png")
+async def public_demo_og_image(
+    demo_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    from app.services.demos import resolve_demo_by_identifier
+    from app.services.og_image import get_cached_demo_og_png
+
+    demo = await resolve_demo_by_identifier(session, demo_id, allow_lead_fallback=True)
+    if demo is None or not demo.published:
+        raise HTTPException(status_code=404, detail="Демо не найдено")
+
+    lead = await session.get(Lead, demo.lead_id) if demo.lead_id else None
+    business_name = (lead.name if lead else None) or demo.title.replace("Демо для ", "").strip() or "Демо-сайт"
+    city = (lead.city if lead else "") or ""
+    category = (lead.category if lead else "") or ""
+    png_bytes = get_cached_demo_og_png(
+        demo_id=demo.id,
+        business_name=business_name,
+        city=city,
+        brand_color=getattr(demo, "brand_color", None),
+        category=category,
+    )
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @app.get("/demo/{demo_id}", response_class=HTMLResponse)
 async def public_demo(
     demo_id: str,
@@ -198,6 +228,17 @@ async def public_demo(
         demo.views_count = (demo.views_count or 0) + 1
         demo.last_viewed_at = now
         session.add(demo)
+
+        # Link view tracking directly to OutreachLead (is_opened / opened_at) for smart follow-up
+        ol_res = await session.execute(
+            select(OutreachLead).where(OutreachLead.demo_id == demo.id)
+        )
+        for ol in ol_res.scalars().all():
+            if not ol.is_opened:
+                ol.is_opened = True
+                ol.opened_at = now
+                session.add(ol)
+
         await session.commit()
 
         should_notify = prev_viewed is None or (

@@ -184,6 +184,12 @@ async def init_db() -> None:
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS last_viewed_at TIMESTAMPTZ;",
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS preview_image_url VARCHAR(500);",
             "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS brand_color VARCHAR(16);",
+            "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS priority VARCHAR(16) DEFAULT 'high';",
+            "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS is_opened BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS opened_at TIMESTAMPTZ;",
+            "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS followup_step INTEGER DEFAULT 0;",
+            "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS last_followup_at TIMESTAMPTZ;",
+            "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS has_reply BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source VARCHAR(32) DEFAULT 'telegram';",
             "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source_url VARCHAR(500);",
             "ALTER TABLE telegram_chat_targets ADD COLUMN IF NOT EXISTS cooldown_minutes INTEGER DEFAULT 120;",
@@ -322,8 +328,18 @@ async def init_db() -> None:
                 # outreach_leads
                 res = sync_conn.exec_driver_sql("PRAGMA table_info(outreach_leads)").fetchall()
                 existing_ol_cols = {row[1] for row in res}
-                if existing_ol_cols and "brand_color" not in existing_ol_cols:
-                    sync_conn.exec_driver_sql("ALTER TABLE outreach_leads ADD COLUMN brand_color VARCHAR(16)")
+                if existing_ol_cols:
+                    for col_name, col_def in (
+                        ("brand_color", "VARCHAR(16)"),
+                        ("priority", "VARCHAR(16) DEFAULT 'high'"),
+                        ("is_opened", "BOOLEAN DEFAULT 0"),
+                        ("opened_at", "DATETIME"),
+                        ("followup_step", "INTEGER DEFAULT 0"),
+                        ("last_followup_at", "DATETIME"),
+                        ("has_reply", "BOOLEAN DEFAULT 0"),
+                    ):
+                        if col_name not in existing_ol_cols:
+                            sync_conn.exec_driver_sql(f"ALTER TABLE outreach_leads ADD COLUMN {col_name} {col_def}")
                     try:
                         sync_conn.exec_driver_sql(
                             "CREATE UNIQUE INDEX IF NOT EXISTS ix_demo_sites_slug ON demo_sites (slug)"

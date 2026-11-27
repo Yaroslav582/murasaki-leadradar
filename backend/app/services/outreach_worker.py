@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -170,12 +170,20 @@ class OutreachWorker:
             sent_today = int(
                 await session.scalar(
                     select(func.count(OutreachLead.id)).where(
-                        OutreachLead.status == "sent",
                         OutreachLead.sent_at >= day_start_utc,
                     )
                 )
                 or 0
             )
+            followups_today = int(
+                await session.scalar(
+                    select(func.count(OutreachLead.id)).where(
+                        OutreachLead.last_followup_at >= day_start_utc,
+                    )
+                )
+                or 0
+            )
+            sent_today += followups_today
             queued_count = int(
                 await session.scalar(
                     select(func.count(OutreachLead.id)).where(OutreachLead.status == "queued")
@@ -441,6 +449,11 @@ class OutreachWorker:
                         if conds:
                             row = await db.scalar(select(OutreachLead).where(or_(*conds)))
                             if row:
+                                row.has_reply = True
+                                if row.status in ("sent", "followed_up", "demo_generated"):
+                                    row.status = "replied"
+                                db.add(row)
+                                await db.commit()
                                 company_info = f"\n🏢 <b>Компания:</b> {html.escape(row.company_name)} ({html.escape(row.city)})"
                                 if row.demo_url:
                                     company_info += f"\n🔗 <b>Демо:</b> {html.escape(row.demo_url)}"
@@ -503,9 +516,14 @@ class OutreachWorker:
             except Exception as exc:
                 logger.debug("Zoon fallback replenish notice: %s", exc)
 
+        from app.services.telegram_channel_scraper import classify_external_links, scrape_telegram_channel
+
         added = 0
         for p in places:
-            if p.website_url and str(p.website_url).strip():
+            raw_site = (p.website_url or "").strip()
+            site_check = classify_external_links(explicit_urls=[raw_site] if raw_site else [])
+            if site_check["has_own_website"]:
+                # Has a real standalone website already -> skip from no-site discovery
                 continue
 
             norm_phone = normalize_ru_phone(p.phone)
@@ -530,6 +548,15 @@ class OutreachWorker:
                 if exists:
                     continue
 
+            lead_priority = "high"
+            if tg_user:
+                try:
+                    tg_info = await scrape_telegram_channel(tg_user, limit_photos=0)
+                    if tg_info.get("has_own_website"):
+                        lead_priority = "low"
+                except Exception:
+                    pass
+
             item = OutreachLead(
                 yandex_org_id=org_id,
                 company_name=(p.name or "").strip(),
@@ -541,6 +568,7 @@ class OutreachWorker:
                 rating=p.rating,
                 reviews_count=p.reviews_count or 0,
                 photos=list(p.photos or []),
+                priority=lead_priority,
                 status="queued",
             )
             session.add(item)
@@ -899,27 +927,50 @@ class OutreachWorker:
             sent_today = int(
                 await session.scalar(
                     select(func.count(OutreachLead.id)).where(
-                        OutreachLead.status == "sent",
                         OutreachLead.sent_at >= day_start_utc,
                     )
                 )
                 or 0
             )
+            followups_today = int(
+                await session.scalar(
+                    select(func.count(OutreachLead.id)).where(
+                        OutreachLead.last_followup_at >= day_start_utc,
+                    )
+                )
+                or 0
+            )
+            sent_today += followups_today
             daily_limit = int(settings.outreach_daily_limit)
             if sent_today >= daily_limit:
                 return "limit_reached"
 
             await self.replenish_queue(session)
 
+            priority_rank = case((OutreachLead.priority == "high", 0), else_=1)
             item = await session.scalar(
                 select(OutreachLead)
                 .where(OutreachLead.status == "queued")
-                # Prefer leads with a public @username: no ImportContacts needed,
-                # which is what most often triggers the new-chat anti-spam.
-                .order_by(OutreachLead.tg_username.is_(None).asc(), OutreachLead.created_at.asc())
+                # Prefer high-priority leads without standalone site, then public @username
+                .order_by(
+                    priority_rank.asc(),
+                    OutreachLead.tg_username.is_(None).asc(),
+                    OutreachLead.created_at.asc(),
+                )
                 .limit(1)
             )
             if item is None:
+                queue_empty = True
+            else:
+                queue_empty = False
+
+        if queue_empty:
+            followup_sent = await self.process_outreach_followups(max_sends=1, delay_range=(0.0, 0.0))
+            return "followed_up" if followup_sent > 0 else "empty_queue"
+
+        async with SessionLocal() as session:
+            item = await session.get(OutreachLead, item.id)
+            if item is None or item.status != "queued":
                 return "empty_queue"
 
             client = await self._get_userbot_client()
@@ -1557,10 +1608,244 @@ class OutreachWorker:
         self._active_tasks.pop(campaign_id, None)
         logger.info("Campaign %s finished. Sent: %d, Failed: %d", campaign_id, sent, failed)
 
-    async def process_followups(self) -> int:
-        """Send scheduled follow-ups for silent dialogs (48h and +72h)."""
+    @staticmethod
+    def build_outreach_followup_text(item: OutreachLead, now: datetime | None = None) -> tuple[str, str] | None:
+        """Select Scenario A (opened >=24h) or Scenario B (unopened >=72h) follow-up text."""
+        cur = now or utcnow()
+        if item.has_reply or item.status in ("replied", "ignored", "followed_up") or (item.followup_step or 0) >= 1:
+            return None
+        if item.status != "sent" or not item.sent_at:
+            return None
+
+        sent_at = item.sent_at
+        if sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+
+        if item.is_opened:
+            ref_time = item.opened_at or sent_at
+            if ref_time.tzinfo is None:
+                ref_time = ref_time.replace(tzinfo=timezone.utc)
+            if cur - ref_time < timedelta(hours=24):
+                return None
+            text = (
+                f"Добрый день! Видел, что заглянули на демо-концепт для «{item.company_name}». "
+                "Если нужно поправить блоки, фото или прайс под ваши задачи — запущу сайт под ключ на вашем домене за 5 000 ₽, "
+                "пока ссылка закреплена за вами. Актуально?"
+            )
+            return "scenario_a_opened", text
+
+        if cur - sent_at >= timedelta(hours=72):
+            text = (
+                f"Добрый день! Напомню про демо-концепт сайта для «{item.company_name}» — "
+                "ссылка будет активна ещё пару дней, потом освобождаю поддомен под другой проект. "
+                "Если актуально забрать под ключ за 5 000 ₽ — маякните 👍"
+            )
+            return "scenario_b_unopened", text
+
+        return None
+
+    async def _check_has_incoming_reply(
+        self,
+        session: AsyncSession,
+        client: Any,
+        peer: Any,
+        item: OutreachLead,
+    ) -> bool:
+        """Return True if the lead already sent any incoming message after initial outreach."""
+        if item.has_reply or item.status == "replied":
+            return True
+
+        sent_at = item.sent_at
+        if sent_at is not None and sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+
+        # 1. Check local Dialog/Message history
+        conds = []
+        if item.tg_user_id:
+            conds.append(Dialog.peer_id == str(item.tg_user_id))
+        if item.tg_username:
+            conds.append(Dialog.peer_username == item.tg_username)
+        if conds:
+            dlg_ids = list((await session.execute(select(Dialog.id).where(or_(*conds)))).scalars().all())
+            if dlg_ids:
+                q = select(Message.id).where(Message.dialog_id.in_(dlg_ids), Message.direction == "in")
+                if sent_at is not None:
+                    q = q.where(Message.created_at >= sent_at)
+                if await session.scalar(q.limit(1)):
+                    return True
+
+        # 2. Live check via Telethon chat history
+        if client is not None and peer is not None and hasattr(client, "get_messages"):
+            try:
+                msgs = await client.get_messages(peer, limit=5)
+                for m in (msgs or []):
+                    if getattr(m, "out", False):
+                        continue
+                    m_date = getattr(m, "date", None)
+                    if m_date is not None:
+                        if m_date.tzinfo is None:
+                            m_date = m_date.replace(tzinfo=timezone.utc)
+                        if sent_at is not None and m_date < sent_at:
+                            continue
+                    return True
+            except Exception as exc:
+                logger.debug("Live reply check notice for %s: %s", item.company_name, exc)
+
+        return False
+
+    async def process_outreach_followups(
+        self,
+        max_sends: int = 5,
+        delay_range: tuple[float, float] = (35.0, 90.0),
+    ) -> int:
+        """Two-step smart follow-up for OutreachLead items with view tracking & daily safety cap."""
+        if not getattr(settings, "outreach_enabled", False):
+            return 0
+
+        now_m = msk_now()
+        if not self.is_in_work_window(now_m):
+            return 0
+
         now = utcnow()
-        sent_count = 0
+        if self._paused_until and now < self._paused_until:
+            return 0
+
+        day_start_utc = now_m.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        sent_followups = 0
+
+        async with SessionLocal() as session:
+            # Close out followed_up leads that stayed silent for 7+ days -> ignored
+            stale_followed = (
+                await session.execute(
+                    select(OutreachLead).where(
+                        OutreachLead.status == "followed_up",
+                        OutreachLead.has_reply.is_(False),
+                        OutreachLead.last_followup_at.isnot(None),
+                        OutreachLead.last_followup_at <= now - timedelta(days=7),
+                    )
+                )
+            ).scalars().all()
+            for st_item in stale_followed:
+                st_item.status = "ignored"
+                session.add(st_item)
+            if stale_followed:
+                await session.commit()
+
+            sent_today = int(
+                await session.scalar(
+                    select(func.count(OutreachLead.id)).where(OutreachLead.sent_at >= day_start_utc)
+                )
+                or 0
+            )
+            followups_today = int(
+                await session.scalar(
+                    select(func.count(OutreachLead.id)).where(OutreachLead.last_followup_at >= day_start_utc)
+                )
+                or 0
+            )
+            daily_limit = int(settings.outreach_daily_limit)
+            remaining_budget = max(0, daily_limit - (sent_today + followups_today))
+            if remaining_budget <= 0:
+                return 0
+
+            candidates = (
+                await session.execute(
+                    select(OutreachLead)
+                    .where(
+                        OutreachLead.status == "sent",
+                        OutreachLead.followup_step == 0,
+                        OutreachLead.has_reply.is_(False),
+                        OutreachLead.sent_at.isnot(None),
+                    )
+                    .order_by(OutreachLead.is_opened.desc(), OutreachLead.sent_at.asc())
+                    .limit(20)
+                )
+            ).scalars().all()
+
+            for item in candidates:
+                if sent_followups >= min(max_sends, remaining_budget):
+                    break
+
+                plan = self.build_outreach_followup_text(item, now=now)
+                if plan is None:
+                    continue
+                scenario_tag, followup_text = plan
+
+                client = await self._get_userbot_client()
+                if client is None:
+                    break
+
+                target_ref = item.tg_username or item.tg_user_id
+                if not target_ref:
+                    continue
+
+                try:
+                    peer = await client.get_entity(target_ref)
+                except Exception as exc:
+                    logger.debug("Follow-up entity lookup failed for '%s': %s", item.company_name, exc)
+                    continue
+
+                if await self._check_has_incoming_reply(session, client, peer, item):
+                    item.has_reply = True
+                    item.status = "replied"
+                    session.add(item)
+                    await session.commit()
+                    logger.info("Outreach follow-up skipped (%s already replied)", item.company_name)
+                    continue
+
+                try:
+                    await client.send_message(peer, followup_text, link_preview=False)
+                    item.status = "followed_up"
+                    item.followup_step = 1
+                    item.last_followup_at = utcnow()
+                    session.add(item)
+                    await session.commit()
+                    sent_followups += 1
+
+                    if self._userbot_account_id:
+                        try:
+                            await account_pool.record_outreach_action(session, self._userbot_account_id)
+                        except Exception:
+                            pass
+
+                    from app.services.logger_service import log_event_bg
+                    logger.info(
+                        "Outreach follow-up sent: company='%s', scenario=%s, brand_color=%s, status=followed_up",
+                        item.company_name,
+                        scenario_tag,
+                        item.brand_color or "—",
+                    )
+                    log_event_bg(
+                        "outreach_worker",
+                        f"Отправлен follow-up ({scenario_tag}): {item.company_name}",
+                        level="INFO",
+                        details={
+                            "lead_id": item.id,
+                            "company": item.company_name,
+                            "scenario": scenario_tag,
+                            "is_opened": bool(item.is_opened),
+                            "brand_color": item.brand_color,
+                            "status": "followed_up",
+                        },
+                    )
+                    if delay_range[1] > 0 and sent_followups < min(max_sends, remaining_budget):
+                        await asyncio.sleep(random.uniform(delay_range[0], delay_range[1]))
+                except Exception as exc:
+                    from telethon.errors import FloodWaitError, PeerFloodError
+                    if isinstance(exc, PeerFloodError):
+                        await self._handle_peer_flood(session, item, exc, stage="followup")
+                        break
+                    if isinstance(exc, FloodWaitError):
+                        await self._handle_flood_wait(exc)
+                        break
+                    logger.warning("Outreach follow-up failed for '%s': %s", item.company_name, exc)
+
+        return sent_followups
+
+    async def process_followups(self) -> int:
+        """Send scheduled follow-ups for both OutreachLead (A/B view-aware) and silent Dialogs."""
+        sent_count = await self.process_outreach_followups()
+        now = utcnow()
         async with SessionLocal() as session:
             stmt = select(Dialog).where(
                 Dialog.next_followup_at.isnot(None),

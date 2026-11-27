@@ -386,7 +386,15 @@ class OutreachLead(Base):
     demo_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     demo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     brand_color: Mapped[str | None] = mapped_column(String(16), nullable=True, default=None)
-    # queued | demo_generated | sent | skipped_no_tg | skipped_bad_quality | error
+    # Priority: "high" (no standalone site) | "low" (has standalone site)
+    priority: Mapped[str] = mapped_column(String(16), default="high", index=True)
+    # View tracking & two-step follow-up state
+    is_opened: Mapped[bool] = mapped_column(Boolean, default=False)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    followup_step: Mapped[int] = mapped_column(Integer, default=0)
+    last_followup_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    has_reply: Mapped[bool] = mapped_column(Boolean, default=False)
+    # queued | demo_generated | sent | followed_up | replied | ignored | skipped_no_tg | skipped_bad_quality | error
     status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
     message_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)

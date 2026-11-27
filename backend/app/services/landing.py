@@ -1170,11 +1170,17 @@ def build_seo_head_tags(
         desc_raw = f"{name}: {category.lower()} {city_in}. Запись онлайн, прайс-лист, отзывы и контакты.".strip()
     desc_str = desc_raw[:220]
 
-    og_image = (hero_image or "").strip()
-    if not og_image:
+    og_image = ""
+    if public_url and public_url.strip().startswith(("http://", "https://")):
+        og_image = f"{public_url.strip().rstrip('/')}/og.png"
+    elif hero_image:
+        og_image = hero_image.strip()
+    else:
         photos = business_dict.get("photos") or []
         if photos:
             og_image = str(photos[0])
+
+    schema_image = (hero_image or "").strip() or og_image
 
     tags = [
         f'<meta name="description" content="{html.escape(desc_str)}">',
@@ -1185,6 +1191,9 @@ def build_seo_head_tags(
     ]
     if og_image:
         tags.append(f'<meta property="og:image" content="{html.escape(og_image)}">')
+        if og_image.endswith("/og.png"):
+            tags.append('<meta property="og:image:width" content="1200">')
+            tags.append('<meta property="og:image:height" content="630">')
     if public_url:
         tags.append(f'<meta property="og:url" content="{html.escape(public_url)}">')
     tags.append('<meta name="twitter:card" content="summary_large_image">')
@@ -1202,8 +1211,8 @@ def build_seo_head_tags(
             "addressCountry": "RU",
         },
     }
-    if og_image:
-        schema_obj["image"] = og_image
+    if schema_image:
+        schema_obj["image"] = schema_image
     if phone:
         schema_obj["telephone"] = phone
     if public_url:

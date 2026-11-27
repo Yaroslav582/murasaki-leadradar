@@ -1073,3 +1073,263 @@ async def test_brand_color_extraction_pitch_and_activity_filter(monkeypatch):
     lead_active = OutreachLead(id="l2", company_name="Fresh", tg_username="u_rec")
     ent_ok, _ = await worker.resolve_outreach_contact(ActivityClient(), lead_active)
     assert ent_ok is u_recent
+
+
+@pytest.mark.asyncio
+async def test_og_image_view_tracking_smart_followup_and_priority(monkeypatch):
+    import io
+    from datetime import timedelta
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from httpx import ASGITransport, AsyncClient
+    from PIL import Image
+    from sqlalchemy import delete, select
+
+    from app.config import settings
+    from app.main import app
+    from app.models import DemoSite, Lead, OutreachLead, TgAccount, utcnow
+    from app.services.landing import render_jinja_demo
+    from app.services.og_image import generate_demo_og_png
+    from app.services.outreach_worker import outreach_worker
+    from app.services.telegram_channel_scraper import classify_external_links
+
+    # 1. Dynamic 1200x630 OG image + long Cyrillic title wrapping + /demo/{slug}/og.png + view tracking
+    png_bytes = generate_demo_og_png(
+        business_name="Семейная Студия Красоты и Косметологии Империя Стиля",
+        city="Новороссийск",
+        brand_color="#8B3A2B",
+    )
+    with Image.open(io.BytesIO(png_bytes)) as im:
+        assert im.size == (1200, 630)
+        assert im.format == "PNG"
+
+    html_og = render_jinja_demo(
+        template_id="clean_swiss_trust",
+        business_dict={"name": "Кофе Ботаника", "category": "Кофейня", "city": "Сочи", "brand_color": "#8B3A2B"},
+        content_json={"hero_title": "Кофе Ботаника", "hero_subtitle": "Свежий кофе", "services": []},
+        hero_image="",
+        gallery_photos=[],
+        public_url="https://murasaki-leadradar-1.onrender.com/demo/kofe-botanika",
+    )
+    assert '<meta property="og:image" content="https://murasaki-leadradar-1.onrender.com/demo/kofe-botanika/og.png">' in html_og
+    assert '<meta property="og:title"' in html_og
+    assert '<meta property="og:description"' in html_og
+    assert '<meta name="twitter:card" content="summary_large_image">' in html_og
+
+    async with SessionLocal() as session:
+        await session.execute(delete(OutreachLead))
+        await session.execute(delete(DemoSite))
+        await session.execute(delete(Lead))
+        lead = Lead(name="Кофейня Луна", category="Кофейня", city="Сочи", has_website=False)
+        session.add(lead)
+        await session.flush()
+        demo = DemoSite(
+            lead_id=lead.id,
+            slug="kofejnya-luna-sochi",
+            title="Демо для Кофейня Луна",
+            html="<html><body>Demo</body></html>",
+            published=True,
+            brand_color="#8B3A2B",
+        )
+        session.add(demo)
+        await session.flush()
+        ol_view = OutreachLead(
+            yandex_org_id="org_og_view",
+            company_name="Кофейня Луна",
+            category="Кофейня",
+            city="Сочи",
+            tg_username="luna_coffee",
+            demo_id=demo.id,
+            status="sent",
+            sent_at=utcnow() - timedelta(hours=30),
+        )
+        session.add(ol_view)
+        await session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        r_og = await client.get("/demo/kofejnya-luna-sochi/og.png")
+        assert r_og.status_code == 200
+        assert r_og.headers["content-type"] == "image/png"
+        with Image.open(io.BytesIO(r_og.content)) as im2:
+            assert im2.size == (1200, 630)
+
+        # Real visitor (Chrome UA) sets is_opened=True & opened_at
+        r_visit = await client.get(
+            "/demo/kofejnya-luna-sochi",
+            headers={"User-Agent": "Mozilla/5.0 Chrome/131.0"},
+        )
+        assert r_visit.status_code == 200
+
+    async with SessionLocal() as session:
+        refreshed = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "org_og_view"))
+        assert refreshed is not None
+        assert refreshed.is_opened is True
+        assert refreshed.opened_at is not None
+
+    # 2. Priority classification from TG profile / links
+    assert classify_external_links(text_chunks=["Запись: https://taplink.cc/salon_rose и https://vk.com/rose"])["priority"] == "high"
+    assert classify_external_links(text_chunks=["Мы на картах https://yandex.ru/maps/org/123 и https://2gis.ru/sochi"])["priority"] == "high"
+    assert classify_external_links(text_chunks=["Наш сайт: https://imperial-clinic.ru/services"])["priority"] == "low"
+
+    # 3. Queue selects high priority BEFORE older low priority
+    async with SessionLocal() as session:
+        await session.execute(delete(OutreachLead))
+        await session.execute(delete(TgAccount))
+        session.add_all([
+            OutreachLead(
+                yandex_org_id="org_low",
+                company_name="Клиника с сайтом",
+                category="Клиника",
+                city="Сочи",
+                tg_username="low_prio",
+                priority="low",
+                status="queued",
+                created_at=utcnow() - timedelta(hours=2),
+            ),
+            OutreachLead(
+                yandex_org_id="org_high",
+                company_name="Кофейня без сайта",
+                category="Кофейня",
+                city="Сочи",
+                tg_username="high_prio",
+                priority="high",
+                status="queued",
+                created_at=utcnow(),
+            ),
+        ])
+        await session.commit()
+
+    picked_names = []
+    monkeypatch.setattr(outreach_worker, "is_in_work_window", lambda now=None: True)
+    monkeypatch.setattr(outreach_worker, "replenish_queue", AsyncMock(return_value=0))
+    settings.outreach_enabled = True
+    outreach_worker._paused_until = None
+
+    class QueueCheckClient:
+        async def send_message(self, peer, text, link_preview=False):
+            return SimpleNamespace(id=1)
+
+    async def fake_resolve_q(c, item):
+        picked_names.append(item.company_name)
+        return None, False
+
+    monkeypatch.setattr(outreach_worker, "_get_userbot_client", AsyncMock(return_value=QueueCheckClient()))
+    monkeypatch.setattr(outreach_worker, "resolve_outreach_contact", fake_resolve_q)
+    await outreach_worker.run_autonomous_step()
+    assert picked_names == ["Кофейня без сайта"]
+
+    # 4. Smart two-step follow-up: Scenario A (opened >=24h), Scenario B (unopened >=72h), replied guard, daily cap 12
+    sent_followups = []
+
+    class FollowupClient:
+        def __init__(self, incoming_handles):
+            self.incoming_handles = incoming_handles
+
+        async def get_entity(self, ref):
+            return SimpleNamespace(id=ref, username=str(ref))
+
+        async def get_messages(self, peer, limit=5):
+            if peer.username in self.incoming_handles:
+                return [SimpleNamespace(out=False, date=utcnow())]
+            return [SimpleNamespace(out=True, date=utcnow() - timedelta(hours=40))]
+
+        async def send_message(self, peer, text, link_preview=False):
+            sent_followups.append((peer.username, text))
+            return SimpleNamespace(id=77)
+
+    async with SessionLocal() as session:
+        await session.execute(delete(OutreachLead))
+        session.add_all([
+            OutreachLead(
+                yandex_org_id="fu_a",
+                company_name="Барбер Альфа",
+                tg_username="alpha_user",
+                status="sent",
+                is_opened=True,
+                opened_at=utcnow() - timedelta(hours=26),
+                sent_at=utcnow() - timedelta(hours=30),
+                followup_step=0,
+            ),
+            OutreachLead(
+                yandex_org_id="fu_b",
+                company_name="Студия Бета",
+                tg_username="beta_user",
+                status="sent",
+                is_opened=False,
+                sent_at=utcnow() - timedelta(hours=75),
+                followup_step=0,
+            ),
+            OutreachLead(
+                yandex_org_id="fu_replied",
+                company_name="Салон Гамма",
+                tg_username="gamma_user",
+                status="sent",
+                is_opened=True,
+                opened_at=utcnow() - timedelta(hours=30),
+                sent_at=utcnow() - timedelta(hours=32),
+                followup_step=0,
+            ),
+            OutreachLead(
+                yandex_org_id="fu_ignored",
+                company_name="Детейлинг Дельта",
+                tg_username="delta_user",
+                status="followed_up",
+                last_followup_at=utcnow() - timedelta(days=8),
+                has_reply=False,
+            ),
+        ])
+        await session.commit()
+
+    fu_client = FollowupClient(incoming_handles={"gamma_user"})
+    monkeypatch.setattr(outreach_worker, "_get_userbot_client", AsyncMock(return_value=fu_client))
+    count_fu = await outreach_worker.process_outreach_followups(max_sends=5, delay_range=(0.0, 0.0))
+    assert count_fu == 2
+
+    sent_map = dict(sent_followups)
+    assert "заглянули на демо-концепт" in sent_map["alpha_user"]
+    assert "освобождаю поддомен" in sent_map["beta_user"]
+    assert "gamma_user" not in sent_map
+
+    async with SessionLocal() as session:
+        a_row = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "fu_a"))
+        b_row = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "fu_b"))
+        g_row = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "fu_replied"))
+        d_row = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "fu_ignored"))
+        assert a_row.status == "followed_up" and a_row.followup_step == 1
+        assert b_row.status == "followed_up" and b_row.followup_step == 1
+        assert g_row.status == "replied" and g_row.has_reply is True
+        assert d_row.status == "ignored"
+
+        # 5. Shared daily limit (12/day total across sent + followups) blocks further sends
+        for idx in range(10):
+            session.add(
+                OutreachLead(
+                    yandex_org_id=f"cap_{idx}",
+                    company_name=f"Biz {idx}",
+                    status="sent",
+                    sent_at=utcnow(),
+                )
+            )
+        session.add(
+            OutreachLead(
+                yandex_org_id="cap_pending_fu",
+                company_name="Pending Followup",
+                tg_username="pending_u",
+                status="sent",
+                is_opened=True,
+                opened_at=utcnow() - timedelta(hours=30),
+                sent_at=utcnow() - timedelta(hours=35),
+                followup_step=0,
+            )
+        )
+        await session.commit()
+
+    assert await outreach_worker.process_outreach_followups(max_sends=5, delay_range=(0.0, 0.0)) == 0
+
+    async with SessionLocal() as session:
+        await session.execute(delete(OutreachLead))
+        await session.execute(delete(DemoSite))
+        await session.execute(delete(Lead))
+        await session.commit()
+    await outreach_worker.set_autonomous_enabled(False)
