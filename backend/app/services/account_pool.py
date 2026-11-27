@@ -519,8 +519,8 @@ class AccountPool:
             account.phone = me.phone or account.phone
 
             # Send message to @SpamBot to check limitations
-            status_text = "Активен, ограничений нет"
-            status = "active"
+            status_text = "Не удалось определить ограничения через @SpamBot"
+            status = "unknown"
             try:
                 await client.send_message("@SpamBot", "/start")
                 await asyncio.sleep(2.0)
@@ -534,6 +534,7 @@ class AccountPool:
                         or "free as a bird" in resp
                     ):
                         status = "active"
+                        status_text = "Активен, ограничений нет"
                     elif (
                         "к сожалению" in resp
                         or "ограничен" in resp
@@ -546,6 +547,8 @@ class AccountPool:
             except Exception as sb_err:
                 logger.info("SpamBot check skipped/failed: %s", sb_err)
 
+            if status == "unknown":
+                return {"status": status, "info": status_text, "user": me.first_name}
             account.status = status
             if status == "active":
                 account.flood_until = None

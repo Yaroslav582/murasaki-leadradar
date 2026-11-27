@@ -288,8 +288,8 @@ class OutreachWorker:
             due = acc.flood_until
             if due is not None and due.tzinfo is None:
                 due = due.replace(tzinfo=timezone.utc)
-            # Hard flood-wait is still running — respect it, don't even probe.
-            if acc.status == "floodwait" and due is not None and due > now:
+            # Persist the probe schedule across worker restarts as well.
+            if due is not None and due > now:
                 continue
             last = self._last_recovery_probe.get(acc.id)
             if last is not None and last.tzinfo is None:
@@ -393,7 +393,10 @@ class OutreachWorker:
                 )
                 if acc is None:
                     # Everything is parked: re-check via @SpamBot and resume if the limit lifted.
-                    acc = await self._probe_limited_account(db)
+                    if await self._probe_limited_account(db):
+                        acc = await account_pool.get_available_account(
+                            db, max_daily_outreach=int(settings.outreach_account_daily_limit)
+                        )
                 if not acc or not acc.session_string:
                     logger.warning(
                         "Autonomous outreach: no usable account in pool (all are parked by Telegram)"
@@ -1270,7 +1273,9 @@ class OutreachWorker:
             parked_id = self._userbot_account_id
             if persistent:
                 try:
-                    await account_pool.mark_spam_limited(session, parked_id, hours=24)
+                    await account_pool.mark_spam_limited(
+                        session, parked_id, hours=max(1, int(settings.outreach_peer_flood_probe_hours))
+                    )
                 except Exception as park_exc:
                     logger.debug("Could not park limited account: %s", park_exc)
                 self._last_recovery_probe[parked_id] = utcnow()
@@ -1299,7 +1304,10 @@ class OutreachWorker:
                     db, max_daily_outreach=int(settings.outreach_account_daily_limit)
                 )
                 if nxt is None:
-                    nxt = await self._probe_limited_account(db)
+                    if await self._probe_limited_account(db):
+                        nxt = await account_pool.get_available_account(
+                            db, max_daily_outreach=int(settings.outreach_account_daily_limit)
+                        )
                 next_available = nxt is not None
         except Exception as probe_exc:
             logger.debug("Account availability check failed: %s", probe_exc)
