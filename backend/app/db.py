@@ -177,11 +177,13 @@ async def init_db() -> None:
             "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS followup_step INTEGER DEFAULT 0;",
             "ALTER TABLE dialogs ADD COLUMN IF NOT EXISTS next_followup_at TIMESTAMPTZ;",
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS style VARCHAR(64);",
+            "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS brand_color VARCHAR(16);",
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS slug VARCHAR(160);",
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_demo_sites_slug ON demo_sites (slug);",
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0;",
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS last_viewed_at TIMESTAMPTZ;",
             "ALTER TABLE demo_sites ADD COLUMN IF NOT EXISTS preview_image_url VARCHAR(500);",
+            "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS brand_color VARCHAR(16);",
             "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source VARCHAR(32) DEFAULT 'telegram';",
             "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source_url VARCHAR(500);",
             "ALTER TABLE telegram_chat_targets ADD COLUMN IF NOT EXISTS cooldown_minutes INTEGER DEFAULT 120;",
@@ -308,6 +310,7 @@ async def init_db() -> None:
                     new_demo_cols = [
                         ("slug", "VARCHAR(160)"),
                         ("style", "VARCHAR(64)"),
+                        ("brand_color", "VARCHAR(16)"),
                         ("views_count", "INTEGER DEFAULT 0"),
                         ("last_viewed_at", "DATETIME"),
                         ("preview_image_url", "VARCHAR(500)"),
@@ -315,6 +318,12 @@ async def init_db() -> None:
                     for col_name, col_def in new_demo_cols:
                         if col_name not in existing_demo_cols:
                             sync_conn.exec_driver_sql(f"ALTER TABLE demo_sites ADD COLUMN {col_name} {col_def}")
+
+                # outreach_leads
+                res = sync_conn.exec_driver_sql("PRAGMA table_info(outreach_leads)").fetchall()
+                existing_ol_cols = {row[1] for row in res}
+                if existing_ol_cols and "brand_color" not in existing_ol_cols:
+                    sync_conn.exec_driver_sql("ALTER TABLE outreach_leads ADD COLUMN brand_color VARCHAR(16)")
                     try:
                         sync_conn.exec_driver_sql(
                             "CREATE UNIQUE INDEX IF NOT EXISTS ix_demo_sites_slug ON demo_sites (slug)"

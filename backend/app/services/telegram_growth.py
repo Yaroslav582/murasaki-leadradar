@@ -152,12 +152,19 @@ class GrowthManager:
                         status_str = "online"
                     elif isinstance(status, UserStatusRecently):
                         status_str = "recently"
+                    elif isinstance(status, UserStatusOffline):
+                        was_online = getattr(status, "was_online", None)
+                        if was_online:
+                            if was_online.tzinfo is None:
+                                was_online = was_online.replace(tzinfo=timezone.utc)
+                            if (utcnow() - was_online).total_seconds() <= 5 * 86400:
+                                status_str = "active_offline"
                     elif isinstance(status, UserStatusLastWeek):
                         status_str = "last_week"
                     elif isinstance(status, UserStatusLastMonth):
                         status_str = "last_month"
 
-                    if only_active and status_str not in ("online", "recently"):
+                    if only_active and status_str not in ("online", "recently", "active_offline"):
                         continue
 
                     is_premium = bool(getattr(user, "premium", False))

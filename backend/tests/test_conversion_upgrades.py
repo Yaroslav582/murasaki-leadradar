@@ -825,7 +825,8 @@ async def test_channel_admin_extraction_and_outreach_filtering(monkeypatch):
             self.called_requests.append(req)
             raise AssertionError("ImportContactsRequest must not be called for channels")
 
-    admin_user = User(id=777111, username="anna_manager", bot=False)
+    from telethon.tl.types import UserStatusRecently
+    admin_user = User(id=777111, username="anna_manager", bot=False, status=UserStatusRecently())
 
     async def fake_scrape_with_admin(username, limit_photos=0):
         return {"avatar_url": None, "photos": [], "admin_username": "anna_manager"}
@@ -937,3 +938,138 @@ async def test_outreach_account_daily_budget_and_reset():
 
         await session.execute(delete(TgAccount))
         await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_brand_color_extraction_pitch_and_activity_filter(monkeypatch):
+    import io
+    from datetime import timedelta
+    from PIL import Image
+    from telethon.tl.types import (
+        User,
+        UserStatusLastMonth,
+        UserStatusOffline,
+        UserStatusOnline,
+        UserStatusRecently,
+    )
+
+    from app.models import OutreachLead, utcnow
+    from app.services.brand_color import (
+        extract_brand_color_from_bytes,
+        fallback_brand_color,
+        relative_luminance,
+        resolve_lead_brand_color,
+    )
+    from app.services.landing import build_outreach, render_jinja_demo
+    from app.services.outreach_worker import OutreachWorker
+
+    # 1. Image with white background + vivid yellow accent -> ignores white & darkens for contrast
+    img = Image.new("RGB", (80, 80), (255, 255, 255))
+    for x in range(20, 60):
+        for y in range(20, 60):
+            img.putpixel((x, y), (250, 220, 40))  # bright yellow
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    extracted = extract_brand_color_from_bytes(buf.getvalue())
+    assert extracted is not None
+    assert extracted.startswith("#")
+    assert relative_luminance(extracted) <= 0.28  # darkened cleanly for white button text
+
+    # Monochrome grayscale image returns None -> niche fallback kicks in
+    gray_img = Image.new("RGB", (60, 60), (140, 140, 140))
+    gray_buf = io.BytesIO()
+    gray_img.save(gray_buf, format="PNG")
+    assert extract_brand_color_from_bytes(gray_buf.getvalue()) is None
+
+    assert fallback_brand_color("Кофейня") == "#8B3A2B"
+    assert fallback_brand_color("Автосервис") == "#D32F2F"
+    assert fallback_brand_color("Салон красоты") == "#2E6F65"
+    assert fallback_brand_color("Стоматология") == "#1976D2"
+    assert fallback_brand_color("Консалтинг") == "#2563EB"
+
+    # Telethon profile photo BytesIO resolution
+    class FakeTgClient:
+        async def download_profile_photo(self, entity, file=None):
+            file.write(buf.getvalue())
+            return file
+
+    ext_col, final_col = await resolve_lead_brand_color(
+        client=FakeTgClient(),
+        peer_entity=object(),
+        category="Кофейня",
+    )
+    assert ext_col == extracted
+    assert final_col == extracted
+
+    # 2. Landing template receives --brand-accent, --brand-accent-hover, --brand-accent-soft
+    html_code = render_jinja_demo(
+        template_id="clean_swiss_trust",
+        business_dict={
+            "name": "Кофе Ботаника",
+            "category": "Кофейня",
+            "city": "Краснодар",
+            "brand_color": "#8B3A2B",
+            "hero_product": [],
+            "interior_photos": [],
+        },
+        content_json={
+            "hero_title": "Кофе Ботаника",
+            "hero_subtitle": "Свежая обжарка",
+            "services": [{"category": "Кофе", "name": "Капучино", "price": "250 ₽"}],
+        },
+        hero_image="",
+        gallery_photos=[],
+    )
+    assert "--brand-accent: #8B3A2B;" in html_code
+    assert "--brand-accent-hover:" in html_code
+    assert "--brand-accent-soft: rgba(139, 58, 43, 0.12);" in html_code
+
+    # 3. Pitch & outreach messages: no 'портфоли' typo, URL on separate line without trailing dot/paren
+    demo_url = "https://murasaki-leadradar-1.onrender.com/demo/kofe-botanika"
+    msg = build_outreach(
+        {"name": "Кофе Ботаника", "category": "Кофейня", "city": "Краснодар", "has_website": False},
+        demo_url,
+    )
+    assert "в портфолио" in msg
+    assert "в портфоли " not in msg and "в портфоли." not in msg
+    assert "в ваших фирменных цветах" in msg
+    assert f"\n{demo_url}\n" in msg
+    assert f"{demo_url}." not in msg and f"{demo_url})" not in msg
+
+    worker = OutreachWorker()
+    item = OutreachLead(company_name="Кофе Ботаника", category="Кофейня", city="Краснодар")
+
+    async def fake_ask_ai(*args, **kwargs):
+        return f"Добрый день! Концепт в ваших фирменных цветах:\n{demo_url}.\nЕсли понравится — за 5 000 ₽ запустим и добавлю в портфолио. Актуально?"
+
+    monkeypatch.setattr("app.services.outreach_worker.ask_ai", fake_ask_ai)
+    pitch = await worker.generate_autonomous_pitch(item, demo_url)
+    assert f"{demo_url}." not in pitch
+    assert f"{demo_url}\n" in pitch
+    assert "в портфолио" in pitch
+
+    # 4. Activity filter: online / recently / <= 5d offline OK; > 5d offline & last_month skipped
+    u_online = User(id=1, username="u_on", bot=False, status=UserStatusOnline(expires=utcnow() + timedelta(minutes=5)))
+    u_recent = User(id=2, username="u_rec", bot=False, status=UserStatusRecently())
+    u_off_ok = User(id=3, username="u_off3", bot=False, status=UserStatusOffline(was_online=utcnow() - timedelta(days=3)))
+    u_off_old = User(id=4, username="u_off12", bot=False, status=UserStatusOffline(was_online=utcnow() - timedelta(days=12)))
+    u_month = User(id=5, username="u_mon", bot=False, status=UserStatusLastMonth())
+
+    assert worker.is_telegram_user_active(u_online)[0] is True
+    assert worker.is_telegram_user_active(u_recent)[0] is True
+    assert worker.is_telegram_user_active(u_off_ok)[0] is True
+    assert worker.is_telegram_user_active(u_off_old)[0] is False
+    assert worker.is_telegram_user_active(u_month)[0] is False
+
+    class ActivityClient:
+        async def get_entity(self, handle):
+            return {"u_off12": u_off_old, "u_rec": u_recent}[handle]
+
+    lead_inactive = OutreachLead(id="l1", company_name="Old", tg_username="u_off12")
+    ent_dead, _ = await worker.resolve_outreach_contact(ActivityClient(), lead_inactive)
+    assert ent_dead is None
+    assert "Неактивный" in (lead_inactive.error_detail or "")
+
+    lead_active = OutreachLead(id="l2", company_name="Fresh", tg_username="u_rec")
+    ent_ok, _ = await worker.resolve_outreach_contact(ActivityClient(), lead_active)
+    assert ent_ok is u_recent

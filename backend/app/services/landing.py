@@ -1316,7 +1316,15 @@ def render_jinja_demo(
     elif not card_is_dark and _is_light_hex(text_color):
         text_color = "#0F172A"
 
+    from app.services.brand_color import build_brand_css_tokens
+
     accent = colors.get("accent") or "#2563EB"
+    explicit_brand_color = (business_dict.get("brand_color") or "").strip()
+    if explicit_brand_color:
+        accent = explicit_brand_color
+
+    brand_tokens = build_brand_css_tokens(accent)
+    accent = brand_tokens["brand_accent"]
     accent_light = _is_light_hex(accent)
     accent_fg = "#09090B" if accent_light else "#FFFFFF"
     promo_btn_bg = "#09090B" if accent_light else "#FFFFFF"
@@ -1328,6 +1336,9 @@ def render_jinja_demo(
             "bg": bg_color,
             "card": card_color,
             "accent": accent,
+            "brand_accent": brand_tokens["brand_accent"],
+            "brand_accent_hover": brand_tokens["brand_accent_hover"],
+            "brand_accent_soft": brand_tokens["brand_accent_soft"],
             "text": text_color,
             "subtext": colors.get("subtext") or ("#94A3B8" if card_is_dark else "#475569"),
             "badge_bg": colors.get("badge_bg") or ("#1F2433" if is_dark else "#F1F5F9"),
@@ -1583,17 +1594,22 @@ OUTREACH_PROMPT = Template(
 - Сфера: $category
 - Город: $city
 - Наличие сайта: $has_site
-- Ссылка на черновой концепт: $demo_url
+- Ссылка на персональный демо-концепт: $demo_url
 
 Правила:
-1. Приветствие строго «Здравствуйте!» (никаких панибратских «Привет»).
+1. Начни вежливо (например: «Добрый день! Подготовил персональный демо-концепт сайта для «$name» в ваших фирменных цветах:»).
 2. НЕ критикуй клиента («у вас плохой сайт», «клиенты уходят к конкурентам»). Никакого давления и агрессивного спама.
-3. Коротко поясни, что разрабатываешь современные мобильные сайты под ключ для этой сферы бизнеса, помогаешь упаковать услуги и привлекать клиентов через мессенджеры.
-4. Мягкий призыв: если тема актуальна — напишите в ответ, пришлю примеры реальных работ и сориентирую по ценам и срокам.
-5. В конце в скобках или P.S. ненавязчиво упомяни ссылку на черновой концепт: $demo_url.
-6. Заверши пожеланием хорошего дня.
-7. Текст должен быть живым, естественным и лаконичным (до 80-120 слов)."""
+3. Вынеси ссылку $demo_url на ОТДЕЛЬНУЮ строку и НИКОГДА не ставь точку, запятую или скобку сразу после ссылки.
+4. Аккуратно в конце предложи формат: если концепт понравится — за 5 000 ₽ развернуть сайт под ключ на их домене и добавить свежий кейс в портфолио, завершив мягким вопросом на вовлечение (например: «Актуально?»).
+5. Пиши грамотно («в портфолио»), живым естественным языком (до 75-110 слов)."""
 )
+
+
+def _format_clean_outreach_url(text: str, demo_url: str) -> str:
+    """Ensure demo_url has no trailing punctuation glued to it."""
+    if not demo_url or demo_url not in text:
+        return text
+    return re.sub(rf"({re.escape(demo_url)})[.,;:!?)\]]+", r"\1", text)
 
 
 def build_outreach(lead: dict, demo_url: str) -> str:
@@ -1602,32 +1618,17 @@ def build_outreach(lead: dict, demo_url: str) -> str:
     name = lead.get("name") or "ваша компания"
     noun = _business_noun(lead.get("category"))
     plural_gen = BUSINESS_PLURAL_GENITIVE.get(lead.get("category") or "", "локального бизнеса")
-    socials = lead.get("social_links") or {}
-    channel = "Telegram" if socials.get("telegram") else "WhatsApp"
 
     if lead.get("has_website"):
-        lead_context = f"Обратил внимание на ваш бизнес {noun} «{name}» {city_in}."
-        niche_focus = (
-            f"Я занимаюсь созданием и упаковкой современных сайтов для {plural_gen} — "
-            f"помогаю привлекать клиентов из поиска и рекламы, оформлять удобную запись в {channel} с телефона."
-        )
+        lead_context = f"Подготовил персональный демо-концепт обновления сайта для «{name}» ({noun}, {city_in}) в ваших фирменных цветах:"
     else:
-        lead_context = (
-            f"Увидел ваш бизнес {noun} «{name}» {city_in}. "
-            f"Заметил, что у вас пока нет отдельного мобильного сайта."
-        )
-        niche_focus = (
-            f"Я как раз разрабатываю быстрые сайты под ключ для {plural_gen} — с понятным прайсом, "
-            f"онлайн-записью в {channel} и адаптацией под смартфоны, чтобы клиентам было просто обращаться."
-        )
+        lead_context = f"Подготовил персональный демо-концепт сайта для «{name}» ({noun}, {city_in}) в ваших фирменных цветах:"
 
     return (
-        f"Здравствуйте! {lead_context}\n\n"
-        f"{niche_focus}\n\n"
-        f"Если для вас сейчас актуально привлечение новых клиентов — напишите мне в ответ. "
-        f"Если интересно, с радостью пришлю примеры реальных работ и сориентирую по срокам и стоимости.\n\n"
-        f"(Кстати, набросал черновой вариант интерактивного концепта под вас, можно взглянуть здесь: {demo_url})\n\n"
-        f"Хорошего вам дня!"
+        f"Добрый день! {lead_context}\n"
+        f"{demo_url}\n\n"
+        f"Собрал структуру под {plural_gen} с понятным прайсом и удобной записью клиентов с телефона.\n\n"
+        f"Если концепт понравится — за 5 000 ₽ разверну сайт под ключ на вашем домене и добавлю свежий кейс в портфолио. Актуально?"
     )
 
 
@@ -1649,8 +1650,8 @@ async def generate_outreach_message(lead: dict, demo_url: str) -> str:
                 ask_ai(prompt, system_prompt=OUTREACH_SYSTEM, task_type="fast", max_tokens=300, temperature=0.7),
                 timeout=4.0,
             )
-            cleaned = raw.strip().strip('"').strip("'")
-            if cleaned and len(cleaned) > 50:
+            cleaned = _format_clean_outreach_url(raw.strip().strip('"').strip("'"), demo_url)
+            if cleaned and demo_url in cleaned and len(cleaned) > 50:
                 return cleaned
         except Exception:
             pass

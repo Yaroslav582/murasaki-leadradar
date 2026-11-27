@@ -170,11 +170,29 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
     data["rejected_photos"] = rejected
     demo_id = new_id()
 
+    from app.services.brand_color import resolve_lead_brand_color
     from app.services.design_systems import resolve_style_id
     effective_style = resolve_style_id(style, lead.category)
 
+    tg_avatar_url = None
+    tg_link = (data.get("social_links") or {}).get("telegram") if isinstance(data.get("social_links"), dict) else None
+    if tg_link:
+        try:
+            from app.services.telegram_channel_scraper import scrape_telegram_channel
+            tg_info = await scrape_telegram_channel(str(tg_link), limit_photos=0)
+            tg_avatar_url = tg_info.get("avatar_url")
+        except Exception:
+            tg_avatar_url = None
+
+    _, brand_color = await resolve_lead_brand_color(
+        avatar_url=tg_avatar_url or data.get("logo_url"),
+        category=lead.category,
+        business_name=lead.name,
+    )
+    data["brand_color"] = brand_color
+
     async with SessionLocal() as slug_db:
-        demo_slug = await generate_unique_slug(slug_db, lead.name, lead.city)
+        demo_slug = await generate_unique_slug(slug_db, lead.name, item_city := lead.city)
     target_public_url = public_demo_url(demo_slug)
 
     # 3. Generate HTML via structured AI JSON + Jinja2 niche templates
@@ -187,7 +205,7 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
 
     # 4. Save to database in a fresh, isolated transaction (protects against idle connection drops)
     async with SessionLocal() as db:
-        demo_slug = await generate_unique_slug(db, lead.name, lead.city)
+        demo_slug = await generate_unique_slug(db, lead.name, item_city)
         demo = DemoSite(
             id=demo_id,
             lead_id=lead.id,
@@ -197,6 +215,7 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
             message=message,
             published=True,
             style=effective_style,
+            brand_color=brand_color,
         )
         db.add(demo)
         target_lead = await db.get(Lead, lead.id)

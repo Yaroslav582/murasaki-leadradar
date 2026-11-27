@@ -408,6 +408,7 @@ class DemoOut(BaseModel):
     published: bool
     public_url: str = ""
     style: str | None = None
+    brand_color: str | None = None
     views_count: int = 0
     last_viewed_at: datetime | None = None
     preview_image_url: str | None = None

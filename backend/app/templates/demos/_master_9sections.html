@@ -12,13 +12,27 @@
   :root {
     --bg: {{ style.colors.bg }};
     --card: {{ style.colors.card }};
-    --accent: {{ style.colors.accent }};
+    --brand-accent: {{ style.colors.brand_accent or style.colors.accent }};
+    --brand-accent-hover: {{ style.colors.brand_accent_hover or style.colors.accent }};
+    --brand-accent-soft: {{ style.colors.brand_accent_soft or style.colors.badge_bg }};
+    --accent: var(--brand-accent);
     --text: {{ style.colors.text }};
     --subtext: {{ style.colors.subtext }};
     --badge: {{ style.colors.badge_bg }};
     --border: {{ style.border }};
     --alt-bg: {{ style.alt_bg }};
     --accent-fg: {{ style.accent_fg }};
+  }
+  .brand-btn {
+    background-color: var(--brand-accent);
+    color: var(--accent-fg);
+  }
+  .brand-btn:hover {
+    background-color: var(--brand-accent-hover);
+  }
+  .brand-pill {
+    background-color: var(--brand-accent-soft);
+    border-color: var(--brand-accent-soft);
   }
   html { scroll-behavior: smooth; }
   body {
@@ -67,7 +81,7 @@
         {{ business.phone }}
       </a>
       {% endif %}
-      <button type="button" onclick="openBookingModal()" class="rounded-lg px-4 py-2 text-xs font-bold transition hover:opacity-90 cursor-pointer" style="background-color: var(--accent); color: var(--accent-fg);">
+      <button type="button" onclick="openBookingModal()" class="brand-btn rounded-lg px-4 py-2 text-xs font-bold transition cursor-pointer">
         Записаться
       </button>
     </div>
@@ -78,7 +92,7 @@
 <section class="py-16 md:py-24">
   <div class="mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-12">
     <div class="lg:col-span-6 space-y-6">
-      <div class="inline-flex flex-wrap items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold" style="background-color: var(--badge); border-color: var(--border); color: var(--text);">
+      <div class="brand-pill inline-flex flex-wrap items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold" style="color: var(--text);">
         <span>{{ business.category }}</span>
         <span style="color: var(--subtext);">·</span>
         <span>{{ business.city }}</span>
@@ -97,7 +111,7 @@
       </p>
 
       <div class="flex flex-wrap items-center gap-3 pt-2">
-        <button type="button" onclick="openBookingModal()" class="inline-flex h-12 items-center justify-center rounded-xl px-7 text-sm font-bold shadow-lg transition hover:opacity-90 cursor-pointer" style="background-color: var(--accent); color: var(--accent-fg);">
+        <button type="button" onclick="openBookingModal()" class="brand-btn inline-flex h-12 items-center justify-center rounded-xl px-7 text-sm font-bold shadow-lg transition cursor-pointer">
           Записаться онлайн
         </button>
         {% if tel_href %}
@@ -337,7 +351,7 @@
       </div>
 
       <div class="flex flex-wrap gap-3 pt-2">
-        <button type="button" onclick="openBookingModal()" class="rounded-xl px-6 py-3 text-xs font-bold transition hover:opacity-90 cursor-pointer" style="background-color: var(--accent); color: var(--accent-fg);">
+        <button type="button" onclick="openBookingModal()" class="brand-btn rounded-xl px-6 py-3 text-xs font-bold transition cursor-pointer">
           Записаться в 2 шага
         </button>
         <a href="{{ map_url }}" target="_blank" rel="noopener" class="rounded-xl border px-5 py-3 text-xs font-semibold transition hover:opacity-80" style="background-color: var(--card); border-color: var(--border);">

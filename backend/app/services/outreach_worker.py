@@ -553,25 +553,61 @@ class OutreachWorker:
 
     # ── Pipeline Step 3: Resolve Telegram Contact ─────────────────────────────
 
-    async def _find_channel_admin(self, client: Any, channel_username: str) -> Any | None:
-        """Resolve personal admin User from a channel's public t.me preview, or None."""
+    @staticmethod
+    def is_telegram_user_active(entity: Any, max_inactive_days: int = 5) -> tuple[bool, str]:
+        """Verify Telegram account was recently active to avoid burning daily outreach limit on dead accounts."""
+        from telethon.tl.types import (
+            UserStatusEmpty,
+            UserStatusLastMonth,
+            UserStatusLastWeek,
+            UserStatusOffline,
+            UserStatusOnline,
+            UserStatusRecently,
+        )
+
+        status = getattr(entity, "status", None)
+        if isinstance(status, UserStatusOnline):
+            return True, "online"
+        if isinstance(status, UserStatusRecently):
+            return True, "recently"
+        if isinstance(status, UserStatusOffline):
+            was_online = getattr(status, "was_online", None)
+            if was_online is not None:
+                if was_online.tzinfo is None:
+                    was_online = was_online.replace(tzinfo=timezone.utc)
+                age = utcnow() - was_online
+                if age <= timedelta(days=max_inactive_days):
+                    return True, f"offline_{max(0, int(age.days))}d"
+                return False, f"offline_{int(age.days)}d"
+            return False, "offline_unknown"
+        if isinstance(status, UserStatusLastWeek):
+            return False, "last_week"
+        if isinstance(status, UserStatusLastMonth):
+            return False, "last_month"
+        if isinstance(status, UserStatusEmpty) or status is None:
+            return False, "inactive_or_hidden"
+        return False, type(status).__name__
+
+    async def _find_channel_admin(self, client: Any, channel_username: str) -> tuple[Any | None, str | None]:
+        """Resolve personal admin User and channel avatar URL from t.me preview, or (None, avatar)."""
         from telethon.tl.types import User
         from app.services.telegram_channel_scraper import scrape_telegram_channel
 
         info = await scrape_telegram_channel(channel_username, limit_photos=0)
+        channel_avatar = info.get("avatar_url")
         admin_username = info.get("admin_username")
         if not admin_username:
-            return None
+            return None, channel_avatar
         try:
             admin_entity = await client.get_entity(admin_username)
             if isinstance(admin_entity, User) and not getattr(admin_entity, "bot", False):
-                return admin_entity
+                return admin_entity, channel_avatar
         except Exception as exc:
             logger.debug("Admin lookup failed for @%s (from @%s): %s", admin_username, channel_username, exc)
-        return None
+        return None, channel_avatar
 
     async def resolve_outreach_contact(self, client: Any, item: OutreachLead) -> tuple[Any | None, bool]:
-        """Resolve personal Telegram User entity. Returns (entity, imported_as_temp_contact)."""
+        """Resolve active personal Telegram User entity. Returns (entity, imported_as_temp_contact)."""
         from telethon.tl.functions.contacts import DeleteContactsRequest, ImportContactsRequest
         from telethon.tl.types import InputPhoneContact, User
 
@@ -579,15 +615,25 @@ class OutreachWorker:
             try:
                 entity = await client.get_entity(item.tg_username)
                 if isinstance(entity, User) and not getattr(entity, "bot", False):
+                    is_active, reason = self.is_telegram_user_active(entity)
+                    if not is_active:
+                        item.error_detail = f"Неактивный TG-аккаунт ({reason})"
+                        return None, False
                     item.tg_user_id = int(entity.id)
                     item.tg_username = getattr(entity, "username", None) or item.tg_username
                     return entity, False
 
                 # Non-user entity (channel/group) or bot -> try finding personal admin handle
-                admin_entity = await self._find_channel_admin(client, item.tg_username)
+                admin_entity, channel_avatar = await self._find_channel_admin(client, item.tg_username)
                 if admin_entity is not None:
+                    is_active, reason = self.is_telegram_user_active(admin_entity)
+                    if not is_active:
+                        item.error_detail = f"Неактивный админ канала ({reason})"
+                        return None, False
                     item.tg_user_id = int(admin_entity.id)
                     item.tg_username = getattr(admin_entity, "username", None) or item.tg_username
+                    if channel_avatar:
+                        setattr(item, "_channel_avatar_url", channel_avatar)
                     return admin_entity, False
 
                 item.error_detail = "Канал/бот без личного юзернейма админа"
@@ -606,6 +652,14 @@ class OutreachWorker:
             users = getattr(res, "users", []) or []
             for u in users:
                 if isinstance(u, User) and not getattr(u, "bot", False):
+                    is_active, reason = self.is_telegram_user_active(u)
+                    if not is_active:
+                        try:
+                            await client(DeleteContactsRequest(id=users))
+                        except Exception:
+                            pass
+                        item.error_detail = f"Неактивный TG-аккаунт ({reason})"
+                        return None, False
                     item.tg_user_id = int(u.id)
                     if getattr(u, "username", None):
                         item.tg_username = u.username
@@ -622,6 +676,13 @@ class OutreachWorker:
 
     # ── Pipeline Step 5: LLM Pitch Generation ─────────────────────────────────
 
+    @staticmethod
+    def _clean_pitch_url(text: str, demo_url: str) -> str:
+        """Ensure demo_url sits cleanly without trailing punctuation (e.g. '.' or ')')."""
+        if not demo_url or demo_url not in text:
+            return text
+        return re.sub(rf"({re.escape(demo_url)})[.,;:!?)\]]+", r"\1", text)
+
     async def generate_autonomous_pitch(self, item: OutreachLead, demo_url: str) -> str:
         """Generate a short, natural 3-4 sentence developer pitch via TEXT_MODELS_CHAIN."""
         system_prompt = (
@@ -633,12 +694,14 @@ class OutreachWorker:
             f"Компания: {item.company_name}\n"
             f"Ниша: {item.category}\n"
             f"Город: {item.city}\n"
-            f"Ссылка на готовый демо-сайт: {demo_url}\n\n"
-            "Обязательно включи:\n"
-            "1. Упоминание компании и города.\n"
-            "2. Ссылку на персональный демо-концепт.\n"
-            "3. Предложение запустить сайт под ключ на их домене за 5 000 ₽ (собираешь свежие кейсы в портфолио).\n"
-            "4. Короткий контакт/призыв ответить сюда в ЛС или в @Murasaki_website.\n"
+            f"Ссылка на персональный демо-сайт: {demo_url}\n\n"
+            "Обязательно соблюдай правила:\n"
+            "1. Начни вежливо и упомяни персональную стилизацию в фирменных цветах компании (например: "
+            f"«Добрый день! Подготовил персональный демо-концепт сайта для «{item.company_name}» в ваших фирменных цветах:»).\n"
+            "2. Вынеси ссылку на демо-сайт на ОТДЕЛЬНУЮ строку и НИКОГДА не ставь точку, запятую или скобку сразу после URL.\n"
+            "3. В конце используй мягкий призыв к действию с вопросом на вовлечение (например: "
+            "«Если концепт понравится — за 5 000 ₽ разверну сайт под ключ на вашем домене и добавлю свежий кейс в портфолио. Актуально?»).\n"
+            "4. Пиши грамотно (строго «в портфолио»), без воды. При желании отвечать — можно здесь или в @Murasaki_website.\n"
             "Верни ТОЛЬКО готовый текст сообщения."
         )
         try:
@@ -646,23 +709,28 @@ class OutreachWorker:
                 user_prompt,
                 system_prompt=system_prompt,
                 task_type="fast",
-                max_tokens=260,
+                max_tokens=280,
                 temperature=0.65,
             )
             if text and demo_url in text and len(text.strip()) >= 40:
-                return text.strip()
+                return self._clean_pitch_url(text.strip(), demo_url)
         except Exception as exc:
             logger.debug("Autonomous pitch LLM fallback: %s", exc)
 
         return (
-            f"Здравствуйте! Увидел «{item.company_name}» на картах в г. {item.city}, заметил, что у вас пока нет своего сайта. "
-            f"Набросал для вас рабочий демо-концепт с прайсом и записью в мессенджер: {demo_url}\n\n"
-            "Сейчас собираю свежие кейсы в портфолио, поэтому могу доработать и запустить сайт на вашем домене под ключ за 5 000 ₽. "
-            "Если интересно — напишите здесь или в @Murasaki_website."
+            f"Добрый день! Подготовил персональный демо-концепт сайта для «{item.company_name}» ({item.city}) в ваших фирменных цветах:\n"
+            f"{demo_url}\n\n"
+            "Собрал структуру с прайсом и записью клиентов в мессенджер. "
+            "Если концепт понравится — за 5 000 ₽ разверну сайт под ключ на вашем домене и добавлю свежий кейс в портфолио.\n\n"
+            "Актуально? Можно ответить сюда или написать в @Murasaki_website"
         )
 
     async def _prepare_demo(
-        self, session: AsyncSession, item: OutreachLead
+        self,
+        session: AsyncSession,
+        item: OutreachLead,
+        client: Any = None,
+        peer_entity: Any = None,
     ) -> tuple[Lead | None, str | None, str | None, str | None]:
         """Build a landing demo + pitch for a lead, or reuse one from a previous attempt.
 
@@ -680,10 +748,26 @@ class OutreachWorker:
                 logger.info("Autonomous outreach: reusing existing demo for '%s'", item.company_name)
                 return lead_row, item.demo_url, item.message_text, None
 
+        from app.services.brand_color import resolve_lead_brand_color
         from app.services.demos import generate_unique_slug, public_demo_url
         from app.services.design_systems import resolve_style_id
         from app.services.landing import generate_landing_html
         from app.services.media_collector import collect_media
+
+        extracted_color, brand_color = await resolve_lead_brand_color(
+            client=client,
+            peer_entity=peer_entity,
+            avatar_url=getattr(item, "_channel_avatar_url", None),
+            category=item.category,
+            business_name=item.company_name,
+        )
+        item.brand_color = brand_color
+        logger.info(
+            "Outreach brand_color for '%s': %s (%s)",
+            item.company_name,
+            brand_color,
+            "avatar" if extracted_color else "niche_fallback",
+        )
 
         lead_dict = {
             "id": item.id,
@@ -717,6 +801,7 @@ class OutreachWorker:
 
         item.photos = collected_photos[:10]
         lead_dict["photos"] = item.photos
+        lead_dict["brand_color"] = brand_color
         lead_dict["hero_product"] = []
         lead_dict["work_captions"] = {}
         lead_dict["interior_photos"] = []
@@ -778,6 +863,7 @@ class OutreachWorker:
             message=pitch_text,
             published=True,
             style=effective_style,
+            brand_color=brand_color,
         )
         session.add(demo)
         lead_row.demo_id = demo.id
@@ -862,6 +948,23 @@ class OutreachWorker:
                 item.status = "skipped_no_tg"
                 session.add(item)
                 await session.commit()
+                from app.services.logger_service import log_event_bg
+                logger.info(
+                    "Outreach lead '%s' skipped (%s)",
+                    item.company_name,
+                    item.error_detail or "no active tg",
+                )
+                log_event_bg(
+                    "outreach_worker",
+                    f"Лид пропущен: {item.company_name}",
+                    level="INFO",
+                    details={
+                        "lead_id": item.id,
+                        "company": item.company_name,
+                        "status": "skipped_no_tg",
+                        "reason": item.error_detail,
+                    },
+                )
                 return "skipped_no_tg"
 
             # ImportContacts lookup is a Telegram action too — count it against the
@@ -888,7 +991,9 @@ class OutreachWorker:
                 await session.commit()
                 return "skipped_bad_quality"
 
-            lead_row, demo_url, pitch_text, skip_reason = await self._prepare_demo(session, item)
+            lead_row, demo_url, pitch_text, skip_reason = await self._prepare_demo(
+                session, item, client=client, peer_entity=peer_entity
+            )
             if skip_reason or not (demo_url and pitch_text):
                 await _cleanup_temp_contact()
                 item.status = "skipped_bad_quality"
@@ -926,13 +1031,34 @@ class OutreachWorker:
                 self._last_error = None
 
                 from app.services.lead_notifier import lead_notifier
+                from app.services.logger_service import log_event_bg
                 new_sent_count = sent_today + 1
                 tg_label = f"@{item.tg_username}" if item.tg_username else f"id:{item.tg_user_id}"
+                brand_col = item.brand_color or "—"
+                logger.info(
+                    "Outreach sent: company='%s', contact=%s, brand_color=%s, status=sent",
+                    item.company_name,
+                    tg_label,
+                    brand_col,
+                )
+                log_event_bg(
+                    "outreach_worker",
+                    f"Отправлен оффер: {item.company_name}",
+                    level="INFO",
+                    details={
+                        "lead_id": item.id,
+                        "company": item.company_name,
+                        "tg_username": item.tg_username,
+                        "brand_color": brand_col,
+                        "demo_url": demo_url,
+                        "status": "sent",
+                    },
+                )
                 account_line = f"\n📱 <b>Аккаунт:</b> <code>{html.escape(self._userbot_account_label or '—')}</code>"
                 report = (
                     "📨 <b>Авто-аутрич: сообщение отправлено</b>\n"
                     f"🏢 <b>Компания:</b> {html.escape(item.company_name)} ({html.escape(item.city)})\n"
-                    f"🏷 <b>Ниша:</b> {html.escape(item.category)}\n"
+                    f"🏷 <b>Ниша:</b> {html.escape(item.category)} · 🎨 <code>{html.escape(brand_col)}</code>\n"
                     f"👤 <b>Контакт:</b> <code>{html.escape(tg_label)}</code>{account_line}\n"
                     f"🔗 <b>Демо:</b> {html.escape(demo_url)}\n"
                     f"📊 <b>Лимит за сегодня:</b> {new_sent_count}/{daily_limit}"

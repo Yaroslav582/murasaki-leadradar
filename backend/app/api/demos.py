@@ -172,6 +172,24 @@ async def _rebuild_demo_impl(demo_id: str, session: AsyncSession) -> DemoOut:
     data["interior_photos"] = interior
     data["rejected_photos"] = rejected
 
+    from app.services.brand_color import resolve_lead_brand_color
+    tg_avatar_url = None
+    tg_link = (data.get("social_links") or {}).get("telegram") if isinstance(data.get("social_links"), dict) else None
+    if tg_link:
+        try:
+            from app.services.telegram_channel_scraper import scrape_telegram_channel
+            tg_info = await scrape_telegram_channel(str(tg_link), limit_photos=0)
+            tg_avatar_url = tg_info.get("avatar_url")
+        except Exception:
+            tg_avatar_url = None
+
+    _, brand_color = await resolve_lead_brand_color(
+        avatar_url=tg_avatar_url or data.get("logo_url"),
+        category=lead.category,
+        business_name=lead.name,
+    )
+    data["brand_color"] = brand_color
+
     effective_style = resolve_style_id(demo.style, lead.category)
     target_public_url = public_demo_url(demo.slug or demo.id)
     html_code, _engine = await generate_landing_html(
@@ -181,6 +199,7 @@ async def _rebuild_demo_impl(demo_id: str, session: AsyncSession) -> DemoOut:
     )
 
     demo.html = html_code
+    demo.brand_color = brand_color
     demo.updated_at = utcnow()
     session.add(demo)
     session.add(lead)

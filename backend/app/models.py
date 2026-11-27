@@ -64,6 +64,7 @@ class DemoSite(Base):
     message: Mapped[str] = mapped_column(Text, default="")
     published: Mapped[bool] = mapped_column(Boolean, default=True)
     style: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    brand_color: Mapped[str | None] = mapped_column(String(16), nullable=True, default=None)
     views_count: Mapped[int] = mapped_column(Integer, default=0)
     last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     preview_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -384,6 +385,7 @@ class OutreachLead(Base):
     photos: Mapped[list] = mapped_column(JSON, default=list)
     demo_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     demo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    brand_color: Mapped[str | None] = mapped_column(String(16), nullable=True, default=None)
     # queued | demo_generated | sent | skipped_no_tg | skipped_bad_quality | error
     status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
     message_text: Mapped[str | None] = mapped_column(Text, nullable=True)
