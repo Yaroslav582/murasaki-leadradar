@@ -1052,6 +1052,16 @@ async def test_brand_color_extraction_pitch_and_activity_filter(monkeypatch):
     assert f"{demo_url}\n" in pitch
     assert "в портфолио" in pitch
 
+    async def failing_ask_ai(*args, **kwargs):
+        raise RuntimeError("fallback check")
+
+    monkeypatch.setattr("app.services.outreach_worker.ask_ai", failing_ask_ai)
+    fallback_pitch = await worker.generate_autonomous_pitch(item, demo_url)
+    assert "5 000" not in fallback_pitch
+    assert "@Murasaki_website" not in fallback_pitch
+    assert "что бы добавили или убрали?" in fallback_pitch
+    assert f"\n{demo_url}\n" in fallback_pitch
+
     # 4. Activity filter: online / recently / <= 5d offline OK; > 5d offline & last_month skipped
     u_online = User(id=1, username="u_on", bot=False, status=UserStatusOnline(expires=utcnow() + timedelta(minutes=5)))
     u_recent = User(id=2, username="u_rec", bot=False, status=UserStatusRecently())
