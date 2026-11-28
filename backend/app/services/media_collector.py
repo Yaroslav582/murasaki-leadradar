@@ -363,7 +363,7 @@ async def _fetch_yandex_org_gallery(source_id: str | None, limit: int = 8) -> li
     oid = str(source_id or "").strip()
     if not oid or not oid.isdigit():
         return []
-    url = f"https://yandex.ru/maps/org/{oid}/gallery/"
+    url = f"https://yandex.ru/maps/org/org/{oid}/gallery/"
     headers = {
         "User-Agent": sample_user_agents(settings.user_agent_list),
         "Accept-Language": "ru-RU,ru;q=0.9",
@@ -375,8 +375,18 @@ async def _fetch_yandex_org_gallery(source_id: str | None, limit: int = 8) -> li
             resp = await client.get(url)
             if resp.status_code != 200 or "captcha" in resp.text.lower()[:2000]:
                 return []
-            for m in re.finditer(r"https://avatars\.mds\.yandex\.net/get-altay/\d+/[A-Za-z0-9_-]+/(?:orig|XXL|XL|L)", resp.text):
-                u = m.group(0)
+            pattern = r"(?:https?:)?//avatars\.mds\.yandex\.net/(?:get-altay|get-tycoon|get-zen_doc|get-sprav-products)/[^\s\"'<>]+"
+            for m in re.finditer(pattern, resp.text):
+                u = m.group(0).rstrip("),;\\")
+                if u.startswith("//"):
+                    u = "https:" + u
+                try:
+                    from app.providers.yandex_web import _format_yandex_photo_url, _is_yandex_photo_junk
+                    u = _format_yandex_photo_url(u)
+                    if not u or _is_yandex_photo_junk(u):
+                        continue
+                except Exception:
+                    continue
                 if u not in found:
                     found.append(u)
                 if len(found) >= limit:
@@ -414,7 +424,7 @@ async def collect_media(lead_dict: dict[str, Any], max_items: int = 12) -> dict[
             seen.add(p)
             collected.append(p)
 
-    if len(collected) < 4 and lead_dict.get("source_id"):
+    if len(collected) < max_items and lead_dict.get("source_id") and lead_dict.get("source") in ("yandex", "yandex_web"):
         for gp in await _fetch_yandex_org_gallery(lead_dict.get("source_id"), limit=max_items):
             if gp not in seen and not is_trash_or_screenshot(gp):
                 seen.add(gp)
@@ -452,26 +462,27 @@ async def collect_media(lead_dict: dict[str, Any], max_items: int = 12) -> dict[
     combined = list(persisted)
 
     # ── 5. Granular sub-niche Fallback (if real photos < 2) ──────────────────
-    if len(combined) < 2:
+    if not real_photos:
         fallback_data = get_niche_fallback(
             category,
             business_name=lead_dict.get("name"),
             services=lead_dict.get("services"),
         )
-        if not logo_url and fallback_data.get("hero"):
-            logo_url = fallback_data["hero"]
-
         if fallback_data.get("hero") and fallback_data["hero"] not in combined:
             combined.append(fallback_data["hero"])
 
         for g in fallback_data.get("gallery", []):
             if g not in combined and len(combined) < max_items:
                 combined.append(g)
+        logger.info(
+            "No real Yandex Maps or linked business photos found for %s (source_id=%s); using niche stock fallback",
+            lead_dict.get("name") or "<unnamed>", lead_dict.get("source_id") or "<none>",
+        )
 
     return {
         "photos": combined[:max_items],
         "real_photos": real_photos[:max_items],
-        "logo_url": logo_url or (combined[0] if combined else None),
+        "logo_url": logo_url or (real_photos[0] if real_photos else None),
         "count": len(combined),
     }
 

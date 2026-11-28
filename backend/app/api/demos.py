@@ -126,7 +126,7 @@ async def refine_demo_singular(
 async def _rebuild_demo_impl(demo_id: str, session: AsyncSession) -> DemoOut:
     """Re-collect media, re-run sub-niche Vision photo sorting, and rebuild demo HTML."""
     from app.services.ai_router import sort_business_photos
-    from app.services.demos import lead_to_dict, public_demo_url
+    from app.services.demos import _refresh_yandex_details, lead_to_dict, public_demo_url
     from app.services.design_systems import resolve_style_id
     from app.services.landing import generate_landing_html
     from app.services.media_collector import collect_media
@@ -139,6 +139,7 @@ async def _rebuild_demo_impl(demo_id: str, session: AsyncSession) -> DemoOut:
     if lead is None:
         raise HTTPException(status_code=404, detail="Связанный лид не найден")
 
+    await _refresh_yandex_details(lead)
     data = lead_to_dict(lead)
     media_res = await collect_media(data, max_items=12)
     real_photos = media_res.get("real_photos") or []
@@ -166,6 +167,7 @@ async def _rebuild_demo_impl(demo_id: str, session: AsyncSession) -> DemoOut:
             pass
 
     lead.photos = collected_photos
+    lead.yandex_reviews = data.get("yandex_reviews") or []
     data["photos"] = collected_photos
     data["hero_product"] = hp
     data["work_captions"] = work_captions

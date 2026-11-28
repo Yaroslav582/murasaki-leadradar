@@ -23,6 +23,7 @@ class PlaceResult:
     source: str = "demo"
     source_id: str | None = None
     photos: list[str] = field(default_factory=list)
+    yandex_reviews: list[dict] = field(default_factory=list)
     logo_url: str | None = None
 
     @property

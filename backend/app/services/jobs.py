@@ -64,6 +64,15 @@ async def save_places(
                     if ph not in current_photos:
                         current_photos.append(ph)
                 existing.photos = current_photos[:10]
+            if place.yandex_reviews:
+                current_reviews = list(existing.yandex_reviews or [])
+                review_keys = {(r.get("author"), r.get("text")) for r in current_reviews if isinstance(r, dict)}
+                for review in place.yandex_reviews:
+                    key = (review.get("author"), review.get("text"))
+                    if key not in review_keys:
+                        current_reviews.append(review)
+                        review_keys.add(key)
+                existing.yandex_reviews = current_reviews[:12]
             if place.logo_url and not existing.logo_url:
                 existing.logo_url = place.logo_url
             session.add(existing)
@@ -91,6 +100,7 @@ async def save_places(
             source_id=place.source_id,
             status="new",
             photos=list(place.photos or []),
+            yandex_reviews=list(place.yandex_reviews or []),
             logo_url=place.logo_url,
         )
         session.add(lead)

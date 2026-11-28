@@ -63,6 +63,7 @@ class LeadOut(BaseModel):
     demo_id: str | None = None
     demo_url: str | None = None
     photos: list = Field(default_factory=list)
+    yandex_reviews: list = Field(default_factory=list)
     logo_url: str | None = None
     site_audit: dict = Field(default_factory=dict)
     enriched_at: datetime | None = None

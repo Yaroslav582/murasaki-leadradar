@@ -26,6 +26,47 @@ _CYRILLIC_MAP = {
 }
 
 
+async def _refresh_yandex_details(lead: Lead) -> None:
+    """Fetch full public gallery and review cards when search result data is incomplete."""
+    if lead.source not in ("yandex", "yandex_web") or not str(lead.source_id or "").isdigit():
+        return
+    if len(lead.photos or []) >= 8 and lead.yandex_reviews:
+        return
+    try:
+        from app.providers.yandex_web import fetch_yandex_org_details
+
+        details = await asyncio.wait_for(
+            fetch_yandex_org_details(lead.source_id, lead.city or "", lead.category or ""),
+            timeout=35.0,
+        )
+        if details is None:
+            return
+        photos = list(lead.photos or [])
+        for photo in details.photos or []:
+            if photo not in photos:
+                photos.append(photo)
+        if photos:
+            lead.photos = photos[:12]
+        reviews = list(lead.yandex_reviews or [])
+        review_keys = {
+            (str(item.get("author") or "").casefold(), str(item.get("text") or "").casefold())
+            for item in reviews if isinstance(item, dict)
+        }
+        for review in details.yandex_reviews or []:
+            key = (str(review.get("author") or "").casefold(), str(review.get("text") or "").casefold())
+            if key not in review_keys:
+                reviews.append(review)
+                review_keys.add(key)
+        if reviews:
+            lead.yandex_reviews = reviews[:12]
+        logger.info(
+            "Refreshed Yandex Maps details for %s: photos=%d reviews=%d",
+            lead.name, len(details.photos or []), len(details.yandex_reviews or []),
+        )
+    except Exception as exc:
+        logger.info("Could not refresh Yandex Maps details for %s: %s", lead.name, exc)
+
+
 def transliterate_slug(name: str, city: str = "") -> str:
     """Build a clean ASCII kebab-case slug from business name and city."""
     raw = f"{name or ''} {city or ''}".strip().lower()
@@ -95,6 +136,7 @@ def lead_to_dict(lead: Lead) -> dict:
         "latitude": lead.latitude,
         "longitude": lead.longitude,
         "photos": list(getattr(lead, "photos", []) or []),
+        "yandex_reviews": list(getattr(lead, "yandex_reviews", []) or []),
         "logo_url": getattr(lead, "logo_url", None),
     }
 
@@ -116,6 +158,7 @@ def demo_out(demo: DemoSite) -> DemoOut:
 
 
 async def create_demo(session: AsyncSession, lead: Lead, style: str | None = None) -> DemoSite:
+    await _refresh_yandex_details(lead)
     lead_dict = lead_to_dict(lead)
 
     # 1. Cascading media collection (Yandex Maps + TG Channel + TG Profile + Persistence + Niche fallback)
@@ -223,6 +266,8 @@ async def create_demo(session: AsyncSession, lead: Lead, style: str | None = Non
             target_lead.demo_id = demo.id
             if getattr(lead, "photos", None):
                 target_lead.photos = lead.photos
+            if getattr(lead, "yandex_reviews", None):
+                target_lead.yandex_reviews = lead.yandex_reviews
             if getattr(lead, "logo_url", None):
                 target_lead.logo_url = lead.logo_url
             db.add(target_lead)

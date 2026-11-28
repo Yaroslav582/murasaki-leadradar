@@ -1257,9 +1257,12 @@ class OutreachWorker:
             "OUTREACH_SESSION_STRING" if self._userbot_uses_env_session else "unknown"
         )
 
-        # Keep the lead queued: it was not sent, another attempt will pick it up.
+        # Keep the lead queued, but move it behind the other leads. Otherwise the
+        # oldest queued row is selected again after every cooldown and the worker
+        # never gets to the rest of the queue when Telegram rejects that recipient.
         item.status = "queued"
         item.error_detail = f"PeerFloodError ({stage}): {detail}"
+        item.created_at = utcnow()
         session.add(item)
         await session.commit()
 

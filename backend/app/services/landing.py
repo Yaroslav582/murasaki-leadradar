@@ -1412,6 +1412,33 @@ def render_jinja_demo(
     safe_content.setdefault("faq", [])
     safe_content.setdefault("promo", None)
 
+    # Display only reviews collected from Yandex Maps; never present LLM text as a testimonial.
+    safe_content["reviews"] = [
+        review for review in (business_dict.get("yandex_reviews") or [])
+        if isinstance(review, dict) and str(review.get("text") or "").strip()
+    ][:6]
+    phone_text = str(safe_business.get("phone") or "").strip()
+    faq_items = [item for item in safe_content.get("faq", []) if isinstance(item, dict)]
+    for item in faq_items:
+        answer = re.sub(r"\b8-800(?:[- ]\d{2,4}){2,4}\b", "", str(item.get("answer") or ""))
+        if phone_text and re.search(r"(?i)телефон|позвон|связаться", str(item.get("question") or "")):
+            answer = f"Позвоните по номеру {phone_text}."
+        item["answer"] = answer.strip()
+    if phone_text and not any(
+        re.search(r"(?i)телефон|позвон|связаться", str(item.get("question") or "")) for item in faq_items
+    ):
+        faq_items.append({"question": "Как связаться по телефону?", "answer": f"Позвоните по номеру {phone_text}."})
+    safe_content["faq"] = faq_items
+
+    is_food_business = bool(re.search(r"(?i)caf[eé]|restaurant|coffee|кафе|ресторан|кофейн|пекарн|столов", category))
+    if not is_food_business and safe_content.get("hero_subtitle"):
+        safe_content["hero_subtitle"] = re.sub(
+            r"\s*(?:[|•,–—-]\s*)?(?:бесплатный\s+)?wi[\s-]?fi\b\.?",
+            "",
+            str(safe_content["hero_subtitle"]),
+            flags=re.I,
+        ).strip()
+
     if not safe_content.get("facts"):
         safe_content["facts"] = [
             {"value": f"{safe_business.get('rating') or 4.9} ★", "label": "Рейтинг на картах"},
@@ -1442,20 +1469,30 @@ def render_jinja_demo(
     ]
 
     all_photos = [
-        u for u in (gallery_photos or [])
+        u for u in ([hero_image] + list(gallery_photos or []) + list(business_dict.get("photos") or []) + raw_hero_product + raw_interior)
         if u and u not in rejected_set and "images.unsplash.com" not in u
     ]
+    all_photos = list(dict.fromkeys(all_photos))
+    business_photos = [url for url in all_photos if "/static/stock/" not in url]
+    has_business_photos = bool(business_photos)
+    if has_business_photos:
+        fb_hero = ""
+        fb_works = []
+        fb_interior = []
     if has_explicit_split:
-        work_urls = list(dict.fromkeys(raw_hero_product)) or fb_works[:3]
+        work_urls = list(dict.fromkeys(raw_hero_product)) or (business_photos[:3] if has_business_photos else fb_works[:3])
         used_works = set(work_urls)
         interior_candidates = [u for u in dict.fromkeys(raw_interior) if u not in used_works]
         interior_urls = (
             interior_candidates
+            or [u for u in business_photos if u not in used_works][:3]
             or [u for u in fb_interior if u not in used_works][:3]
             or fb_interior[:3]
         )
         effective_hero = (
             (raw_hero_product[0] if raw_hero_product else None)
+            or (hero_image if has_business_photos else None)
+            or (all_photos[0] if has_business_photos and all_photos else None)
             or fb_hero
             or (raw_interior[0] if raw_interior else None)
         )
@@ -1465,7 +1502,7 @@ def render_jinja_demo(
             if (hero_image and hero_image not in rejected_set and "images.unsplash.com" not in hero_image and "/static/stock/" not in hero_image)
             else None
         )
-        non_stock_all = [u for u in all_photos if "/static/stock/" not in u]
+        non_stock_all = business_photos
         work_urls = (
             list(dict.fromkeys(([safe_hero_in] if safe_hero_in else []) + non_stock_all[:3]))
             or fb_works[:3]
@@ -1474,6 +1511,7 @@ def render_jinja_demo(
         interior_candidates = [u for u in dict.fromkeys(non_stock_all[3:8]) if u not in used_works]
         interior_urls = (
             interior_candidates
+            or [u for u in all_photos if u not in used_works][:3]
             or [u for u in fb_interior if u not in used_works][:3]
             or fb_interior[:3]
         )
@@ -1543,7 +1581,7 @@ async def generate_landing_html(
     )
     photos = [p for p in (lead.get("photos") or []) if isinstance(p, str) and "images.unsplash.com" not in p]
     hero_img = photos[0] if photos else niche_fallback.get("hero")
-    gallery_imgs = photos[1:7] if len(photos) > 1 else niche_fallback.get("gallery", [])
+    gallery_imgs = photos[1:7] if photos else niche_fallback.get("gallery", [])
 
     # 1. Generate structured JSON from LLM
     try:

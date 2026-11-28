@@ -148,9 +148,11 @@ async def init_db() -> None:
         # CRITICAL: Leads table migrations executed in isolated transactions
         lead_statements = [
             "ALTER TABLE leads ADD COLUMN IF NOT EXISTS photos JSON DEFAULT '[]'::json;",
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS yandex_reviews JSON DEFAULT '[]'::json;",
             "ALTER TABLE leads ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500);",
             "ALTER TABLE leads ADD COLUMN IF NOT EXISTS site_audit JSON DEFAULT '{}'::json;",
             "UPDATE leads SET photos = '[]'::json WHERE photos IS NULL;",
+            "UPDATE leads SET yandex_reviews = '[]'::json WHERE yandex_reviews IS NULL;",
             "UPDATE leads SET site_audit = '{}'::json WHERE site_audit IS NULL;",
         ]
         for stmt in lead_statements:
@@ -219,6 +221,12 @@ async def init_db() -> None:
                             logger.info("Added 'photos' column to SQLite leads table")
                         except Exception as e:
                             logger.debug("Notice adding photos: %s", e)
+                    if "yandex_reviews" not in existing_lead_cols:
+                        try:
+                            sync_conn.exec_driver_sql("ALTER TABLE leads ADD COLUMN yandex_reviews JSON DEFAULT '[]'")
+                            logger.info("Added 'yandex_reviews' column to SQLite leads table")
+                        except Exception as e:
+                            logger.debug("Notice adding yandex_reviews: %s", e)
                     if "logo_url" not in existing_lead_cols:
                         try:
                             sync_conn.exec_driver_sql("ALTER TABLE leads ADD COLUMN logo_url VARCHAR(500)")
@@ -233,6 +241,7 @@ async def init_db() -> None:
                             logger.debug("Notice adding site_audit: %s", e)
                     try:
                         sync_conn.exec_driver_sql("UPDATE leads SET photos = '[]' WHERE photos IS NULL")
+                        sync_conn.exec_driver_sql("UPDATE leads SET yandex_reviews = '[]' WHERE yandex_reviews IS NULL")
                         sync_conn.exec_driver_sql("UPDATE leads SET site_audit = '{}' WHERE site_audit IS NULL")
                     except Exception:
                         pass

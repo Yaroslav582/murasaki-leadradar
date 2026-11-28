@@ -42,6 +42,7 @@ class Lead(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     demo_id: Mapped[str | None] = mapped_column(String(36))
     photos: Mapped[list] = mapped_column(JSON, default=list)
+    yandex_reviews: Mapped[list] = mapped_column(JSON, default=list)
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     site_audit: Mapped[dict] = mapped_column(JSON, default=dict)
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -691,6 +691,7 @@ async def sort_business_photos(
         f"Тебе переданы пронумерованные фотографии от Фото #0 до Фото #{len(target_batch) - 1}.\n\n"
         "ВНИМАТЕЛЬНО ПОСМОТРИ НА КАЖДОЕ ФОТО И РАССОРТИРУЙ ПО ИНДЕКСАМ:\n"
         "1. hero_product (Примеры работ / услуги / продукт / блюда):\n"
+        "Put the highest-quality horizontal business photo first for the wide hero; order the rest by image quality and relevance to the niche.\n"
         "   - СЮДА ТОЛЬКО: готовые результаты работы мастеров (причёска, ногти, машина в боксе), блюда/кофе, товары, процесс оказания услуги.\n"
         "   - ЗАПРЕЩЕНО в hero_product: пустые помещения, улицы, парковки, вывески снаружи, лица клиентов крупным планом, перчатки/расходники!\n"
         "   - Для КАЖДОГО фото в hero_product ОБЯЗАТЕЛЬНО напиши короткую и точную подпись на русском (2–3 слова), "
@@ -832,6 +833,10 @@ async def generate_demo_json(
     except (TypeError, ValueError):
         rating = 4.9
     reviews_count = int(lead_dict.get("reviews_count") or 18)
+    yandex_reviews = [
+        review for review in (lead_dict.get("yandex_reviews") or [])
+        if isinstance(review, dict) and str(review.get("text") or "").strip()
+    ][:6]
 
     # Determine canonical style and template_id
     effective_style = resolve_style_id(requested_style, category)
@@ -851,7 +856,7 @@ async def generate_demo_json(
         "2. Пиши как живой человек: коротко, конкретно, с фактами (что делаем, сколько стоит, где находимся, как записаться). "
         "Без восклицательных знаков и без эмодзи.\n"
         "3. В services укажи 6–8 РЕАЛЬНЫХ конкретных услуг этой ниши, разбитых на 2–3 понятные категории (поле 'category', например 'Популярное', 'Комплексы', 'Дополнительно'), с реалистичными ценами в рублях (например '1 800 ₽' или 'от 2 500 ₽').\n"
-        "4. В reviews сгенерируй 3 реалистичных отзыва на основе ниши и рейтинга точки (разной длины, живым разговорным языком, с обычными именами).\n"
+        "4. Не выдумывай отзывы, имена авторов, даты или оценки. Поле reviews оставь пустым: подлинные отзывы будут добавлены из карточки Яндекс Карт отдельно.\n"
         "5. В faq дай 4–5 реальных вопросов (запись, оплата, гарантия, парковка/адрес).\n"
         f"6. Выбери template_id строго: '{suggested_template}'.\n"
         "7. Верни СТРОГО валидный JSON следующей структуры, без markdown-обёртки:\n"
@@ -915,6 +920,7 @@ async def generate_demo_json(
         address=address,
         rating=rating,
         reviews_count=reviews_count,
+        yandex_reviews=yandex_reviews,
         template_id=suggested_template,
     )
 
@@ -930,8 +936,9 @@ async def generate_demo_json(
         parsed = extract_json_payload(raw_res)
         if isinstance(parsed, dict) and "hero_title" in parsed and "services" in parsed:
             parsed["template_id"] = suggested_template
+            parsed["reviews"] = yandex_reviews
             # Fill any missing 9-section fields from niche fallback
-            for key in ("facts", "usp_list", "promo", "reviews", "faq"):
+            for key in ("facts", "usp_list", "promo", "faq"):
                 if not parsed.get(key):
                     parsed[key] = fallback[key]
             if len(parsed.get("services") or []) < 4:
@@ -940,6 +947,7 @@ async def generate_demo_json(
     except Exception as exc:
         logger.warning("AI landing JSON generation notice: %s. Using deterministic niche profile.", exc)
 
+    fallback["reviews"] = yandex_reviews
     return fallback
 
 
@@ -951,6 +959,7 @@ def _build_niche_fallback(
     address: str,
     rating: float,
     reviews_count: int,
+    yandex_reviews: list[dict[str, Any]] | None = None,
     template_id: str,
 ) -> dict[str, Any]:
     """Build realistic 9-section fallback content tailored by niche without AI cliches."""
