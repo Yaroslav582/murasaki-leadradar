@@ -168,6 +168,8 @@ class Settings(BaseSettings):
     outreach_peer_flood_cooldown_min: int = 15
     # How often a genuinely blocked account is re-checked via @SpamBot.
     outreach_peer_flood_probe_hours: int = 6
+    # Maximum transient send retries per queued lead before marking as error.
+    outreach_lead_max_attempts: int = 5
 
     # AI Auto-Blogger for Telegram Channel
     channel_blog_enabled: bool = True

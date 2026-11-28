@@ -106,7 +106,11 @@ async def get_system_logs(
 
     stmt = select(SystemLog).order_by(SystemLog.created_at.desc()).limit(min(limit, 100))
     if module:
-        stmt = stmt.where(SystemLog.module == module)
+        normalized_module = module.strip().lower()
+        if normalized_module in ("outreach", "outreach_worker"):
+            stmt = stmt.where(SystemLog.module.in_(["outreach", "outreach_worker"]))
+        else:
+            stmt = stmt.where(SystemLog.module == module)
     if level:
         stmt = stmt.where(SystemLog.level == level.upper())
     logs = (await session.scalars(stmt)).all()

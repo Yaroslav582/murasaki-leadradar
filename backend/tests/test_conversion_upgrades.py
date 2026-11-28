@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
 from app.db import SessionLocal
@@ -163,7 +166,8 @@ def test_render_jinja_demo_fixes_title_rating_and_ruble():
     # 9-section interactive blocks
     assert 'id="works"' in html_out
     assert 'id="services"' in html_out
-    assert 'id="reviews"' in html_out
+    # Reviews are shown only when real Yandex Maps reviews were collected.
+    assert 'id="reviews"' not in html_out
     assert 'id="contacts"' in html_out
     assert 'id="booking-modal"' in html_out
     assert "IntersectionObserver" in html_out
@@ -683,8 +687,8 @@ async def test_monochrome_contrast_and_vision_photo_index_sorting(monkeypatch):
     )
     assert "--accent-fg: #09090B;" in html_mono
     assert "background-color: #09090B; color: #FFFFFF;" in html_mono
-    # Empty interior_photos should fall back to clean same-origin sub-niche URLs, not work1.jpg
-    assert "/static/stock/" in html_mono
+    # A real business photo means the renderer must not fill empty sections with stock images.
+    assert "/static/stock/" not in html_mono
     assert "images.unsplash.com" not in html_mono
 
     # 1b. Hair salon with rejected facade photo must use hair sub-niche stock without duplicates
@@ -1333,3 +1337,368 @@ async def test_og_image_view_tracking_smart_followup_and_priority(monkeypatch):
         await session.execute(delete(Lead))
         await session.commit()
     await outreach_worker.set_autonomous_enabled(False)
+
+
+@pytest.mark.asyncio
+async def test_outreach_queue_rotation_uses_next_attempt_at_and_caps_retries(monkeypatch):
+    """PEER_FLOOD rotates via next_attempt_at (preserving created_at) and stops after max_attempts."""
+    from datetime import timedelta, timezone
+    from sqlalchemy import delete, select
+    from telethon.errors import PeerFloodError
+
+    from app.config import settings
+    from app.models import DemoSite, OutreachLead, TgAccount, utcnow
+    from app.services.account_pool import account_pool
+    from app.services.outreach_worker import outreach_worker
+
+    orig_t1 = utcnow() - timedelta(hours=3)
+    orig_t2 = utcnow() - timedelta(hours=2)
+
+    async with SessionLocal() as session:
+        await session.execute(delete(OutreachLead))
+        await session.execute(delete(TgAccount))
+        acc1 = TgAccount(phone="+79990000101", username="rot_acc1", session_string="fake-1", status="active")
+        acc2 = TgAccount(phone="+79990000102", username="rot_acc2", session_string="fake-2", status="active")
+        l1 = OutreachLead(
+            yandex_org_id="rot_1",
+            company_name="Кафе Первое",
+            category="Кофейня",
+            city="Москва",
+            tg_username="cafe_first",
+            status="queued",
+            created_at=orig_t1,
+        )
+        l2 = OutreachLead(
+            yandex_org_id="rot_2",
+            company_name="Кафе Второе",
+            category="Кофейня",
+            city="Москва",
+            tg_username="cafe_second",
+            status="queued",
+            created_at=orig_t2,
+        )
+        session.add_all([acc1, acc2, l1, l2])
+        await session.commit()
+        acc1_id = acc1.id
+
+    monkeypatch.setattr(outreach_worker, "is_in_work_window", lambda now=None: True)
+    monkeypatch.setattr(outreach_worker, "replenish_queue", _noop_replenish)
+    monkeypatch.setattr(outreach_worker, "_spambot_verdict", AsyncMock(return_value="clean"))
+    monkeypatch.setattr("app.services.media_collector.collect_media", AsyncMock(return_value={"photos": ["https://example.com/p1.jpg"], "logo_url": None}))
+    monkeypatch.setattr("app.services.landing.generate_landing_html", AsyncMock(return_value=("<html></html>", "mock")))
+    monkeypatch.setattr(outreach_worker, "generate_autonomous_pitch", AsyncMock(return_value="Hi!"))
+    monkeypatch.setattr("app.services.lead_notifier.lead_notifier.send_admin_text", AsyncMock(return_value=1))
+    monkeypatch.setattr(outreach_worker, "resolve_outreach_contact", AsyncMock(return_value=(object(), False)))
+
+    sent_targets: list[str] = []
+
+    class SwitchClient:
+        def __init__(self, fail: bool):
+            self.fail = fail
+
+        async def send_message(self, peer, text, link_preview=False):
+            if self.fail:
+                raise PeerFloodError(None)
+            sent_targets.append("ok")
+            return SimpleNamespace(id=1)
+
+    settings.outreach_enabled = True
+    outreach_worker._paused_until = None
+    outreach_worker._userbot_account_id = acc1_id
+    outreach_worker._userbot_account_label = "@rot_acc1"
+    outreach_worker._userbot_uses_env_session = False
+
+    monkeypatch.setattr(outreach_worker, "_get_userbot_client", AsyncMock(return_value=SwitchClient(fail=True)))
+    assert await outreach_worker.run_autonomous_step() == "peer_flood"
+
+    async with SessionLocal() as session:
+        row1 = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "rot_1"))
+        assert row1 is not None
+        assert row1.status == "queued"
+        assert row1.attempt_count == 1
+        assert row1.next_attempt_at is not None
+        saved_created = row1.created_at.replace(tzinfo=timezone.utc) if row1.created_at.tzinfo is None else row1.created_at
+        assert abs((saved_created - orig_t1).total_seconds()) < 2
+
+    # Next step runs on acc2 while rot_1 is deferred: rot_2 must be selected next!
+    outreach_worker._paused_until = None
+    monkeypatch.setattr(outreach_worker, "_get_userbot_client", AsyncMock(return_value=SwitchClient(fail=False)))
+    assert await outreach_worker.run_autonomous_step() == "sent"
+    assert sent_targets == ["ok"]
+
+    async with SessionLocal() as session:
+        row2 = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "rot_2"))
+        assert row2 is not None and row2.status == "sent"
+        # Push rot_1 to max_attempts - 1 and reset next_attempt_at -> next PeerFloodError marks it `error`
+        row1 = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "rot_1"))
+        row1.attempt_count = int(settings.outreach_lead_max_attempts) - 1
+        row1.next_attempt_at = utcnow() - timedelta(minutes=1)
+        session.add(row1)
+        await session.commit()
+
+    monkeypatch.setattr(outreach_worker, "_get_userbot_client", AsyncMock(return_value=SwitchClient(fail=True)))
+    assert await outreach_worker.run_autonomous_step() == "peer_flood"
+
+    async with SessionLocal() as session:
+        row1 = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "rot_1"))
+        assert row1 is not None and row1.status == "error"
+        assert row1.next_attempt_at is None
+        await session.execute(delete(OutreachLead))
+        await session.execute(delete(DemoSite))
+        await session.execute(delete(TgAccount))
+        await session.commit()
+    await outreach_worker.set_autonomous_enabled(False)
+
+
+@pytest.mark.asyncio
+async def test_outreach_cooldown_resume_and_single_budget_charge(monkeypatch):
+    """Failed temp-import send must not burn daily_outreach_count, and step resumes cleanly after cooldown."""
+    from datetime import timedelta
+    from sqlalchemy import delete, select
+    from telethon.errors import PeerFloodError
+
+    from app.config import settings
+    from app.models import DemoSite, OutreachLead, TgAccount, utcnow
+    from app.services.account_pool import account_pool
+    from app.services.outreach_worker import outreach_worker
+
+    async with SessionLocal() as session:
+        await session.execute(delete(OutreachLead))
+        await session.execute(delete(TgAccount))
+        acc = TgAccount(
+            phone="+79990000103",
+            username="resume_acc",
+            session_string="valid-session-string",
+            status="active",
+        )
+        lead = OutreachLead(
+            yandex_org_id="resume_1",
+            company_name="Студия Возобновления",
+            category="Бьюти",
+            city="Казань",
+            phone="+79170001122",
+            status="queued",
+        )
+        session.add_all([acc, lead])
+        await session.commit()
+        acc_id = acc.id
+
+    monkeypatch.setattr(outreach_worker, "is_in_work_window", lambda now=None: True)
+    monkeypatch.setattr(outreach_worker, "replenish_queue", _noop_replenish)
+    monkeypatch.setattr(outreach_worker, "_spambot_verdict", AsyncMock(return_value="clean"))
+    monkeypatch.setattr(outreach_worker, "_try_recover_accounts", AsyncMock(return_value=False))
+    monkeypatch.setattr("app.services.media_collector.collect_media", AsyncMock(return_value={"photos": ["https://example.com/p1.jpg"], "logo_url": None}))
+    monkeypatch.setattr("app.services.landing.generate_landing_html", AsyncMock(return_value=("<html></html>", "mock")))
+    monkeypatch.setattr(outreach_worker, "generate_autonomous_pitch", AsyncMock(return_value="Hi!"))
+    monkeypatch.setattr("app.services.lead_notifier.lead_notifier.send_admin_text", AsyncMock(return_value=1))
+    monkeypatch.setattr("asyncio.sleep", AsyncMock(return_value=None))
+
+    async def resolve_temp(client, item):
+        item.tg_user_id = 987654321
+        return SimpleNamespace(id=987654321), True
+
+    monkeypatch.setattr(outreach_worker, "resolve_outreach_contact", resolve_temp)
+
+    class TempClient:
+        def __init__(self, fail: bool):
+            self.fail = fail
+
+        def is_connected(self):
+            return True
+
+        async def connect(self):
+            return None
+
+        async def is_user_authorized(self):
+            return True
+
+        def on(self, event):
+            return lambda fn: fn
+
+        async def send_message(self, peer, text, link_preview=False):
+            if self.fail:
+                raise PeerFloodError(None)
+            return SimpleNamespace(id=9)
+
+        async def __call__(self, req):
+            return None
+
+    settings.outreach_enabled = True
+    monkeypatch.setattr(settings, "outreach_session_string", None)
+    outreach_worker._paused_until = None
+    outreach_worker._userbot_account_id = acc_id
+    outreach_worker._userbot_account_label = "@resume_acc"
+    outreach_worker._userbot_uses_env_session = False
+
+    monkeypatch.setattr(account_pool, "get_client_for_account", AsyncMock(return_value=TempClient(fail=True)))
+    assert await outreach_worker.run_autonomous_step() == "peer_flood"
+
+    # Failed send incremented daily_actions_count (ImportContacts=1), NOT daily_outreach_count (still 0!)
+    async with SessionLocal() as session:
+        acc_row = await session.get(TgAccount, acc_id)
+        assert acc_row.daily_actions_count == 1
+        assert acc_row.daily_outreach_count == 0
+        assert acc_row.flood_until is not None
+
+    # During cooldown: step returns paused, status still shows saved session + flood_until
+    assert await outreach_worker.run_autonomous_step() == "paused"
+    st = await outreach_worker.get_autonomous_status()
+    assert st["session_configured"] is True
+    assert st["account_status"] == "active"
+    assert st["account_flood_until"] is not None
+    assert st["available_accounts"] == 0
+
+    # Expire flood_until while _paused_until is still set -> auto-sync wakes up and succeeds!
+    async with SessionLocal() as session:
+        acc_row = await session.get(TgAccount, acc_id)
+        acc_row.flood_until = utcnow() - timedelta(minutes=1)
+        lead_row = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "resume_1"))
+        lead_row.next_attempt_at = utcnow() - timedelta(minutes=1)
+        session.add_all([acc_row, lead_row])
+        await session.commit()
+
+    monkeypatch.setattr(account_pool, "get_client_for_account", AsyncMock(return_value=TempClient(fail=False)))
+    assert await outreach_worker.run_autonomous_step() == "sent"
+
+    async with SessionLocal() as session:
+        acc_row = await session.get(TgAccount, acc_id)
+        lead_row = await session.scalar(select(OutreachLead).where(OutreachLead.yandex_org_id == "resume_1"))
+        assert acc_row.daily_outreach_count == 1  # charged ONCE on send success, NOT twice!
+        assert lead_row.status == "sent"
+        assert lead_row.error_detail is None  # stale PeerFlood error cleared!
+        await session.execute(delete(OutreachLead))
+        await session.execute(delete(DemoSite))
+        await session.execute(delete(TgAccount))
+        await session.commit()
+    await outreach_worker.set_autonomous_enabled(False)
+
+
+@pytest.mark.asyncio
+async def test_outreach_no_client_status_logs_and_db_error(client, monkeypatch):
+    """Checks session_configured with parked accounts, /api/logs?module=outreach, and DB exception handling."""
+    from sqlalchemy import delete
+
+    from app.config import settings
+    from app.models import OutreachLead, SystemLog, TgAccount
+    from app.services.outreach_worker import outreach_worker
+
+    async with SessionLocal() as session:
+        await session.execute(delete(OutreachLead))
+        await session.execute(delete(TgAccount))
+        await session.execute(delete(SystemLog))
+        acc = TgAccount(phone="+79990000104", username="parked_only", session_string="saved-sess", status="spamblock")
+        lead = OutreachLead(
+            yandex_org_id="no_client_1",
+            company_name="Ателье Тест",
+            category="Ателье",
+            city="Москва",
+            tg_username="atelier_test",
+            status="queued",
+        )
+        log_row = SystemLog(level="INFO", module="outreach_worker", message="Отправлен оффер: Тест", details={"ok": True})
+        session.add_all([acc, lead, log_row])
+        await session.commit()
+
+    # /api/logs?module=outreach must return outreach_worker entries
+    resp = await client.get("/api/logs?module=outreach&limit=10")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1 and data[0]["module"] == "outreach_worker"
+
+    settings.outreach_enabled = True
+    monkeypatch.setattr(settings, "outreach_session_string", None)
+    outreach_worker._paused_until = None
+    outreach_worker._userbot_account_id = None
+    outreach_worker._last_error = None
+    monkeypatch.setattr(outreach_worker, "is_in_work_window", lambda now=None: True)
+    monkeypatch.setattr(outreach_worker, "replenish_queue", _noop_replenish)
+    monkeypatch.setattr(outreach_worker, "_probe_limited_account", AsyncMock(return_value=None))
+
+    assert await outreach_worker.run_autonomous_step() == "no_client"
+    assert "spamblock" in str(outreach_worker._last_error).lower()
+
+    st = await outreach_worker.get_autonomous_status()
+    assert st["session_configured"] is True
+    assert st["available_accounts"] == 0
+    assert st["account_status"] == "spamblock"
+
+    # Simulated DB exception during queue selection returns "error" cleanly with diagnostic _last_error
+    async def broken_replenish(session):
+        raise RuntimeError("simulated supabase timeout")
+
+    monkeypatch.setattr(outreach_worker, "replenish_queue", broken_replenish)
+    assert await outreach_worker.run_autonomous_step() == "error"
+    assert "simulated supabase timeout" in str(outreach_worker._last_error)
+
+    async with SessionLocal() as session:
+        await session.execute(delete(OutreachLead))
+        await session.execute(delete(TgAccount))
+        await session.execute(delete(SystemLog))
+        await session.commit()
+    await outreach_worker.set_autonomous_enabled(False)
+
+
+@pytest.mark.asyncio
+async def test_warmup_skips_busy_account_and_transient_error(monkeypatch):
+    """Warmup skips accounts held by outreach and does not falsely park on transient errors."""
+    from sqlalchemy import delete
+
+    from app.models import TgAccount
+    from app.services.account_pool import account_pool
+    from app.services.warmup_worker import warmup_worker
+
+    async with SessionLocal() as session:
+        await session.execute(delete(TgAccount))
+        acc = TgAccount(
+            phone="+79990000105",
+            username="warmup_test",
+            session_string="sess-w",
+            status="active",
+            auto_warmup=True,
+            warmup_preset="active",
+        )
+        session.add(acc)
+        await session.commit()
+        acc_id = acc.id
+
+    warmup_worker._last_session_time.clear()
+    warmup_worker._last_billing_day.clear()
+
+    warmup_calls = []
+
+    async def fake_run(session, account):
+        warmup_calls.append(account.id)
+
+    original_run = warmup_worker._run_warmup_session
+    monkeypatch.setattr(warmup_worker, "_run_warmup_session", fake_run)
+
+    # While outreach holds the lock, warmup_worker.tick() must skip this account completely
+    async with account_pool.acquire_account(acc_id, owner="outreach"):
+        assert account_pool.is_account_busy(acc_id) is True
+        await warmup_worker.tick()
+        assert warmup_calls == []
+
+    # Transient non-Telegram exception during real warmup must NOT flip status to floodwait
+    monkeypatch.setattr(warmup_worker, "_run_warmup_session", original_run)
+
+    class BrokenWarmupClient:
+        async def connect(self):
+            return None
+
+        async def is_user_authorized(self):
+            return True
+
+        async def get_entity(self, ch):
+            raise RuntimeError("transient connection reset")
+
+    monkeypatch.setattr(account_pool, "get_client_for_account", AsyncMock(return_value=BrokenWarmupClient()))
+    async with SessionLocal() as session:
+        acc_row = await session.get(TgAccount, acc_id)
+        await warmup_worker._run_warmup_session(session, acc_row)
+
+    async with SessionLocal() as session:
+        acc_row = await session.get(TgAccount, acc_id)
+        assert acc_row.status == "active"
+        assert acc_row.flood_until is None
+        await session.execute(delete(TgAccount))
+        await session.commit()

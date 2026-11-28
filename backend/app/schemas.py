@@ -104,6 +104,12 @@ class LeadOut(BaseModel):
             return [v] if v.startswith("http") else []
         return []
 
+    @field_validator("yandex_reviews", mode="before")
+    @classmethod
+    def _coerce_yandex_reviews(cls, v: Any) -> list:
+        # Legacy DB rows may contain NULL even though new rows default to [].
+        return v if isinstance(v, list) else []
+
     @field_validator("social_links", "site_audit", mode="before")
     @classmethod
     def _coerce_social_links(cls, v: Any) -> dict:

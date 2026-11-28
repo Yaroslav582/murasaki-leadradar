@@ -6,8 +6,9 @@ import json
 import logging
 import socket
 import zipfile
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,16 @@ logger = logging.getLogger(__name__)
 
 # In-memory storage for active Telethon login sessions awaiting SMS code / 2FA
 _PENDING_LOGINS: dict[str, dict[str, Any]] = {}
+
+
+def mask_phone(phone: Optional[str]) -> str:
+    """Returns a non-sensitive masked phone label for logs (last 4 digits)."""
+    if not phone:
+        return "account"
+    digits = "".join(ch for ch in str(phone) if ch.isdigit())
+    if len(digits) >= 4:
+        return f"***{digits[-4:]}"
+    return "***"
 
 
 def parse_proxy_tuple(proxy: Optional[Proxy]) -> Optional[dict]:
@@ -46,6 +57,41 @@ class AccountPool:
 
     def __init__(self) -> None:
         self._active_clients: dict[str, Any] = {}
+        self._account_locks: dict[str, asyncio.Lock] = {}
+        self._busy_accounts: dict[str, str] = {}
+
+    def get_account_lock(self, account_id: str) -> asyncio.Lock:
+        """Returns the shared asyncio.Lock serializing Telethon usage for one account."""
+        lock = self._account_locks.get(account_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._account_locks[account_id] = lock
+        return lock
+
+    def is_account_busy(self, account_id: str | None) -> bool:
+        """True when an account's cached Telethon client is currently held by a worker."""
+        if not account_id:
+            return False
+        if account_id in self._busy_accounts:
+            return True
+        lock = self._account_locks.get(account_id)
+        return bool(lock and lock.locked())
+
+    @asynccontextmanager
+    async def acquire_account(
+        self, account_id: Optional[str], owner: str = "worker"
+    ) -> AsyncIterator[None]:
+        """Serializes Telethon operations on a pool account across warmup/outreach/health."""
+        if not account_id:
+            yield
+            return
+        lock = self.get_account_lock(account_id)
+        async with lock:
+            self._busy_accounts[account_id] = owner
+            try:
+                yield
+            finally:
+                self._busy_accounts.pop(account_id, None)
 
     async def get_client_for_account(
         self, account: TgAccount, proxy: Optional[Proxy] = None
@@ -427,27 +473,33 @@ class AccountPool:
             raise ValueError(f"Account {account_id} not found")
 
         exc_name = type(exc).__name__
-        logger.warning("Handling error %s on account %s (%s)", exc_name, acc.phone, acc.id)
+        masked = mask_phone(acc.phone)
+        logger.warning("Handling error %s on account %s (%s)", exc_name, masked, acc.id)
 
+        changed = True
         if "FloodWait" in exc_name or hasattr(exc, "seconds"):
             wait_sec = getattr(exc, "seconds", 3600)
             acc.status = "floodwait"
             acc.flood_until = now + timedelta(seconds=wait_sec)
-            logger.info("Account %s flood-waited for %s seconds", acc.phone, wait_sec)
+            logger.info("Account %s flood-waited for %s seconds", masked, wait_sec)
         elif "PeerFlood" in exc_name:
             acc.status = "floodwait"
             acc.flood_until = now + timedelta(hours=24)
-            logger.info("Account %s peer-flooded for 24h", acc.phone)
+            logger.info("Account %s peer-flooded for 24h", masked)
         elif "UserBannedInChannel" in exc_name or "Spam" in exc_name:
             acc.status = "spamblock"
         elif "UserDeactivated" in exc_name or "AuthKeyUnregistered" in exc_name:
             acc.status = "banned"
         else:
-            acc.status = "floodwait"
-            acc.flood_until = now + timedelta(minutes=15)
+            # Transient network/DB/channel error: do not falsely park the account in floodwait.
+            changed = False
+            logger.warning("Non-flood transient error %s on account %s; keeping status=%s", exc_name, masked, acc.status)
 
-        await session.commit()
-        await session.refresh(acc)
+        if changed:
+            acc.updated_at = now
+            session.add(acc)
+            await session.commit()
+            await session.refresh(acc)
         return acc
 
     async def record_action(self, session: AsyncSession, account_id: str) -> None:
@@ -506,59 +558,64 @@ class AccountPool:
             proxy = await session.get(Proxy, account.proxy_id)
 
         try:
-            client = await self.get_client_for_account(account, proxy)
-            await client.connect()
+            async with self.acquire_account(account.id, owner="health"):
+                client = await self.get_client_for_account(account, proxy)
+                await client.connect()
 
-            if not await client.is_user_authorized():
-                account.status = "banned"
+                if not await client.is_user_authorized():
+                    account.status = "banned"
+                    await session.commit()
+                    return {"status": "banned", "reason": "Сессия завершена или деактивирована"}
+
+                me = await client.get_me()
+                account.username = me.username
+                account.phone = me.phone or account.phone
+
+                # Send message to @SpamBot to check limitations
+                status_text = "Не удалось определить ограничения через @SpamBot"
+                status = "unknown"
+                try:
+                    await client.send_message("@SpamBot", "/start")
+                    await asyncio.sleep(2.0)
+                    msgs = await client.get_messages("@SpamBot", limit=1)
+                    if msgs and msgs[0].text:
+                        resp = msgs[0].text.lower()
+                        if (
+                            "свободен от каких-либо ограничений" in resp
+                            or "good news" in resp
+                            or "no limits" in resp
+                            or "free as a bird" in resp
+                        ):
+                            status = "active"
+                            status_text = "Активен, ограничений нет"
+                        elif (
+                            "к сожалению" in resp
+                            or "ограничен" in resp
+                            or "limit" in resp
+                            or "non-contact" in resp
+                            or "spam" in resp
+                        ):
+                            status = "spamblock"
+                            status_text = "Обнаружен спам-блок по ответу @SpamBot"
+                except Exception as sb_err:
+                    logger.info("SpamBot check skipped/failed: %s", sb_err)
+
+                if status == "unknown":
+                    return {"status": status, "info": status_text, "user": me.first_name}
+                account.status = status
+                if status == "active":
+                    account.flood_until = None
                 await session.commit()
-                return {"status": "banned", "reason": "Сессия завершена или деактивирована"}
-
-            me = await client.get_me()
-            account.username = me.username
-            account.phone = me.phone or account.phone
-
-            # Send message to @SpamBot to check limitations
-            status_text = "Не удалось определить ограничения через @SpamBot"
-            status = "unknown"
-            try:
-                await client.send_message("@SpamBot", "/start")
-                await asyncio.sleep(2.0)
-                msgs = await client.get_messages("@SpamBot", limit=1)
-                if msgs and msgs[0].text:
-                    resp = msgs[0].text.lower()
-                    if (
-                        "свободен от каких-либо ограничений" in resp
-                        or "good news" in resp
-                        or "no limits" in resp
-                        or "free as a bird" in resp
-                    ):
-                        status = "active"
-                        status_text = "Активен, ограничений нет"
-                    elif (
-                        "к сожалению" in resp
-                        or "ограничен" in resp
-                        or "limit" in resp
-                        or "non-contact" in resp
-                        or "spam" in resp
-                    ):
-                        status = "spamblock"
-                        status_text = "Обнаружен спам-блок по ответу @SpamBot"
-            except Exception as sb_err:
-                logger.info("SpamBot check skipped/failed: %s", sb_err)
-
-            if status == "unknown":
                 return {"status": status, "info": status_text, "user": me.first_name}
-            account.status = status
-            if status == "active":
-                account.flood_until = None
-            await session.commit()
-            return {"status": status, "info": status_text, "user": me.first_name}
         except Exception as err:
             logger.error("Health check error on account %s: %s", account.id, err)
-            account.status = "banned" if "auth" in str(err).lower() else "floodwait"
-            await session.commit()
-            return {"status": account.status, "error": str(err)}
+            err_l = str(err).lower()
+            exc_name = type(err).__name__.lower()
+            if "auth" in err_l or "authkey" in exc_name or "deactivated" in exc_name:
+                account.status = "banned"
+                await session.commit()
+                return {"status": account.status, "error": str(err)}
+            return {"status": "unknown", "error": str(err)}
 
     # == Phone + 2FA Login Flow ==
     async def request_sms_code(

@@ -192,6 +192,8 @@ async def init_db() -> None:
             "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS followup_step INTEGER DEFAULT 0;",
             "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS last_followup_at TIMESTAMPTZ;",
             "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS has_reply BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS attempt_count INTEGER DEFAULT 0;",
+            "ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ;",
             "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source VARCHAR(32) DEFAULT 'telegram';",
             "ALTER TABLE telegram_orders ADD COLUMN IF NOT EXISTS source_url VARCHAR(500);",
             "ALTER TABLE telegram_chat_targets ADD COLUMN IF NOT EXISTS cooldown_minutes INTEGER DEFAULT 120;",
@@ -346,6 +348,8 @@ async def init_db() -> None:
                         ("followup_step", "INTEGER DEFAULT 0"),
                         ("last_followup_at", "DATETIME"),
                         ("has_reply", "BOOLEAN DEFAULT 0"),
+                        ("attempt_count", "INTEGER DEFAULT 0"),
+                        ("next_attempt_at", "DATETIME"),
                     ):
                         if col_name not in existing_ol_cols:
                             sync_conn.exec_driver_sql(f"ALTER TABLE outreach_leads ADD COLUMN {col_name} {col_def}")

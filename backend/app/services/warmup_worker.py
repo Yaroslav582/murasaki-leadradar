@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Dialog, Message, TgAccount, User, utcnow
-from app.services.account_pool import account_pool
+from app.services.account_pool import account_pool, mask_phone
 from app.services.billing import check_and_spend
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,18 @@ class WarmupWorker:
             today_str = now.strftime("%Y-%m-%d")
 
             for account in accounts:
-                if account.flood_until and account.flood_until > now:
+                due = account.flood_until
+                if due is not None and due.tzinfo is None:
+                    due = due.replace(tzinfo=timezone.utc)
+                if due and due > now:
+                    continue
+
+                if account_pool.is_account_busy(account.id):
+                    logger.debug(
+                        "Skipping warmup for busy account %s (%s)",
+                        mask_phone(account.phone),
+                        account.id,
+                    )
                     continue
 
                 # Check billing for daily warmup: 2 credits per account per day
@@ -126,7 +137,7 @@ class WarmupWorker:
                             user_id=account.user_id,
                             amount=settings.credits_per_warmup_day,
                             module_name="warmup",
-                            description=f"Автопрогрев аккаунта {account.phone} (1 день)",
+                            description=f"Автопрогрев аккаунта {mask_phone(account.phone)} (1 день)",
                         )
                         self._last_billing_day[account.id] = today_str
                         account.daily_actions_reset_at = now
@@ -135,13 +146,21 @@ class WarmupWorker:
                         err_msg = str(bill_err).lower()
                         # Only pause auto_warmup if balance is explicitly insufficient
                         if "недостаточно кредитов" in err_msg or "insufficient" in err_msg:
-                            logger.warning("Auto-warmup paused for %s due to insufficient credits: %s", account.phone, bill_err)
+                            logger.warning(
+                                "Auto-warmup paused for %s due to insufficient credits: %s",
+                                mask_phone(account.phone),
+                                bill_err,
+                            )
                             account.auto_warmup = False
                             await session.commit()
                             continue
                         else:
                             # Transient database, network or auth issue: do NOT reset user's auto_warmup flag!
-                            logger.warning("Warmup billing transient note for %s: %s", account.phone, bill_err)
+                            logger.warning(
+                                "Warmup billing transient note for %s: %s",
+                                mask_phone(account.phone),
+                                bill_err,
+                            )
 
                 # Determine session interval by preset
                 preset = account.warmup_preset or "optimal"
@@ -152,16 +171,30 @@ class WarmupWorker:
                 if last_time and (now - last_time).total_seconds() < interval_hours * 3600:
                     continue
 
-                logger.info("Starting warmup session for account %s (%s, preset=%s)", account.phone, account.id, preset)
-                await self._run_warmup_session(session, account)
-                self._last_session_time[account.id] = now
+                logger.info(
+                    "Starting warmup session for account %s (%s, preset=%s)",
+                    mask_phone(account.phone),
+                    account.id,
+                    preset,
+                )
+                try:
+                    await self._run_warmup_session(session, account)
+                    self._last_session_time[account.id] = now
+                except Exception as acc_err:
+                    logger.warning(
+                        "Warmup tick error for %s (%s): %s",
+                        mask_phone(account.phone),
+                        account.id,
+                        acc_err,
+                    )
 
-            # If farm has >= 2 accounts, perform cross-dialogue once a day
-            if len(accounts) >= 2:
+            # If farm has >= 2 idle accounts, perform cross-dialogue once a day
+            idle_accounts = [a for a in accounts if not account_pool.is_account_busy(a.id)]
+            if len(idle_accounts) >= 2:
                 farm_key = "farm_cross_dialogue"
                 if self._last_cross_chat_day.get(farm_key) != today_str:
                     try:
-                        await self._perform_farm_cross_chat(session, accounts)
+                        await self._perform_farm_cross_chat(session, idle_accounts)
                         self._last_cross_chat_day[farm_key] = today_str
                     except Exception as fce:
                         logger.warning("Farm cross chat failed: %s", fce)
@@ -172,57 +205,66 @@ class WarmupWorker:
         if not channels:
             channels = ["@telegram", "@durov", "@thebell_io", "@rbc_news", "@ria_novosti"]
 
+        if account_pool.is_account_busy(account.id):
+            logger.debug("Skipping warmup session because account %s is busy", account.id)
+            return
+
         try:
-            client = await account_pool.get_client_for_account(account)
-            await client.connect()
+            async with account_pool.acquire_account(account.id, owner="warmup"):
+                client = await account_pool.get_client_for_account(account)
+                await client.connect()
 
-            if not await client.is_user_authorized():
-                account.status = "banned"
-                await session.commit()
-                return
+                if not await client.is_user_authorized():
+                    account.status = "banned"
+                    await session.commit()
+                    return
 
-            from telethon.tl.functions.messages import GetMessagesViewsRequest, SendReactionRequest
-            from telethon.tl.types import ReactionEmoji
+                from telethon.tl.functions.messages import GetMessagesViewsRequest, SendReactionRequest
+                from telethon.tl.types import ReactionEmoji
 
-            # 1. Read 3-7 posts from random trusted channel
-            target_channel = random.choice(channels)
-            post_count = random.randint(3, 7)
+                # 1. Read 3-7 posts from random trusted channel
+                target_channel = random.choice(channels)
+                post_count = random.randint(3, 7)
 
-            entity = await client.get_entity(target_channel)
-            messages = await client.get_messages(entity, limit=post_count)
+                entity = await client.get_entity(target_channel)
+                messages = await client.get_messages(entity, limit=post_count)
 
-            if messages:
-                msg_ids = [m.id for m in messages if m and m.id]
-                if msg_ids:
+                if messages:
+                    msg_ids = [m.id for m in messages if m and m.id]
+                    if msg_ids:
+                        try:
+                            await client(GetMessagesViewsRequest(peer=entity, id=msg_ids, increment=True))
+                        except Exception as ve:
+                            logger.debug("View request info: %s", ve)
+
+                    # Send 1-2 random reactions with realistic pauses
+                    reaction_emojis = ["👍", "🔥", "❤️", "👏"]
+                    for msg in messages[:2]:
+                        try:
+                            chosen_emoji = random.choice(reaction_emojis)
+                            await client(SendReactionRequest(
+                                peer=entity,
+                                msg_id=msg.id,
+                                reaction=[ReactionEmoji(emoticon=chosen_emoji)]
+                            ))
+                        except Exception:
+                            pass
+                        # Sleep 15-45 sec realistic delay
+                        delay = random.uniform(2.0, 5.0)  # slightly sped up for server responsiveness
+                        await asyncio.sleep(delay)
+
+                # 2. Join 1 channel if below max channels
+                if random.random() < 0.3:
+                    from telethon.tl.functions.channels import JoinChannelRequest
                     try:
-                        await client(GetMessagesViewsRequest(peer=entity, id=msg_ids, increment=True))
-                    except Exception as ve:
-                        logger.debug("View request info: %s", ve)
-
-                # Send 1-2 random reactions with realistic pauses
-                reaction_emojis = ["👍", "🔥", "❤️", "👏"]
-                for msg in messages[:2]:
-                    try:
-                        chosen_emoji = random.choice(reaction_emojis)
-                        await client(SendReactionRequest(
-                            peer=entity,
-                            msg_id=msg.id,
-                            reaction=[ReactionEmoji(emoticon=chosen_emoji)]
-                        ))
-                    except Exception:
-                        pass
-                    # Sleep 15-45 sec realistic delay
-                    delay = random.uniform(2.0, 5.0)  # slightly sped up for server responsiveness
-                    await asyncio.sleep(delay)
-
-            # 2. Join 1 channel if below max channels
-            if random.random() < 0.3:
-                from telethon.tl.functions.channels import JoinChannelRequest
-                try:
-                    await client(JoinChannelRequest(entity))
-                    logger.info("Account %s subscribed to channel %s", account.phone, target_channel)
-                except Exception as je:
-                    logger.debug("Join channel skipped: %s", je)
+                        await client(JoinChannelRequest(entity))
+                        logger.info(
+                            "Account %s subscribed to channel %s",
+                            mask_phone(account.phone),
+                            target_channel,
+                        )
+                    except Exception as je:
+                        logger.debug("Join channel skipped: %s", je)
 
             # 3. Increase warmup_level by 5-10% up to 100%
             increase = random.randint(5, 10)
@@ -233,11 +275,20 @@ class WarmupWorker:
             account.daily_actions_count += 1
             account.updated_at = utcnow()
             await session.commit()
-            logger.info("Warmup session completed for %s. New level: %d%%", account.phone, account.warmup_level)
+            logger.info(
+                "Warmup session completed for %s. New level: %d%%",
+                mask_phone(account.phone),
+                account.warmup_level,
+            )
 
         except Exception as err:
-            logger.warning("Warmup session error for %s: %s", account.phone, err)
-            await account_pool.rotate_on_error(session, account.id, err)
+            exc_name = type(err).__name__
+            logger.warning("Warmup session error (%s) for %s: %s", exc_name, mask_phone(account.phone), err)
+            if any(
+                marker in exc_name
+                for marker in ("FloodWait", "PeerFlood", "Spam", "UserBanned", "UserDeactivated", "AuthKey")
+            ):
+                await account_pool.rotate_on_error(session, account.id, err)
 
     async def _perform_farm_cross_chat(self, session: AsyncSession, accounts: list[TgAccount]) -> None:
         """Exchanges neutral friendly messages between farm accounts to build peer trust."""
@@ -264,27 +315,29 @@ class WarmupWorker:
             logger.debug("AI cross-chat generation fallback to template: %s", ai_err)
 
         try:
-            client1 = await account_pool.get_client_for_account(acc1)
-            await client1.connect()
-            if not await client1.is_user_authorized():
-                return
+            first, second = sorted([acc1, acc2], key=lambda a: a.id)
+            async with account_pool.acquire_account(first.id, owner="warmup_cross"), account_pool.acquire_account(second.id, owner="warmup_cross"):
+                client1 = await account_pool.get_client_for_account(acc1)
+                await client1.connect()
+                if not await client1.is_user_authorized():
+                    return
 
-            client2 = await account_pool.get_client_for_account(acc2)
-            await client2.connect()
-            if not await client2.is_user_authorized():
-                return
+                client2 = await account_pool.get_client_for_account(acc2)
+                await client2.connect()
+                if not await client2.is_user_authorized():
+                    return
 
-            # acc1 sends phrase1 to acc2
-            peer2 = await client1.get_entity(acc2.phone)
-            await client1.send_message(peer2, phrase1)
-            logger.info("Farm cross-dialogue: %s -> %s: %s", acc1.phone, acc2.phone, phrase1)
+                # acc1 sends phrase1 to acc2
+                peer2 = await client1.get_entity(acc2.phone)
+                await client1.send_message(peer2, phrase1)
+                logger.info("Farm cross-dialogue: %s -> %s", mask_phone(acc1.phone), mask_phone(acc2.phone))
 
-            # Delay 5-15 sec then reply
-            await asyncio.sleep(random.uniform(5.0, 15.0))
+                # Delay 5-15 sec then reply
+                await asyncio.sleep(random.uniform(5.0, 15.0))
 
-            peer1 = await client2.get_entity(acc1.phone)
-            await client2.send_message(peer1, phrase2)
-            logger.info("Farm cross-dialogue: %s -> %s: %s", acc2.phone, acc1.phone, phrase2)
+                peer1 = await client2.get_entity(acc1.phone)
+                await client2.send_message(peer1, phrase2)
+                logger.info("Farm cross-dialogue: %s -> %s", mask_phone(acc2.phone), mask_phone(acc1.phone))
 
         except Exception as e:
             logger.debug("Farm cross-chat skipped: %s", e)
