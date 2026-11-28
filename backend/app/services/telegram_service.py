@@ -183,6 +183,138 @@ async def generate_ai_response(order_text: str, category: str = "лендинг"
     return template.format(topic=topic)
 
 
+KWORK_STYLE_GUIDANCE = {
+    "balanced": (
+        "Стиль «Деловой оптимальный» (500–800 символов):\n"
+        "- Первая строка сразу показывает, что ты прочитал заявку (упомяни конкретную деталь/цель из текста заказа).\n"
+        "- Кратко опиши 2–3 понятных шага, как решишь задачу и какой будет результат.\n"
+        "- Задай 1 точный уточняющий вопрос по ТЗ, чтобы заказчик ответил в диалог."
+    ),
+    "short": (
+        "Стиль «Короткий и быстрый» (250–450 символов, максимум 3 предложения):\n"
+        "- Сразу по делу без приветственных штампов.\n"
+        "- Скажи, что сделаешь по этой задаче, назови ориентир (если есть) и задай 1 короткий вопрос."
+    ),
+    "demo_first": (
+        "Стиль «С бесплатным мини-прототипом» (450–750 символов):\n"
+        "- Покажи, что понял задачу из заявки.\n"
+        "- Предложи сильный ход: до старта сделки можешь бесплатно набросать концепт/прототип первого экрана под их нишу, чтобы сразу было видно стиль и структуру.\n"
+        "- В конце мягко спроси, актуально ли скинуть такой набросок и обсудить детали."
+    ),
+    "expert": (
+        "Стиль «Экспертный разбор» (600–900 символов):\n"
+        "- Коротко разбери задачу заказчика (структура/блоки/стек/адаптив/скорость — строго по тому, что в заявке).\n"
+        "- Отметь 1 важный нюанс, о котором заказчики обычно забывают.\n"
+        "- Задай 1–2 конкретных вопроса по материалам или функционалу."
+    ),
+}
+
+
+def extract_order_summary(order_text: str) -> str:
+    """Extracts a clean short title (<= 90 chars) from raw order text."""
+    for raw_line in (order_text or "").splitlines():
+        clean = " ".join(raw_line.split()).strip()
+        if len(clean) >= 6:
+            return clean[:87] + "..." if len(clean) > 90 else clean
+    flat = " ".join((order_text or "").split()).strip()
+    return (flat[:87] + "...") if len(flat) > 90 else (flat or "Заявка с Kwork")
+
+
+async def build_kwork_proposal(
+    order_text: str,
+    style: str = "balanced",
+    portfolio_url: str | None = None,
+    price_hint: str | None = None,
+    deadline_hint: str | None = None,
+    include_portfolio: bool = True,
+) -> str:
+    """Generates a tailored Kwork bid/proposal from pasted order text."""
+    norm_style = style if style in KWORK_STYLE_GUIDANCE else "balanced"
+    portfolio = (
+        portfolio_url
+        or getattr(settings, "telegram_portfolio_url", None)
+        or "https://murasaki-portfolio.vercel.app/"
+    ).strip()
+
+    extra_constraints = []
+    if price_hint and price_hint.strip():
+        extra_constraints.append(f"Ориентир по бюджету/стоимости (упомяни органично): {price_hint.strip()}")
+    if deadline_hint and deadline_hint.strip():
+        extra_constraints.append(f"Ориентир по срокам (упомяни органично): {deadline_hint.strip()}")
+    if include_portfolio and portfolio:
+        extra_constraints.append(
+            f"Добавь ссылку на портфолио отдельной строкой в конце: «Портфолио: {portfolio}» (без точки после URL)."
+        )
+    else:
+        extra_constraints.append("НЕ вставляй никаких ссылок в текст отклика.")
+
+    system_prompt = (
+        "Ты — веб-разработчик и дизайнер студии Murasaki, откликаешься на проект на бирже Kwork.\n"
+        "Главное правило Kwork: заказчик читает первые 2 строчки среди 20 одинаковых шаблонов. "
+        "ЗАПРЕЩЕНЫ клише: 'имею большой опыт', 'готов выполнить качественно и в срок', 'индивидуальный подход', 'буду рад сотрудничеству'.\n"
+        "Пиши живым, грамотным человеческим языком на «вы», строго по фактам из текста заявки."
+    )
+    user_prompt = (
+        f"{KWORK_STYLE_GUIDANCE[norm_style]}\n\n"
+        "Дополнительные условия:\n"
+        + "\n".join(f"- {c}" for c in extra_constraints)
+        + f"\n\nТекст заявки заказчика:\n\"\"\"\n{order_text.strip()[:3500]}\n\"\"\"\n\n"
+        "Верни ТОЛЬКО готовый текст отклика, который можно сразу скопировать и отправить на Kwork."
+    )
+
+    try:
+        res = await ask_ai(
+            user_prompt,
+            system_prompt=system_prompt,
+            task_type="smart",
+            max_tokens=500,
+            temperature=0.6,
+        )
+        if res and len(res.strip()) >= 40:
+            cleaned = res.strip().strip('"').strip("«»")
+            return cleaned
+    except Exception as exc:
+        logger.warning("Kwork proposal LLM generation failed: %s, using fallback", exc)
+
+    summary = extract_order_summary(order_text)
+    price_part = f" По бюджету ориентируюсь на {price_hint.strip()}." if price_hint and price_hint.strip() else ""
+    deadline_part = f" По срокам — {deadline_hint.strip()}." if deadline_hint and deadline_hint.strip() else ""
+    port_part = f"\n\nПортфолио: {portfolio}" if include_portfolio and portfolio else ""
+
+    if norm_style == "short":
+        return (
+            f"Здравствуйте! Посмотрел вашу задачу («{summary}») — сделаю аккуратно под ключ с адаптивом.{price_part}{deadline_part} "
+            "Подскажите, есть ли уже референсы или готовый контент?"
+            f"{port_part}"
+        )
+    if norm_style == "demo_first":
+        return (
+            f"Здравствуйте! Изучил задачу по проекту «{summary}».\n\n"
+            "Можем начать без риска: до оформления заказа соберу быстрый демо-прототип первого экрана под вашу тематику, "
+            f"чтобы вы сразу увидели подачу и структуру.{price_part}{deadline_part}\n\n"
+            "Если формат подойдёт — обсудим детали, материалы и запустим в работу. Скинуть набросок?"
+            f"{port_part}"
+        )
+    if norm_style == "expert":
+        return (
+            f"Здравствуйте! Разобрал вашу заявку («{summary}»).\n\n"
+            "По реализации предложу чистую структуру: адаптивная вёрстка под мобильные, быстрая загрузка, "
+            "продуманные акценты на целевых действиях и настроенные формы обратной связи."
+            f"{price_part}{deadline_part}\n\n"
+            "Пара вопросов для точной оценки:\n"
+            "1. Есть ли уже тексты/фото или нужно помочь со структурой?\n"
+            "2. На каком домене или платформе планируете запуск?"
+            f"{port_part}"
+        )
+    return (
+        f"Здравствуйте! Посмотрел заявку по проекту «{summary}» — задача понятна, могу взять в работу.\n\n"
+        "Соберу современную адаптивную версию с акцентом на удобство с телефона и понятную подачу ваших услуг/преимуществ, "
+        f"подключу заявки и проверю скорость работы.{price_part}{deadline_part}\n\n"
+        "Подскажите, есть ли у вас примеры сайтов, которые нравятся по стилю, или подготовить пару вариантов от себя?"
+        f"{port_part}"
+    )
+
+
 async def generate_ai_promo(portfolio_url: str | None = None) -> str:
     """Generate a unique variation of the freelance pitch for promo broadcasting."""
     url = portfolio_url or getattr(settings, "telegram_portfolio_url", "https://murasaki-portfolio.vercel.app/")

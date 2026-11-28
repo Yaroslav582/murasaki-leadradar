@@ -112,6 +112,17 @@ export default function TelegramRadarView({
   const [orderSourceFilter, setOrderSourceFilter] = useState<"all" | "kwork" | "fl" | "telegram">("all");
   const [syncingExternal, setSyncingExternal] = useState(false);
 
+  // Kwork quick proposal builder
+  const [showKworkBuilder, setShowKworkBuilder] = useState(true);
+  const [kworkOrderText, setKworkOrderText] = useState("");
+  const [kworkStyle, setKworkStyle] = useState<"balanced" | "short" | "demo_first" | "expert">("balanced");
+  const [kworkPriceHint, setKworkPriceHint] = useState("");
+  const [kworkDeadlineHint, setKworkDeadlineHint] = useState("");
+  const [kworkIncludePortfolio, setKworkIncludePortfolio] = useState(true);
+  const [kworkDraft, setKworkDraft] = useState("");
+  const [generatingKworkDraft, setGeneratingKworkDraft] = useState(false);
+  const [copiedKworkDraft, setCopiedKworkDraft] = useState(false);
+
   // Timer loop for countdowns
   useEffect(() => {
     const timer = setInterval(() => setNowTs(Date.now()), 1000);
@@ -215,6 +226,52 @@ export default function TelegramRadarView({
       showToast("Заказ пропущен", "info");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Ошибка", "error");
+    }
+  };
+
+  const handleGenerateKworkDraft = async (overrideStyle?: "balanced" | "short" | "demo_first" | "expert") => {
+    const cleanText = kworkOrderText.trim();
+    if (cleanText.length < 10) {
+      showToast("Вставь текст заявки с Kwork (от 10 символов)", "error");
+      return;
+    }
+    const targetStyle = overrideStyle ?? kworkStyle;
+    if (overrideStyle) {
+      setKworkStyle(overrideStyle);
+    }
+    setGeneratingKworkDraft(true);
+    triggerHaptic("medium");
+    try {
+      const res = await api.generateKworkDraft({
+        order_text: cleanText,
+        style: targetStyle,
+        portfolio_url: portfolioInput || undefined,
+        price_hint: kworkPriceHint.trim() || undefined,
+        deadline_hint: kworkDeadlineHint.trim() || undefined,
+        include_portfolio: kworkIncludePortfolio,
+        save_to_history: true,
+      });
+      setKworkDraft(res.proposal);
+      setCopiedKworkDraft(false);
+      await loadData();
+      showToast("Отклик готов — можно скопировать и отправить на Kwork!", "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Не удалось собрать отклик", "error");
+    } finally {
+      setGeneratingKworkDraft(false);
+    }
+  };
+
+  const handleCopyKworkDraft = async () => {
+    if (!kworkDraft.trim()) return;
+    try {
+      await navigator.clipboard.writeText(kworkDraft);
+      setCopiedKworkDraft(true);
+      triggerHaptic("light");
+      showToast("Отклик скопирован в буфер обмена", "success");
+      setTimeout(() => setCopiedKworkDraft(false), 2000);
+    } catch {
+      showToast("Не удалось скопировать автоматически — выдели текст вручную", "error");
     }
   };
 
@@ -943,6 +1000,155 @@ export default function TelegramRadarView({
       {/* Tab 1: Orders Feed */}
       {tab === "orders" && (
         <div className="space-y-4">
+          {/* Quick Kwork Bid Constructor */}
+          <div className="rounded-2xl border border-amber-500/25 bg-[#1B1D24] p-4 shadow-lg">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15 text-amber-300 text-sm">
+                  🎯
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Быстрый конструктор отклика (Kwork / FL)</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Вставь текст заявки — Радар разберёт ТЗ и соберёт готовый отклик без воды в 1 клик
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowKworkBuilder((v) => !v)}
+                className="rounded-lg border border-white/10 bg-[#242731] px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:text-white"
+              >
+                {showKworkBuilder ? "Свернуть" : "Развернуть"}
+              </button>
+            </div>
+
+            {showKworkBuilder && (
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                <div className="space-y-2.5">
+                  <textarea
+                    rows={5}
+                    value={kworkOrderText}
+                    onChange={(e) => setKworkOrderText(e.target.value)}
+                    placeholder="Вставь сюда описание проекта с Kwork (что нужно заказчику, бюджет, требования)..."
+                    className="input w-full resize-y text-xs leading-relaxed"
+                  />
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {(
+                      [
+                        { id: "balanced", label: "Деловой" },
+                        { id: "short", label: "Короткий" },
+                        { id: "demo_first", label: "🎨 С мини-демо" },
+                        { id: "expert", label: "🛠 Экспертный" },
+                      ] as const
+                    ).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setKworkStyle(item.id)}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                          kworkStyle === item.id
+                            ? "bg-amber-500 text-black"
+                            : "border border-white/10 bg-[#242731] text-slate-300 hover:text-white"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={kworkPriceHint}
+                      onChange={(e) => setKworkPriceHint(e.target.value)}
+                      placeholder="Бюджет (необяз., напр. 5 000 ₽)"
+                      className="input text-xs"
+                    />
+                    <input
+                      value={kworkDeadlineHint}
+                      onChange={(e) => setKworkDeadlineHint(e.target.value)}
+                      placeholder="Срок (необяз., напр. 2 дня)"
+                      className="input text-xs"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={kworkIncludePortfolio}
+                        onChange={(e) => setKworkIncludePortfolio(e.target.checked)}
+                        className="rounded border-white/15"
+                      />
+                      <span>Добавить ссылку на портфолио</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateKworkDraft()}
+                      disabled={generatingKworkDraft || kworkOrderText.trim().length < 10}
+                      className="btn-primary text-xs"
+                    >
+                      {generatingKworkDraft ? <Spinner size={13} /> : <Sparkles size={13} />}
+                      Собрать отклик
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col justify-between rounded-xl border border-white/10 bg-[#14161D] p-3">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-[11px] font-semibold text-slate-300">
+                      Готовый отклик {kworkDraft ? `(${kworkDraft.length} симв.)` : ""}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {kworkDraft && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateKworkDraft("short")}
+                            disabled={generatingKworkDraft}
+                            className="rounded-md border border-white/10 bg-[#242731] px-2 py-1 text-[10px] text-slate-300 hover:text-white"
+                          >
+                            Короче
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateKworkDraft("demo_first")}
+                            disabled={generatingKworkDraft}
+                            className="rounded-md border border-white/10 bg-[#242731] px-2 py-1 text-[10px] text-amber-300 hover:text-amber-200"
+                          >
+                            С мини-демо
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleCopyKworkDraft}
+                        disabled={!kworkDraft.trim()}
+                        className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                          copiedKworkDraft
+                            ? "bg-emerald-500 text-white"
+                            : "bg-brand-500/20 text-brand-300 hover:bg-brand-500/30 disabled:opacity-40"
+                        }`}
+                      >
+                        {copiedKworkDraft ? <Check size={12} /> : <Copy size={12} />}
+                        {copiedKworkDraft ? "Скопировано" : "Скопировать"}
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    rows={7}
+                    value={kworkDraft}
+                    onChange={(e) => setKworkDraft(e.target.value)}
+                    placeholder="Здесь появится готовый отклик — его можно сразу отредактировать и скопировать на Kwork."
+                    className="input w-full flex-1 resize-y text-xs leading-relaxed bg-[#0F1117]"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Source Sub-filters & Manual Sync */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3 text-xs">
             <div className="flex flex-wrap items-center gap-1.5">

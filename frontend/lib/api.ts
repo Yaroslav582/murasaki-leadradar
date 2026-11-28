@@ -244,6 +244,26 @@ export const api = {
     return request<TelegramOrder>(`/api/telegram/orders/${id}/skip`, { method: "POST" });
   },
 
+  generateKworkDraft(payload: {
+    order_text: string;
+    style: "balanced" | "short" | "demo_first" | "expert";
+    portfolio_url?: string;
+    price_hint?: string;
+    deadline_hint?: string;
+    include_portfolio?: boolean;
+    save_to_history?: boolean;
+  }) {
+    return request<{
+      proposal: string;
+      style: string;
+      char_count: number;
+      order_id?: string | null;
+    }>("/api/telegram/kwork/draft", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   listTelegramBroadcasts() {
     return request<TelegramBroadcast[]>("/api/telegram/broadcasts");
   },

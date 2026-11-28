@@ -18,6 +18,8 @@ from app.services.billing import check_and_spend, get_or_create_user
 from app.services.freelance_fetcher import sync_external_freelance_orders
 from app.services.telegram_service import (
     DEFAULT_TARGETS,
+    build_kwork_proposal,
+    extract_order_summary,
     generate_ai_promo,
     generate_ai_response,
     is_within_working_hours,
@@ -430,6 +432,68 @@ async def skip_order_response(order_id: str, session: AsyncSession = Depends(get
     await session.commit()
     await session.refresh(order)
     return TelegramOrderOut.model_validate(order)
+
+
+class KworkDraftRequest(BaseModel):
+    order_text: str = Field(..., min_length=10, max_length=6000)
+    style: str = Field(default="balanced")
+    portfolio_url: str | None = None
+    price_hint: str | None = None
+    deadline_hint: str | None = None
+    include_portfolio: bool = True
+    save_to_history: bool = True
+
+
+class KworkDraftOut(BaseModel):
+    proposal: str
+    style: str
+    char_count: int
+    order_id: str | None = None
+
+
+@router.post("/kwork/draft", response_model=KworkDraftOut)
+async def create_kwork_proposal_draft(
+    payload: KworkDraftRequest,
+    session: AsyncSession = Depends(get_session),
+) -> KworkDraftOut:
+    """Generate a tailored Kwork bid/proposal from pasted order text."""
+    norm_style = payload.style if payload.style in ("balanced", "short", "demo_first", "expert") else "balanced"
+    proposal = await build_kwork_proposal(
+        order_text=payload.order_text,
+        style=norm_style,
+        portfolio_url=payload.portfolio_url,
+        price_hint=payload.price_hint,
+        deadline_hint=payload.deadline_hint,
+        include_portfolio=payload.include_portfolio,
+    )
+
+    saved_id: str | None = None
+    if payload.save_to_history:
+        order = TelegramOrder(
+            chat_id="kwork.ru",
+            chat_title="Kwork — Конструктор",
+            source="kwork",
+            message_id=random.randint(100000, 999999),
+            author_username=None,
+            author_name="Ручная заявка Kwork",
+            raw_text=payload.order_text.strip(),
+            summary=extract_order_summary(payload.order_text),
+            category="Kwork отклик",
+            budget=payload.price_hint.strip() if payload.price_hint and payload.price_hint.strip() else None,
+            response_text=proposal,
+            status="draft",
+        )
+        session.add(order)
+        await session.commit()
+        await session.refresh(order)
+        saved_id = order.id
+
+    return KworkDraftOut(
+        proposal=proposal,
+        style=norm_style,
+        char_count=len(proposal),
+        order_id=saved_id,
+    )
 
 
 @router.get("/broadcasts", response_model=list[TelegramBroadcastOut])

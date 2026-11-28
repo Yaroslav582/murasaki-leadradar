@@ -1712,3 +1712,65 @@ async def test_warmup_skips_busy_account_and_transient_error(monkeypatch):
         assert acc_row.flood_until is None
         await session.execute(delete(TgAccount))
         await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_kwork_proposal_builder_endpoint_and_fallback(client, monkeypatch):
+    """POST /api/telegram/kwork/draft generates tailored Kwork bid and saves draft history."""
+    from sqlalchemy import delete, select
+    from app.models import TelegramOrder
+
+    async with SessionLocal() as session:
+        await session.execute(delete(TelegramOrder))
+        await session.commit()
+
+    # 1. LLM success path
+    monkeypatch.setattr(
+        "app.services.telegram_service.ask_ai",
+        AsyncMock(
+            return_value="Здравствуйте! Разработал бы вам лендинг кофейни с меню и формой записи. Подскажите, есть ли логотип?\n\nПортфолио: https://murasaki-portfolio.vercel.app/"
+        ),
+    )
+    resp = await client.post(
+        "/api/telegram/kwork/draft",
+        json={
+            "order_text": "Нужен современный лендинг для кофейни в центре, с меню и формой бронирования.",
+            "style": "balanced",
+            "price_hint": "7 000 ₽",
+            "deadline_hint": "3 дня",
+            "include_portfolio": True,
+            "save_to_history": True,
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["style"] == "balanced"
+    assert "лендинг кофейни" in data["proposal"]
+    assert data["char_count"] == len(data["proposal"])
+    assert data["order_id"]
+
+    # 2. LLM failure -> fallback with demo_first style & no portfolio when unchecked
+    monkeypatch.setattr("app.services.telegram_service.ask_ai", AsyncMock(side_effect=RuntimeError("offline")))
+    resp2 = await client.post(
+        "/api/telegram/kwork/draft",
+        json={
+            "order_text": "Требуется сайт-визитка для барбершопа с онлайн-записью.",
+            "style": "demo_first",
+            "include_portfolio": False,
+            "save_to_history": False,
+        },
+    )
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["style"] == "demo_first"
+    assert "демо-прототип" in data2["proposal"]
+    assert "murasaki-portfolio.vercel.app" not in data2["proposal"]
+    assert data2["order_id"] is None
+
+    async with SessionLocal() as session:
+        rows = (await session.scalars(select(TelegramOrder))).all()
+        assert len(rows) == 1
+        assert rows[0].source == "kwork"
+        assert rows[0].status == "draft"
+        await session.execute(delete(TelegramOrder))
+        await session.commit()

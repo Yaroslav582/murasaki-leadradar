@@ -34,6 +34,7 @@ class TelegramBotRunner:
     def __init__(self) -> None:
         self._running = False
         self._task: asyncio.Task | None = None
+        self._awaiting_kwork_chats: set[int] = set()
 
     def start(self) -> None:
         if not settings.telegram_bot_token:
@@ -113,6 +114,56 @@ class TelegramBotRunner:
                     "reply_markup": markup,
                 },
             )
+            return
+
+        # 0. Action: Trigger Kwork constructor prompt from button
+        if cb_data == "cmd:kwork":
+            self._awaiting_kwork_chats.add(chat_id)
+            try:
+                await client.post(
+                    f"{base_url}/answerCallbackQuery",
+                    json={"callback_query_id": cb_id, "text": "Вставь текст заявки с Kwork следующим сообщением"},
+                )
+            except Exception:
+                pass
+            await client.post(
+                f"{base_url}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": (
+                        "🎯 <b>Конструктор отклика Kwork</b>\n\n"
+                        "Просто вставь и отправь сюда текст заявки с Kwork — я сразу соберу готовый отклик, "
+                        "который можно скопировать в 1 тап."
+                    ),
+                    "parse_mode": "HTML",
+                },
+            )
+            return
+
+        # 0c. Action: Regenerate Kwork draft in another style (kwork_regen:<order_id>:<style>)
+        if cb_data.startswith("kwork_regen:"):
+            parts = cb_data.split(":", 2)
+            if len(parts) == 3:
+                order_id, new_style = parts[1], parts[2]
+                try:
+                    await client.post(
+                        f"{base_url}/answerCallbackQuery",
+                        json={"callback_query_id": cb_id, "text": "✨ Пересобираю отклик..."},
+                    )
+                except Exception:
+                    pass
+                async with SessionLocal() as session:
+                    order = await session.get(TelegramOrder, order_id)
+                    if order:
+                        await self._send_kwork_draft_reply(
+                            client,
+                            base_url,
+                            chat_id,
+                            order.raw_text,
+                            style=new_style,
+                            existing_order=order,
+                            edit_message_id=message_id,
+                        )
             return
 
         # 0. Action: Trigger test lead from button
@@ -322,6 +373,100 @@ class TelegramBotRunner:
         except Exception:
             pass
 
+    async def _send_kwork_draft_reply(
+        self,
+        client: httpx.AsyncClient,
+        base_url: str,
+        chat_id: int,
+        order_text: str,
+        style: str = "balanced",
+        existing_order: TelegramOrder | None = None,
+        edit_message_id: int | None = None,
+    ) -> None:
+        from app.services.telegram_service import build_kwork_proposal, extract_order_summary
+
+        norm_style = style if style in ("balanced", "short", "demo_first", "expert") else "balanced"
+        proposal = await build_kwork_proposal(order_text=order_text, style=norm_style)
+
+        async with SessionLocal() as session:
+            if existing_order is not None:
+                order = await session.get(TelegramOrder, existing_order.id)
+                if order:
+                    order.response_text = proposal
+                    session.add(order)
+                    await session.commit()
+                    order_id = order.id
+                else:
+                    order_id = existing_order.id
+            else:
+                order = TelegramOrder(
+                    chat_id="kwork.ru",
+                    chat_title="Kwork — Конструктор",
+                    source="kwork",
+                    message_id=random.randint(100000, 999999),
+                    author_name="Ручная заявка Kwork",
+                    raw_text=order_text.strip(),
+                    summary=extract_order_summary(order_text),
+                    category="Kwork отклик",
+                    response_text=proposal,
+                    status="draft",
+                )
+                session.add(order)
+                await session.commit()
+                await session.refresh(order)
+                order_id = order.id
+
+        style_labels = {
+            "balanced": "Деловой",
+            "short": "Короткий",
+            "demo_first": "С мини-демо",
+            "expert": "Экспертный",
+        }
+        msg_text = (
+            f"🎯 <b>Готовый отклик для Kwork</b> ({style_labels[norm_style]}, {len(proposal)} симв.):\n\n"
+            f"<pre>{html.escape(proposal)}</pre>\n"
+            "<i>Нажми на текст выше, чтобы скопировать в 1 тап.</i>"
+        )
+        markup = {
+            "inline_keyboard": [
+                [
+                    {"text": "✂️ Короче", "callback_data": f"kwork_regen:{order_id}:short"},
+                    {"text": "🎨 С мини-демо", "callback_data": f"kwork_regen:{order_id}:demo_first"},
+                ],
+                [
+                    {"text": "🛠 Экспертно", "callback_data": f"kwork_regen:{order_id}:expert"},
+                    {"text": "✨ Деловой", "callback_data": f"kwork_regen:{order_id}:balanced"},
+                ],
+                [
+                    {"text": "🔄 Новая заявка", "callback_data": "cmd:kwork"},
+                ],
+            ]
+        }
+
+        if edit_message_id:
+            await client.post(
+                f"{base_url}/editMessageText",
+                json={
+                    "chat_id": chat_id,
+                    "message_id": edit_message_id,
+                    "text": msg_text,
+                    "parse_mode": "HTML",
+                    "reply_markup": markup,
+                    "disable_web_page_preview": True,
+                },
+            )
+        else:
+            await client.post(
+                f"{base_url}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": msg_text,
+                    "parse_mode": "HTML",
+                    "reply_markup": markup,
+                    "disable_web_page_preview": True,
+                },
+            )
+
     async def _handle_test_lead_command(
         self, client: httpx.AsyncClient, base_url: str, chat_id: int
     ) -> None:
@@ -505,6 +650,26 @@ class TelegramBotRunner:
                                 },
                             )
 
+                        elif text.startswith("/kwork"):
+                            raw_order = text[len("/kwork"):].strip()
+                            if len(raw_order) >= 10:
+                                self._awaiting_kwork_chats.discard(chat_id)
+                                await self._send_kwork_draft_reply(client, base_url, chat_id, raw_order)
+                            else:
+                                self._awaiting_kwork_chats.add(chat_id)
+                                await client.post(
+                                    f"{base_url}/sendMessage",
+                                    json={
+                                        "chat_id": chat_id,
+                                        "text": (
+                                            "🎯 <b>Конструктор отклика Kwork</b>\n\n"
+                                            "Вставь и отправь текст заявки следующим сообщением (или сразу "
+                                            "<code>/kwork текст заявки...</code>)."
+                                        ),
+                                        "parse_mode": "HTML",
+                                    },
+                                )
+
                         elif text.startswith("/settings") or text.startswith("/radar") or text.startswith("/autopost"):
                             await client.post(
                                 f"{base_url}/sendMessage",
@@ -553,6 +718,12 @@ class TelegramBotRunner:
                                             ],
                                             [
                                                 {
+                                                    "text": "🎯 Конструктор отклика Kwork",
+                                                    "callback_data": "cmd:kwork",
+                                                }
+                                            ],
+                                            [
+                                                {
                                                     "text": "🧪 Тестовый заказ с кнопками",
                                                     "callback_data": "cmd:test_lead",
                                                 }
@@ -567,6 +738,18 @@ class TelegramBotRunner:
                                     },
                                 },
                             )
+                        elif text and not text.startswith("/") and chat_id in self._awaiting_kwork_chats:
+                            if len(text) < 10:
+                                await client.post(
+                                    f"{base_url}/sendMessage",
+                                    json={
+                                        "chat_id": chat_id,
+                                        "text": "Пришли текст заявки чуть подробнее (от 10 символов).",
+                                    },
+                                )
+                            else:
+                                self._awaiting_kwork_chats.discard(chat_id)
+                                await self._send_kwork_draft_reply(client, base_url, chat_id, text)
                 except asyncio.CancelledError:
                     break
                 except Exception as exc:
